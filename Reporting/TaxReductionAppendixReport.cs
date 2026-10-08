@@ -56,7 +56,9 @@ public sealed class TaxReductionAppendixReport : XtraReport
     private void AddSection(DataTable source, int type, string title, string[] captions, string[] fields, double[] weights, float width)
     {
         var table = source.Clone();
-        table.Columns.Add("STT", typeof(int)); table.Columns.Add("ORIGINAL_RATE", typeof(int)); table.Columns.Add("REDUCED_RATE", typeof(int));
+        if (!table.Columns.Contains("STT")) table.Columns.Add("STT", typeof(int));
+        if (!table.Columns.Contains("ORIGINAL_RATE")) table.Columns.Add("ORIGINAL_RATE", typeof(int));
+        if (!table.Columns.Contains("REDUCED_RATE")) table.Columns.Add("REDUCED_RATE", typeof(int));
         foreach (var sourceRow in source.AsEnumerable().Where(r => r.Field<int>("TYPE") == type))
         {
             table.ImportRow(sourceRow);
