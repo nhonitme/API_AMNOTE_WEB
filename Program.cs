@@ -252,7 +252,6 @@ builder.Services.AddScoped<IReportOptionRepository, ReportOptionRepository>();
 builder.Services.AddScoped<ICashFlowFormulaOptionRepository, CashFlowFormulaOptionRepository>();
 builder.Services.AddScoped<IReportSignatureMappingRepository, ReportSignatureMappingRepository>();
 builder.Services.AddScoped<IConfiguredReportService, ConfiguredReportService>();
-builder.Services.AddScoped<TaxReductionAppendixService>();
 builder.Services.AddScoped<IReportProviderAsync, CustomReportProvider>();
 builder.Services.AddSingleton<IWebDocumentViewerExceptionHandler, CustomWebDocumentViewerExceptionHandler>();
 
