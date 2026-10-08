@@ -177,6 +177,9 @@ namespace API_AMNOTE_WEB.Services
                 dataSource.Data,
                 Common.NormalizeNullableText(context.Config.DATA_SET_NAME) ?? context.Config.REPORT_CODE);
 
+            if (string.Equals(context.ReportCode, "TAX_VAT_REDUCTION_APPENDIX", StringComparison.OrdinalIgnoreCase))
+                table = TaxReductionAppendixCalculator.Process(table);
+
             // DEFAULT_GRID print mirrors sys grid only — do not inject REPORT_* / voucher enrichment columns.
             if (printLayoutMode != PrintLayoutMode.Grid)
             {
@@ -311,6 +314,9 @@ namespace API_AMNOTE_WEB.Services
             var context = await BuildContextAsync(companyCd, reportCode, menuCode, query);
             var dataSource = await ResolveDataSourceAsync(context, includeTableLayoutMetadata, cancellationToken);
             var rawTable = Common.ConvertToDataTable(dataSource.Data, Common.NormalizeNullableText(context.Config.DATA_SET_NAME) ?? context.Config.REPORT_CODE);
+            if (string.Equals(context.ReportCode, "TAX_VAT_REDUCTION_APPENDIX", StringComparison.OrdinalIgnoreCase))
+                rawTable = TaxReductionAppendixCalculator.Process(rawTable);
+
             if (enrichReportData)
             {
                 EnrichReportDataTable(rawTable, context);
