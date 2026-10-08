@@ -80,9 +80,16 @@ public static class TaxReductionAppendixCalculator
                 if (currency.Equals("VND", StringComparison.OrdinalIgnoreCase)) rate = 1;
                 if (rate <= 0)
                     throw new InvalidOperationException($"Hóa đơn {invoice.InvoiceId} thiếu tỷ giá hợp lệ.");
-                var date = DateTime.ParseExact(Text(root, "tdlap").Trim(),
+                var rawDate = Text(root, "tdlap").Trim();
+                if (!DateTime.TryParseExact(rawDate,
                     new[] { "yyyyMMdd", "yyyy-MM-dd", "dd/MM/yyyy", "yyyy-MM-ddTHH:mm:ss" },
-                    Invariant, DateTimeStyles.None);
+                    Invariant, DateTimeStyles.None, out var date)
+                    && !DateTimeOffset.TryParse(rawDate, Invariant,
+                        DateTimeStyles.AllowWhiteSpaces, out var parsedDate))
+                    throw new FormatException($"Ngày lập hóa đơn không hợp lệ: {rawDate} ({invoice.InvoiceId})");
+                else if (date == default && DateTimeOffset.TryParse(rawDate, Invariant,
+                    DateTimeStyles.AllowWhiteSpaces, out parsedDate))
+                    date = parsedDate.Date;
                 var status = string.IsNullOrWhiteSpace(invoice.Status) ? Text(root, "tthai") : invoice.Status;
                 foreach (var (line, index) in eligible)
                 {
