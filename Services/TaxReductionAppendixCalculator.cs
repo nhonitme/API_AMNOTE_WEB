@@ -81,15 +81,27 @@ public static class TaxReductionAppendixCalculator
                 if (rate <= 0)
                     throw new InvalidOperationException($"Hóa đơn {invoice.InvoiceId} thiếu tỷ giá hợp lệ.");
                 var rawDate = Text(root, "tdlap").Trim();
-                if (!DateTime.TryParseExact(rawDate,
-                    new[] { "yyyyMMdd", "yyyy-MM-dd", "dd/MM/yyyy", "yyyy-MM-ddTHH:mm:ss" },
-                    Invariant, DateTimeStyles.None, out var date)
-                    && !DateTimeOffset.TryParse(rawDate, Invariant,
-                        DateTimeStyles.AllowWhiteSpaces, out var parsedDate))
+                DateTime date;
+                if (DateTime.TryParseExact(rawDate,
+                    new[] { "yyyyMMdd", "yyyy-MM-dd", "dd/MM/yyyy",
+                            "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-ddTHH:mm:ss.FFFFFFF" },
+                    Invariant, DateTimeStyles.None, out var parsedLocalDate))
+                {
+                    // Date-only and timestamps without a timezone already represent
+                    // the invoice's calendar date; do not shift them.
+                    date = parsedLocalDate.Date;
+                }
+                else if (DateTimeOffset.TryParse(rawDate, Invariant,
+                    DateTimeStyles.AllowWhiteSpaces, out var timestamp))
+                {
+                    // E-invoice JSON may contain UTC ISO values representing
+                    // Vietnam local midnight (e.g. 2026-07-31T17:00:00Z => 01/08).
+                    date = timestamp.ToOffset(TimeSpan.FromHours(7)).Date;
+                }
+                else
+                {
                     throw new FormatException($"Ngày lập hóa đơn không hợp lệ: {rawDate} ({invoice.InvoiceId})");
-                else if (date == default && DateTimeOffset.TryParse(rawDate, Invariant,
-                    DateTimeStyles.AllowWhiteSpaces, out parsedDate))
-                    date = parsedDate.Date;
+                }
                 var status = string.IsNullOrWhiteSpace(invoice.Status) ? Text(root, "tthai") : invoice.Status;
                 foreach (var (line, index) in eligible)
                 {
