@@ -1,0 +1,1 @@
+function a(e={}){return{type:"date",displayFormat:"dd/MM/yyyy",pickerType:"calendar",useMaskBehavior:!0,...e}}function t(e={}){return{type:"datetime",displayFormat:"dd/MM/yyyy HH:mm:ss",pickerType:"calendar",dateSerializationFormat:"yyyy-MM-ddTHH:mm:ss",useMaskBehavior:!0,...e}}export{t as a,a as c};

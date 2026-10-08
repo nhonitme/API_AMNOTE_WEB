@@ -1,0 +1,81 @@
+﻿QUY ƯỚC ĐẶT TÊN NGẮN GỌN CHO AMNOTE WEB
+=========================================
+
+1. DATABASE
+-----------
+- Tên bảng: dùng chữ thường + snake_case.
+  Ví dụ: user_setting_info, customer_info, fixed_asset_info, period_lock_job
+
+- Tên cột: dùng UPPER_SNAKE_CASE, giữ đồng bộ với source hiện tại.
+  Ví dụ: COMPANY_CD, USER_ID, CUSTOMER_CD, KEY_NAME, SETTING_VALUE, CREATE_AT
+
+- Hậu tố bảng nên thống nhất:
+  _info     = bảng thông tin/danh mục
+  _detail   = bảng chi tiết
+  _history  = lịch sử
+  _log      = log
+  _queue    = hàng đợi
+  _mapping  = bảng liên kết
+  Ví dụ: customer_info, period_lock_history, activity_log, user_company_mapping
+
+
+2. STORED PROCEDURE
+-------------------
+- Tên store: dùng chữ thường + snake_case + prefix sp_.
+  Công thức: sp_{table_or_module}_{action}
+  Ví dụ: sp_user_setting_get, sp_user_setting_upsert, sp_user_setting_delete
+
+- Action nên thống nhất:
+  get      = lấy dữ liệu
+  upsert   = thêm/cập nhật
+  delete   = xóa
+  check    = kiểm tra
+  calculate= tính toán
+  process  = xử lý nghiệp vụ
+
+- Parameter store: dùng prefix p_ và giống tên cột DB.
+  Ví dụ: p_COMPANY_CD, p_USER_ID, p_KEY_NAME, p_SETTING_VALUE
+
+- Function: fn_
+- Trigger: trg_
+- Event/Scheduler: ev_
+
+
+3. BACKEND ASP.NET CORE
+-----------------------
+- Class/Controller/Repository/DTO: dùng PascalCase.
+  Ví dụ: UserSettingsController, UserSettingRepository, UserSettingDto
+
+- Interface: thêm prefix I.
+  Ví dụ: IUserSettingRepository
+
+- Method async: dùng PascalCase và kết thúc bằng Async.
+  Ví dụ: GetUserSettingsAsync(), UpsertUserSettingAsync()
+
+- Biến local: dùng camelCase.
+  Ví dụ: companyCd, userId, keyName
+
+- Private field: dùng _camelCase.
+  Ví dụ: _userSettingRepository
+
+
+
+4. FRONTEND REACT / TYPESCRIPT
+------------------------------
+- Component/Page: dùng PascalCase.
+  Ví dụ: UserSettingPage.tsx, FixedAssetPage.tsx
+
+- Hook: bắt đầu bằng use + PascalCase.
+  Ví dụ: useUserSettings.ts, useFixedAssets.ts
+
+- API service file: dùng camelCase + Api.ts.
+  Ví dụ: userSettingApi.ts, fixedAssetApi.ts
+
+- Function/biến frontend: dùng camelCase.
+  Ví dụ: getUserSettingValue(), saveUserSetting(), isDefaultCheckVat
+
+- Type/interface: dùng PascalCase.
+  Ví dụ: UserSetting, FixedAsset, UserSettingFormProps
+
+- Field object frontend: dùng camelCase.
+  Ví dụ: companyCd, userId, keyName, settingValue

@@ -1,0 +1,11 @@
+﻿.svn/
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.log
+.env
+appsettings.Development.json
+
+.claude/settings.json

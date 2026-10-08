@@ -1,0 +1,46 @@
+-- =============================================================================
+-- FA Report menus (am_web_manager) — thêm thủ công nếu chưa có
+-- Parent: menu Báo cáo TSCĐ (FA > Report), cùng parent với FA_REPORT_DEPRECIATION
+--
+-- Sau khi insert menu: grant VIEW (và quyền cần thiết) cho role/user.
+-- Frontend routes đã có trong App.tsx.
+-- =============================================================================
+
+-- 1) Bảng tính khấu hao TSCĐ
+--    MENU_CODE  = FA_REPORT_DEPRECIATION
+--    MENU_NAME  = Bảng tính khấu hao TSCĐ
+--    LABEL_TEXT = FA_REPORT_DEPRECIATION  (hoặc FA_DEPRECIATION_REPORT)
+--    ROUTE_PATH = /fa/report/depreciation
+--    reportCode = FA_DEPRECIATION_REPORT
+
+-- 2) Sổ tài sản cố định
+--    MENU_CODE  = FA_REPORT_ASSET_BOOK
+--    MENU_NAME  = Sổ tài sản cố định
+--    LABEL_TEXT = FA_REPORT_ASSET_BOOK  (hoặc FA_ASSET_BOOK_REPORT)
+--    ROUTE_PATH = /fa/report/asset-book
+--    reportCode = FA_ASSET_BOOK_REPORT
+
+-- 3) Bảng khấu hao TSCĐ theo kỳ
+--    MENU_CODE  = FA_REPORT_DEPRECIATION_PERIOD
+--    MENU_NAME  = Bảng khấu hao TSCĐ theo kỳ
+--    LABEL_TEXT = FA_REPORT_DEPRECIATION_PERIOD  (hoặc FA_DEPRECIATION_PERIOD_REPORT)
+--    ROUTE_PATH = /fa/report/depreciation-period
+--    reportCode = FA_DEPRECIATION_PERIOD_REPORT
+
+-- Example (pseudo — adapt to your menu table / columns before running):
+--
+-- INSERT INTO sys_menu (MENU_CODE, MENU_NAME, LABEL_TEXT, PARENT_ID, ROUTE_PATH, SORT_ORDER, IS_ACTIVE, IS_VISIBLE)
+-- SELECT 'FA_REPORT_ASSET_BOOK', N'Sổ tài sản cố định', 'FA_REPORT_ASSET_BOOK',
+--        m.MENU_ID, '/fa/report/asset-book', IFNULL(m.SORT_ORDER, 0) + 10, 1, 1
+-- FROM sys_menu m
+-- WHERE m.MENU_CODE = 'FA_REPORT_DEPRECIATION'
+--   AND NOT EXISTS (SELECT 1 FROM sys_menu x WHERE x.MENU_CODE = 'FA_REPORT_ASSET_BOOK')
+-- LIMIT 1;
+--
+-- INSERT INTO sys_menu (MENU_CODE, MENU_NAME, LABEL_TEXT, PARENT_ID, ROUTE_PATH, SORT_ORDER, IS_ACTIVE, IS_VISIBLE)
+-- SELECT 'FA_REPORT_DEPRECIATION_PERIOD', N'Bảng khấu hao TSCĐ theo kỳ', 'FA_REPORT_DEPRECIATION_PERIOD',
+--        m.PARENT_ID, '/fa/report/depreciation-period', IFNULL(m.SORT_ORDER, 0) + 20, 1, 1
+-- FROM sys_menu m
+-- WHERE m.MENU_CODE = 'FA_REPORT_DEPRECIATION'
+--   AND NOT EXISTS (SELECT 1 FROM sys_menu x WHERE x.MENU_CODE = 'FA_REPORT_DEPRECIATION_PERIOD')
+-- LIMIT 1;

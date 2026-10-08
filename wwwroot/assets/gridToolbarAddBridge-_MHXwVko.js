@@ -1,0 +1,1 @@
+const d=new WeakMap,r=new WeakMap;function a(e){var n;(n=r.get(e))==null||n.forEach(t=>t())}function o(e,n){e&&(n?d.set(e,n):d.delete(e),a(e))}function s(e){if(e)return d.get(e)}function i(e,n){let t=r.get(e);return t||(t=new Set,r.set(e,t)),t.add(n),()=>{t==null||t.delete(n)}}export{i as a,s as g,o as s};

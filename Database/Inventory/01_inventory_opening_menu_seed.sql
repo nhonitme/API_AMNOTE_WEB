@@ -1,0 +1,22 @@
+-- Inventory Opening (IRO) menu + sequence seed (Manager / Company DB)
+-- Adjust table/column names to match your menu schema before running.
+--
+-- MENU_CODE  = INV_OPENING
+-- ROUTE_PATH = /inventory/opening
+-- Parent    = Inventory menu group
+--
+-- Permissions needed: VIEW, ADD, EDIT, DELETE, EXPORT, IMPORT
+--
+-- Example (pseudo — adapt to your sys_menu / menu_info table):
+--
+-- INSERT INTO sys_menu (MENU_CODE, MENU_NAME, PARENT_CODE, ROUTE_PATH, SORT_ORDER, IS_ACTIVE, IS_VISIBLE)
+-- SELECT 'INV_OPENING', N'Tồn đầu kỳ kho', MENU_CODE, '/inventory/opening', 50, 1, 1
+-- FROM sys_menu
+-- WHERE MENU_CODE = 'INV'   -- parent inventory group; change if different
+--   AND NOT EXISTS (SELECT 1 FROM sys_menu x WHERE x.MENU_CODE = 'INV_OPENING');
+--
+-- Grant role permissions for INV_OPENING (VIEW/ADD/EDIT/DELETE/EXPORT/IMPORT).
+--
+-- Optional: code sequence for TRANSFER_NO using OBJECT_TYPE = 'IRO'
+-- (same pattern as inventory receipt object type 'IR').
+-- If missing, API falls back to GenerateKeyCd.
