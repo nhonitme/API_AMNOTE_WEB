@@ -10,6 +10,37 @@ public sealed record TaxReductionInvoice(int Type, string InvoiceId, string Json
 /// <summary>Desktop-compatible line calculations; amounts are VND, rounded away from zero.</summary>
 public static class TaxReductionAppendixCalculator
 {
+    /// <summary>Convert the raw JSON invoice rows from the configured stored procedure.</summary>
+    public static DataTable Process(DataTable source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        foreach (var field in new[] { "TYPE", "mhdon", "json" })
+            if (!source.Columns.Contains(field))
+                throw new ArgumentException($"Missing TaxReduction raw field: {field}");
+
+        var invoices = source.Rows.Cast<DataRow>()
+            .Where(row => row.RowState != DataRowState.Deleted)
+            .Select(row => new TaxReductionInvoice(
+                Convert.ToInt32(row["TYPE"], CultureInfo.InvariantCulture),
+                Convert.ToString(row["mhdon"], CultureInfo.InvariantCulture) ?? "",
+                Convert.ToString(row["json"], CultureInfo.InvariantCulture) ?? ""))
+            .ToList();
+        var output = Calculate(invoices);
+        output.Columns["MHDON"]!.ColumnName = "mhdon";
+        output.Columns["PRODUCT_NAME"]!.ColumnName = "THHDVu";
+        output.Columns["STATUS_TEXT"]!.ColumnName = "TThai_TEXT";
+        output.Columns.Add("PRODUCT_NAME", typeof(string));
+        output.Columns.Add("ORIGINAL_RATE", typeof(int));
+        output.Columns.Add("REDUCED_RATE", typeof(int));
+        foreach (DataRow row in output.Rows)
+        {
+            row["PRODUCT_NAME"] = row["THHDVu"];
+            row["ORIGINAL_RATE"] = 10;
+            row["REDUCED_RATE"] = 8;
+        }
+        return output;
+    }
+
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
     public static decimal Round(decimal value) => decimal.Round(value, 0, MidpointRounding.AwayFromZero);
 
@@ -31,34 +62,33 @@ public static class TaxReductionAppendixCalculator
 
         foreach (var invoice in invoices)
         {
-            if (string.IsNullOrWhiteSpace(invoice.Json))
-                throw new InvalidOperationException($"Hóa đơn {invoice.InvoiceId} chưa có JSON chi tiết.");
+            if (string.IsNullOrWhiteSpace(invoice.Json)) continue;
             try
             {
                 using var document = JsonDocument.Parse(invoice.Json);
                 var root = document.RootElement;
                 if (!root.TryGetProperty("hdhhdvu", out var lines) || lines.ValueKind != JsonValueKind.Array)
-                    throw new InvalidOperationException($"Hóa đơn {invoice.InvoiceId} thiếu danh sách hàng hóa.");
+                    continue;
                 var eligible = lines.EnumerateArray().Select((line, index) => (line, index))
                     .Where(x => Text(x.line, "tchat") != "4" && Rate(x.line) == 0.08m).ToList();
                 if (eligible.Count == 0) continue;
                 var currency = Text(root, "dvtte");
                 if (currency.Length == 0) currency = invoice.Currency.Trim();
-                if (currency.Length == 0)
-                    throw new InvalidOperationException($"Hóa đơn {invoice.InvoiceId} thiếu loại tiền.");
+                if (currency.Length == 0 || currency.Equals("VNĐ", StringComparison.OrdinalIgnoreCase)) currency = "VND";
                 var rate = Number(root, "tgia");
                 if (rate <= 0) rate = invoice.ExchangeRate;
                 if (currency.Equals("VND", StringComparison.OrdinalIgnoreCase)) rate = 1;
                 if (rate <= 0)
                     throw new InvalidOperationException($"Hóa đơn {invoice.InvoiceId} thiếu tỷ giá hợp lệ.");
-                var date = DateTimeOffset.Parse(Text(root, "tdlap"), Invariant,
-                    DateTimeStyles.AssumeUniversal).ToOffset(TimeSpan.FromHours(7)).Date;
+                var date = DateTime.ParseExact(Text(root, "tdlap").Trim(),
+                    new[] { "yyyyMMdd", "yyyy-MM-dd", "dd/MM/yyyy", "yyyy-MM-ddTHH:mm:ss" },
+                    Invariant, DateTimeStyles.None);
                 var status = string.IsNullOrWhiteSpace(invoice.Status) ? Text(root, "tthai") : invoice.Status;
                 foreach (var (line, index) in eligible)
                 {
                     var amount = Number(line, "thtien");
                     // Preserve the two legacy rounding sequences, including negative adjustment lines.
-                    var localAmount = invoice.Type == 1 ? Round(amount * rate) : amount * rate;
+                    var localAmount = Round(amount * rate);
                     var vat = invoice.Type == 1 ? Round(localAmount * 0.08m) : Round(Round(amount * 0.08m) * rate);
                     table.Rows.Add($"{invoice.Type}:{invoice.InvoiceId}:{index}", "NONE", invoice.Type,
                         invoice.InvoiceId, invoice.Type == 1 ? "I. Hàng hóa, dịch vụ mua vào" : "II. Hàng hóa, dịch vụ bán ra",
