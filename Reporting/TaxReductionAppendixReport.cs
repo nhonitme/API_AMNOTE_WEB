@@ -57,8 +57,8 @@ public sealed class TaxReductionAppendixReport : XtraReport
         footer.Controls.Add(Label($"{differenceLabel} {(reduction - buyTax):N0} {currencySuffix}", width, 0, 60, true));
         Bands.Add(footer);
         var pageFooter = new PageFooterBand { HeightF = 25 };
-        pageFooter.Controls.Add(new XRPageInfo { WidthF = width, HeightF = 25, TextAlignment = TextAlignment.MiddleRight,
-            PageInfo = PageInfo.NumberOfTotal, TextFormatString = T("Tax_reduction_appendix_page", "Trang {0}/{1}") });
+        //pageFooter.Controls.Add(new XRPageInfo { WidthF = width, HeightF = 25, TextAlignment = TextAlignment.MiddleRight,
+        //    PageInfo = PageInfo.NumberOfTotal, TextFormatString = T("Tax_reduction_appendix_page", "Trang {0}/{1}") });
         Bands.Add(pageFooter);
     }
 
