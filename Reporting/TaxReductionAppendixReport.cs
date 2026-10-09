@@ -13,43 +13,52 @@ namespace API_AMNOTE_WEB.Reporting;
 /// <summary>Two-table appendix matching the supplied desktop export.</summary>
 public sealed class TaxReductionAppendixReport : XtraReport
 {
+    private string _language = "VIET";
+
+    private string T(string key, string fallback) =>
+        ReportLanguageHelper.LocalizeLabelOrFallback(key, fallback, _language);
+
     public TaxReductionAppendixReport(ReportConfigurationInfo config, DataTable data,
         ReportCompanyContext company, IReadOnlyDictionary<string, string> query)
     {
+        _language = company.ReportLanguage;
         PaperKind = DevExpress.Drawing.Printing.DXPaperKind.A4;
         Margins = new System.Drawing.Printing.Margins(config.MARGIN_LEFT ?? 40, config.MARGIN_RIGHT ?? 40,
             config.MARGIN_TOP ?? 25, config.MARGIN_BOTTOM ?? 25);
         Font = new DXFont(config.FONT_FAMILY ?? "Arial", (float)(config.FONT_SIZE ?? 9));
         RequestParameters = false;
-        DisplayName = "Phụ lục giảm thuế GTGT";
+        DisplayName = T("Tax_reduction_appendix_title", "Phụ lục giảm thuế GTGT");
         var width = PageWidth - Margins.Left - Margins.Right;
         var header = new ReportHeaderBand { HeightF = 155 };
         Bands.Add(header);
-        var title = config.ELEMENTS.FirstOrDefault(x => x.ITEM_KEY == "TITLE")?.CAPTION ?? "PHỤ LỤC GIẢM THUẾ GIÁ TRỊ GIA TĂNG";
+        var configuredTitle = config.ELEMENTS.FirstOrDefault(x => x.ITEM_KEY == "TITLE")?.CAPTION ?? "PHỤ LỤC GIẢM THUẾ GIÁ TRỊ GIA TĂNG";
+        var title = T("Tax_reduction_appendix_title", configuredTitle);
         header.Controls.Add(Label(title, width, 0, 45, true, TextAlignment.MiddleCenter));
         query.TryGetValue("fromYmd", out var from); query.TryGetValue("toYmd", out var to);
         static string DateText(string? value) => DateTime.TryParseExact(value, "yyyyMMdd", CultureInfo.InvariantCulture,
             DateTimeStyles.None, out var date) ? date.ToString("dd/MM/yyyy") : value ?? "";
-        header.Controls.Add(Label($"Kỳ báo cáo: {DateText(from)} – {DateText(to)}", width, 45, 25, false, TextAlignment.MiddleCenter));
-        header.Controls.Add(Label($"[01] Tên người nộp thuế: {company.CompanyNameText}", width, 75, 25));
-        header.Controls.Add(Label($"[02] Mã số thuế: {company.CompanyInfo.TAX_CD}", width, 100, 25));
-        header.Controls.Add(Label("Đơn vị tiền tệ: Việt Nam đồng", width, 125, 25, false, TextAlignment.MiddleRight));
+        header.Controls.Add(Label($"{T("Tax_reduction_appendix_period", "Kỳ báo cáo:")} {DateText(from)} – {DateText(to)}", width, 45, 25, false, TextAlignment.MiddleCenter));
+        header.Controls.Add(Label($"[01] {T("Tax_reduction_appendix_taxpayer", "Tên người nộp thuế:")} {company.CompanyNameText}", width, 75, 25));
+        header.Controls.Add(Label($"[02] {T("Tax_reduction_appendix_taxcode", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 100, 25));
+        header.Controls.Add(Label(T("Tax_reduction_appendix_currency_unit", "Đơn vị tiền tệ: Việt Nam đồng"), width, 125, 25, false, TextAlignment.MiddleRight));
         Bands.Add(new DetailBand { HeightF = 0 });
-        AddSection(data, 1, "I. Hàng hóa, dịch vụ mua vào trong kỳ được áp dụng mức thuế suất thuế giá trị gia tăng 8%",
-            new[] { "STT", "Tên hàng hóa, dịch vụ", "Giá trị mua vào chưa có thuế GTGT", "Thuế GTGT mua vào được khấu trừ" },
+        AddSection(data, 1, T("Tax_reduction_appendix_group1", "I. Hàng hóa, dịch vụ mua vào trong kỳ được áp dụng mức thuế suất thuế giá trị gia tăng 8%"),
+            new[] { T("Tax_reduction_appendix_stt", "STT"), T("Tax_reduction_appendix_product", "Tên hàng hóa, dịch vụ"), T("Tax_reduction_appendix_purchase_value", "Giá trị mua vào chưa có thuế GTGT"), T("Tax_reduction_appendix_purchase_vat", "Thuế GTGT mua vào được khấu trừ") },
             new[] { "STT", "PRODUCT_NAME", "BILL_AMOUNT", "VAT_AMOUNT" }, new[] { .07, .49, .24, .20 }, width);
-        AddSection(data, 2, "II. Hàng hóa, dịch vụ bán ra trong kỳ",
-            new[] { "STT", "Tên hàng hóa, dịch vụ", "Giá trị chưa có thuế GTGT", "Thuế suất theo quy định", "Thuế suất sau giảm", "Thuế GTGT được giảm" },
+        AddSection(data, 2, T("Tax_reduction_appendix_group2", "II. Hàng hóa, dịch vụ bán ra trong kỳ"),
+            new[] { T("Tax_reduction_appendix_stt", "STT"), T("Tax_reduction_appendix_product", "Tên hàng hóa, dịch vụ"), T("Tax_reduction_appendix_sale_value", "Giá trị chưa có thuế GTGT"), T("Tax_reduction_appendix_standard_rate", "Thuế suất theo quy định"), T("Tax_reduction_appendix_reduced_rate", "Thuế suất sau giảm"), T("Tax_reduction_appendix_vat_reduced", "Thuế GTGT được giảm") },
             new[] { "STT", "PRODUCT_NAME", "BILL_AMOUNT", "ORIGINAL_RATE", "REDUCED_RATE", "REDUCTION_AMOUNT" },
             new[] { .06, .36, .20, .10, .10, .18 }, width);
         var buyTax = data.AsEnumerable().Where(r => r.Field<int>("TYPE") == 1).Sum(r => r.Field<decimal>("VAT_AMOUNT"));
         var reduction = data.AsEnumerable().Where(r => r.Field<int>("TYPE") == 2).Sum(r => r.Field<decimal>("REDUCTION_AMOUNT"));
         var footer = new ReportFooterBand { HeightF = 65 };
-        footer.Controls.Add(Label($"III. Chênh lệch thuế GTGT của hàng hóa, dịch vụ bán ra và mua vào trong kỳ: {(reduction - buyTax):N0} đồng", width, 0, 60, true));
+        var differenceLabel = T("Tax_reduction_appendix_difference", "III. Chênh lệch thuế GTGT của hàng hóa, dịch vụ bán ra và mua vào trong kỳ:");
+        var currencySuffix = T("Tax_reduction_appendix_currency_suffix", "đồng");
+        footer.Controls.Add(Label($"{differenceLabel} {(reduction - buyTax):N0} {currencySuffix}", width, 0, 60, true));
         Bands.Add(footer);
         var pageFooter = new PageFooterBand { HeightF = 25 };
         pageFooter.Controls.Add(new XRPageInfo { WidthF = width, HeightF = 25, TextAlignment = TextAlignment.MiddleRight,
-            PageInfo = PageInfo.NumberOfTotal, TextFormatString = "Trang {0}/{1}" });
+            PageInfo = PageInfo.NumberOfTotal, TextFormatString = T("Tax_reduction_appendix_page", "Trang {0}/{1}") });
         Bands.Add(pageFooter);
     }
 
@@ -81,7 +90,7 @@ public sealed class TaxReductionAppendixReport : XtraReport
         }
         detail.Controls.Add(detailTable);
         var totals = new GroupFooterBand { HeightF = 28 };
-        var values = fields.Select((field, i) => i == 1 ? "Tổng cộng" : field.EndsWith("AMOUNT")
+        var values = fields.Select((field, i) => i == 1 ? T("Tax_reduction_appendix_total", "Tổng cộng") : field.EndsWith("AMOUNT")
             ? table.AsEnumerable().Sum(r => r.Field<decimal>(field)).ToString("N0") : "").ToArray();
         totals.Controls.Add(Row(values, weights, width, 0, 28, true));
         section.Bands.AddRange(new Band[] { heading, detail, totals });
