@@ -91,7 +91,7 @@ namespace API_AMNOTE_WEB.Services
                 .OrderBy(m => m.PRODUCT_CD)
                 .ThenBy(m => m.STORE_CD)
                 .ThenBy(m => m.TXN_YMD)
-                .ThenBy(m => m.CHIT_ID)
+                .ThenBy(m => m.INVENTORY_ID)
                 .ThenBy(m => m.CHITDETAIL_ID)
                 .ToList();
 

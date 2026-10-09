@@ -49,7 +49,7 @@ namespace API_AMNOTE_WEB.Models
     {
         public string FLOW_TYPE { get; set; } = string.Empty;
         public string COMPANY_CD { get; set; } = string.Empty;
-        public long? CHIT_ID { get; set; }
+        public long? INVENTORY_ID { get; set; }
         public long? CHITDETAIL_ID { get; set; }
         public string CHIT_TYPE { get; set; } = string.Empty;
         public string PRODUCT_CD { get; set; } = string.Empty;

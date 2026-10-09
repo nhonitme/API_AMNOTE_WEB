@@ -246,12 +246,12 @@ namespace API_AMNOTE_WEB.Repositories
                     }
 
                     await session.ExecuteAsync(
-                        "CALL delChitInventoryInput(@p_COMPANY_CD, @p_INPUT_ID, @p_CHIT_ID, @p_USER)",
+                        "CALL delChitInventoryInput(@p_COMPANY_CD, @p_INPUT_ID, @p_INVENTORY_ID, @p_USER)",
                         new
                         {
                             p_COMPANY_CD = companyCd,
                             p_INPUT_ID = existing.INPUT_ID,
-                            p_CHIT_ID = existing.TRANSFER_ID,
+                            p_INVENTORY_ID = existing.TRANSFER_ID,
                             p_USER = userId
                         });
 
@@ -469,13 +469,13 @@ namespace API_AMNOTE_WEB.Repositories
             var inventoryYmd = DateTime.Today;
 
             return await session.QuerySingleAsync<long>(
-                "CALL setChitInventoryInput(@p_INPUT_ID, @p_INPUT_CD, @p_CHIT_ID, @p_CHIT_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
+                "CALL setChitInventoryInput(@p_INPUT_ID, @p_INPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
                 new
                 {
                     p_INPUT_ID = inputId > 0 ? inputId : (long?)null,
                     p_INPUT_CD = inputCd ?? string.Empty,
-                    p_CHIT_ID = transferId,
-                    p_CHIT_CD = transferCd,
+                    p_INVENTORY_ID = transferId,
+                    p_INVENTORY_CD = transferCd,
                     p_CHIT_TYPE = ChitType,
                     p_COMPANY_CD = companyCd,
                     p_PRODUCT_ID = normalized.ProductId,

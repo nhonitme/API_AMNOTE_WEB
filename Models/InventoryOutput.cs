@@ -7,8 +7,8 @@ namespace API_AMNOTE_WEB.Models
         public string? COGS_DEBIT { get; set; }
         public string? COGS_CREDIT { get; set; }
         public string? OUTPUT_CD { get; set; } = string.Empty;
-        public long? CHIT_ID { get; set; }
-        public string? CHIT_CD { get; set; } = string.Empty;
+        public long? INVENTORY_ID { get; set; }
+        public string? INVENTORY_CD { get; set; } = string.Empty;
         public string? CHIT_TYPE { get; set; } = string.Empty;
         public string? COMPANY_CD { get; set; } = string.Empty;
         public long? PRODUCT_ID { get; set; }

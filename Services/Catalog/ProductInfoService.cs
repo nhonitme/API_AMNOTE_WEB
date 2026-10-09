@@ -108,12 +108,23 @@ namespace API_AMNOTE_WEB.Services.Catalog
             var nextUnitId = NormalizeOptionalFk(request.UNIT_ID)
                 ?? throw new ArgumentException("UNIT_ID is required");
             var nextStoreId = NormalizeOptionalFk(request.STORE_ID);
-            await ValidateProductReferencesAsync(companyCd, nextProductKindId, nextUnitId, nextStoreId);
-
+            var productKindChanged = nextProductKindId != NormalizeOptionalFk(existing.PRODUCT_KIND_ID);
+            var unitChanged = nextUnitId != NormalizeOptionalFk(existing.UNIT_ID);
+            if (productKindChanged || unitChanged)
+            {
+                await ValidateProductReferencesAsync(
+                    companyCd,
+                    nextProductKindId,
+                    nextUnitId,
+                    nextStoreId,
+                    validateProductKind: productKindChanged,
+                    validateUnit: unitChanged);
+            }
             var nextProductCd = request.PRODUCT_CD == null ? existing.PRODUCT_CD : Common.NormalizeRequiredText(request.PRODUCT_CD);
             if (string.IsNullOrWhiteSpace(nextProductCd))
                 throw new ArgumentException("PRODUCT_CD is required");
-            if (await CodeExistsAsync(companyCd, nextProductCd, productId))
+            var productCodeChanged = !string.Equals(nextProductCd, existing.PRODUCT_CD, StringComparison.Ordinal);
+            if (productCodeChanged && await CodeExistsAsync(companyCd, nextProductCd, productId))
                 throw new InvalidOperationException("PRODUCT_CD already exists");
             var payload = new ProductInfoDto
             {
@@ -135,8 +146,9 @@ namespace API_AMNOTE_WEB.Services.Catalog
             if (result <= 0) throw new InvalidOperationException("Update failed");
             await _cache.ClearAsync(CacheScope, companyCd);
             _logger.LogInformation("ProductInfo updated: id={Id}, company={Company}", productId, companyCd);
-            return await GetByIdAsync(companyCd, productId)
+            var updated = await GetByIdAsync(companyCd, productId)
                 ?? throw new InvalidOperationException("Failed to fetch updated record");
+            return updated;
         }
 
         public async Task<int> DeleteAsync(string companyCd, string userId, List<int> productIds)
@@ -252,16 +264,22 @@ namespace API_AMNOTE_WEB.Services.Catalog
         /// <summary>
         /// PRODUCT_KIND_ID / STORE_ID optional. UNIT_ID required and must exist when set.
         /// </summary>
-        private async Task ValidateProductReferencesAsync(string companyCd, int? productKindId, int? unitId, int? storeId)
+        private async Task ValidateProductReferencesAsync(
+            string companyCd,
+            int? productKindId,
+            int? unitId,
+            int? storeId,
+            bool validateProductKind = true,
+            bool validateUnit = true)
         {
             var resolvedKindId = productKindId.GetValueOrDefault();
-            if (resolvedKindId > 0 && !(await _productKindService.GetListAsync(companyCd, resolvedKindId)).Any())
+            if (validateProductKind && resolvedKindId > 0 && !(await _productKindService.GetListAsync(companyCd, resolvedKindId)).Any())
             {
                 throw new ArgumentException("PRODUCT_KIND_ID not found");
             }
 
             var resolvedUnitId = unitId.GetValueOrDefault();
-            if (resolvedUnitId <= 0 || !(await _productUnitService.GetListAsync(companyCd, resolvedUnitId)).Any())
+            if (validateUnit && (resolvedUnitId <= 0 || !(await _productUnitService.GetListAsync(companyCd, resolvedUnitId)).Any()))
             {
                 throw new ArgumentException(resolvedUnitId <= 0 ? "UNIT_ID is required" : "UNIT_ID not found");
             }

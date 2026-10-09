@@ -11,8 +11,8 @@ namespace API_AMNOTE_WEB.Repositories
         private static async Task LockInventoryIssueAsync(DapperSession session, string companyCd, long transferId)
         {
             var id = await session.QuerySingleAsync<long>(@"
-                SELECT TRANSFER_ID FROM chit_inventory_transfer
-                WHERE COMPANY_CD=@companyCd AND TRANSFER_ID=@transferId AND CHIT_TYPE='IO' AND ISDEL='0' FOR UPDATE",
+                SELECT INVENTORY_ID FROM chit_inventory_info
+                WHERE COMPANY_CD=@companyCd AND INVENTORY_ID=@transferId AND CHIT_TYPE='IO' AND ISDEL='0' FOR UPDATE",
                 new { companyCd, transferId });
             if (id != transferId) throw new InvalidOperationException($"Invalid issue voucher {transferId}.");
         }
@@ -20,7 +20,7 @@ namespace API_AMNOTE_WEB.Repositories
         private static async Task<List<InventoryOutput>> ReadIssueOutputsAsync(DapperSession session, string companyCd, long transferId)
             => (await session.QueryAsync<InventoryOutput>(@"
                 SELECT * FROM chit_inventory_output
-                WHERE COMPANY_CD=@companyCd AND CHIT_ID=@transferId AND ISDEL='0' ORDER BY SORT,OUTPUT_ID",
+                WHERE COMPANY_CD=@companyCd AND INVENTORY_ID=@transferId AND ISDEL='0' ORDER BY SORT,OUTPUT_ID",
                 new { companyCd, transferId })).ToList();
 
         private static async Task EnsureCogsPeriodOpenAsync(DapperSession session, string companyCd, string? ymd)
@@ -50,12 +50,12 @@ namespace API_AMNOTE_WEB.Repositories
         {
             var headers = (await session.QueryAsync<InventoryCogsDto>(@"
                 SELECT h.CHIT_ID,h.CHIT_CD,h.CHIT_NO,h.CHIT_YMD,h.AMOUNT,e.IS_LOCK
-                FROM chit_inventory_transfer t
+                FROM chit_inventory_info t
                 INNER JOIN chitinfo h ON h.CHIT_ID=t.CHIT_ID_COGS AND h.COMPANY_CD=t.COMPANY_CD AND h.ISDEL='0'
                     AND h.CHIT_TYPE='IO_COGS' AND h.INPUT_TYPE='AR'
                 INNER JOIN chitinfo_ext e ON e.CHIT_ID=h.CHIT_ID AND e.COMPANY_CD=h.COMPANY_CD AND e.ISDEL='0'
-                WHERE t.COMPANY_CD=@companyCd AND t.TRANSFER_ID=@transferId
-                    AND t.ISDEL='0' AND t.CHIT_TYPE='IO' AND t.TRANSFER_YMD=h.CHIT_YMD AND t.AMOUNT=h.AMOUNT FOR UPDATE",
+                WHERE t.COMPANY_CD=@companyCd AND t.INVENTORY_ID=@transferId
+                    AND t.ISDEL='0' AND t.CHIT_TYPE='IO' AND t.INVENTORY_YMD=h.CHIT_YMD AND t.AMOUNT=h.AMOUNT FOR UPDATE",
                 new { companyCd, transferId })).ToList();
             if (headers.Count != 1)
                 throw new InvalidOperationException($"Issue voucher {transferId}: missing or invalid COGS header/link.");
@@ -68,7 +68,7 @@ namespace API_AMNOTE_WEB.Repositories
                 INNER JOIN chitdetailinfo_ext e ON e.CHITDETAIL_ID=d.CHITDETAIL_ID AND e.COMPANY_CD=d.COMPANY_CD AND e.ISDEL='0'
                 INNER JOIN acclist_info debit_acc ON debit_acc.COMPANY_CD=d.COMPANY_CD AND debit_acc.ACC_CD=d.DEBIT AND debit_acc.ISDEL='0'
                 INNER JOIN acclist_info credit_acc ON credit_acc.COMPANY_CD=d.COMPANY_CD AND credit_acc.ACC_CD=d.CREDIT AND credit_acc.ISDEL='0'
-                WHERE o.COMPANY_CD=@companyCd AND o.CHIT_ID=@transferId AND o.ISDEL='0' AND o.CHIT_TYPE='IO' FOR UPDATE",
+                WHERE o.COMPANY_CD=@companyCd AND o.INVENTORY_ID=@transferId AND o.ISDEL='0' AND o.CHIT_TYPE='IO' FOR UPDATE",
                 new { companyCd, transferId, chitId = header.CHIT_ID, ymd = header.CHIT_YMD })).ToList();
             var detailCount = await session.QuerySingleAsync<int>(@"
                 SELECT COUNT(*) FROM chitdetailinfo WHERE COMPANY_CD=@companyCd AND CHIT_ID=@chitId AND ISDEL='0'",
@@ -104,8 +104,8 @@ namespace API_AMNOTE_WEB.Repositories
                 await session.ExecuteAsync(@"
                     INSERT INTO chitinfo_ext (COMPANY_CD,CHIT_ID,CHIT_CD,CREATE_BY,UPDATE_BY)
                     VALUES (@companyCd,@chitId,@chitCd,@userId,@userId);
-                    UPDATE chit_inventory_transfer SET CHIT_ID_COGS=@chitId
-                    WHERE COMPANY_CD=@companyCd AND TRANSFER_ID=@transferId AND CHIT_ID_COGS IS NULL AND ISDEL='0'",
+                    UPDATE chit_inventory_info SET CHIT_ID_COGS=@chitId
+                    WHERE COMPANY_CD=@companyCd AND INVENTORY_ID=@transferId AND CHIT_ID_COGS IS NULL AND ISDEL='0'",
                     new { companyCd, chitId, chitCd, userId, transferId });
             }
             else
@@ -137,7 +137,7 @@ namespace API_AMNOTE_WEB.Repositories
                         INSERT INTO chitdetailinfo_ext (COMPANY_CD,CHITDETAIL_ID,CHITDETAIL_CD,HASINVENTORY,INVENTORY_YMD,CREATE_BY,UPDATE_BY)
                         VALUES (@companyCd,@detailId,@detailCd,'0',@ymd,@userId,@userId);
                         UPDATE chit_inventory_output SET CHITDETAIL_ID_COGS=@detailId
-                        WHERE COMPANY_CD=@companyCd AND CHIT_ID=@transferId AND OUTPUT_ID=@outputId
+                        WHERE COMPANY_CD=@companyCd AND INVENTORY_ID=@transferId AND OUTPUT_ID=@outputId
                             AND CHITDETAIL_ID_COGS IS NULL AND ISDEL='0'",
                         new { companyCd, detailId, detailCd, ymd, userId, transferId, outputId = output.OUTPUT_ID });
                 }

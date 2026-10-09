@@ -1,4 +1,4 @@
-﻿using API_AMNOTE_WEB.Data;
+using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Models;
@@ -1301,12 +1301,12 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
             long? chitId = null)
         {
             return session.ExecuteAsync(
-                "CALL delChitInventoryInput(@p_COMPANY_CD, @p_INPUT_ID, @p_CHIT_ID, @p_USER)",
+                "CALL delChitInventoryInput(@p_COMPANY_CD, @p_INPUT_ID, @p_INVENTORY_ID, @p_USER)",
                 new
                 {
                     p_COMPANY_CD = companyCd,
                     p_INPUT_ID = inputId > 0 ? inputId : null,
-                    p_CHIT_ID = chitId > 0 ? chitId : null,
+                    p_INVENTORY_ID = chitId > 0 ? chitId : null,
                     p_USER = userId
                 });
         }
@@ -1319,12 +1319,12 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
             long? chitId = null)
         {
             return session.ExecuteAsync(
-                "CALL delChitInventoryOutput(@p_COMPANY_CD, @p_OUTPUT_ID, @p_CHIT_ID, @p_USER)",
+                "CALL delChitInventoryOutput(@p_COMPANY_CD, @p_OUTPUT_ID, @p_INVENTORY_ID, @p_USER)",
                 new
                 {
                     p_COMPANY_CD = companyCd,
                     p_OUTPUT_ID = outputId > 0 ? outputId : null,
-                    p_CHIT_ID = chitId > 0 ? chitId : null,
+                    p_INVENTORY_ID = chitId > 0 ? chitId : null,
                     p_USER = userId
                 });
         }
@@ -1339,8 +1339,8 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
             int? fallbackSort,
             InventoryInput input)
         {
-            var inventoryChitId = chitId > 0 ? (long?)chitId : input.CHIT_ID.GetValueOrDefault() > 0 ? input.CHIT_ID : null;
-            var inventoryChitCd = Common.NormalizeNullableText(chitCd) ?? Common.NormalizeNullableText(input.CHIT_CD);
+            var inventoryChitId = chitId > 0 ? (long?)chitId : input.INVENTORY_ID.GetValueOrDefault() > 0 ? input.INVENTORY_ID : null;
+            var inventoryChitCd = Common.NormalizeNullableText(chitCd) ?? Common.NormalizeNullableText(input.INVENTORY_CD);
             var inventoryChitType = Common.NormalizeReferenceChitType(chitType) ?? Common.NormalizeReferenceChitType(input.CHIT_TYPE);
             var sourceDetailId = input.CHITDETAIL_ID.GetValueOrDefault() > 0 ? input.CHITDETAIL_ID : null;
             var hasExplicitSourceReference = sourceDetailId.GetValueOrDefault() > 0;
@@ -1373,13 +1373,13 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
             }
 
             return await session.QuerySingleAsync<long>(
-                "CALL setChitInventoryInput(@p_INPUT_ID, @p_INPUT_CD, @p_CHIT_ID, @p_CHIT_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
+                "CALL setChitInventoryInput(@p_INPUT_ID, @p_INPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
                 new
                 {
                     p_INPUT_ID = input.INPUT_ID > 0 ? input.INPUT_ID : (long?)null,
                     p_INPUT_CD = input.INPUT_CD,
-                    p_CHIT_ID = inventoryChitId,
-                    p_CHIT_CD = string.IsNullOrWhiteSpace(inventoryChitCd) ? null : inventoryChitCd,
+                    p_INVENTORY_ID = inventoryChitId,
+                    p_INVENTORY_CD = string.IsNullOrWhiteSpace(inventoryChitCd) ? null : inventoryChitCd,
                     p_CHIT_TYPE = string.IsNullOrWhiteSpace(inventoryChitType) ? null : inventoryChitType,
                     p_COMPANY_CD = companyCd,
                     p_PRODUCT_ID = input.PRODUCT_ID,
@@ -1415,8 +1415,8 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
             int? fallbackSort,
             InventoryOutput output)
         {
-            var inventoryChitId = chitId > 0 ? (long?)chitId : output.CHIT_ID.GetValueOrDefault() > 0 ? output.CHIT_ID : null;
-            var inventoryChitCd = Common.NormalizeNullableText(chitCd) ?? Common.NormalizeNullableText(output.CHIT_CD);
+            var inventoryChitId = chitId > 0 ? (long?)chitId : output.INVENTORY_ID.GetValueOrDefault() > 0 ? output.INVENTORY_ID : null;
+            var inventoryChitCd = Common.NormalizeNullableText(chitCd) ?? Common.NormalizeNullableText(output.INVENTORY_CD);
             var inventoryChitType = Common.NormalizeReferenceChitType(chitType) ?? Common.NormalizeReferenceChitType(output.CHIT_TYPE);
             var sourceDetailId = output.CHITDETAIL_ID.GetValueOrDefault() > 0 ? output.CHITDETAIL_ID : null;
             var hasExplicitSourceReference = sourceDetailId.GetValueOrDefault() > 0;
@@ -1448,13 +1448,13 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
             }
 
             return await session.QuerySingleAsync<long>(
-                "CALL setChitInventoryOutput(@p_OUTPUT_ID, @p_OUTPUT_CD, @p_CHIT_ID, @p_CHIT_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
+                "CALL setChitInventoryOutput(@p_OUTPUT_ID, @p_OUTPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
                 new
                 {
                     p_OUTPUT_ID = output.OUTPUT_ID > 0 ? output.OUTPUT_ID : (long?)null,
                     p_OUTPUT_CD = output.OUTPUT_CD,
-                    p_CHIT_ID = inventoryChitId,
-                    p_CHIT_CD = string.IsNullOrWhiteSpace(inventoryChitCd) ? null : inventoryChitCd,
+                    p_INVENTORY_ID = inventoryChitId,
+                    p_INVENTORY_CD = string.IsNullOrWhiteSpace(inventoryChitCd) ? null : inventoryChitCd,
                     p_CHIT_TYPE = string.IsNullOrWhiteSpace(inventoryChitType) ? null : inventoryChitType,
                     p_COMPANY_CD = companyCd,
                     p_PRODUCT_ID = output.PRODUCT_ID,
