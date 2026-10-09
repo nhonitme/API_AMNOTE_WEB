@@ -34,10 +34,23 @@ public sealed class TaxReductionAppendixReport : XtraReport
         var configuredTitle = config.ELEMENTS.FirstOrDefault(x => x.ITEM_KEY == "TITLE")?.CAPTION ?? "PHỤ LỤC GIẢM THUẾ GIÁ TRỊ GIA TĂNG";
         var title = T("Tax_reduction_appendix_title", configuredTitle);
         header.Controls.Add(Label(title, width, 0, 45, true, TextAlignment.MiddleCenter));
-        query.TryGetValue("fromYmd", out var from); query.TryGetValue("toYmd", out var to);
-        static string DateText(string? value) => DateTime.TryParseExact(value, "yyyyMMdd", CultureInfo.InvariantCulture,
-            DateTimeStyles.None, out var date) ? date.ToString("dd/MM/yyyy") : value ?? "";
-        header.Controls.Add(Label($"{T("Tax_reduction_appendix_period", "Kỳ báo cáo:")} {DateText(from)} – {DateText(to)}", width, 45, 25, false, TextAlignment.MiddleCenter));
+        query.TryGetValue("fromYmd", out var from);
+        query.TryGetValue("toYmd", out var to);
+        var hasPeriodDate = DateTime.TryParseExact(from, "yyyyMMdd", CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var periodDate);
+        if (!hasPeriodDate)
+        {
+            hasPeriodDate = DateTime.TryParseExact(to, "yyyyMMdd", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out periodDate);
+        }
+
+        var periodText = hasPeriodDate
+            ? string.Format(CultureInfo.InvariantCulture,
+                T("vat_reduction_1", "(Kèm theo Tờ khai thuế GTGT kỳ tính thuế Tháng {0} năm {1})"),
+                periodDate.ToString("MM", CultureInfo.InvariantCulture),
+                periodDate.ToString("yyyy", CultureInfo.InvariantCulture))
+            : T("Tax_reduction_appendix_period", "Kỳ báo cáo:");
+        header.Controls.Add(Label(periodText, width, 45, 25, false, TextAlignment.MiddleCenter));
         header.Controls.Add(Label($"[01] {T("Tax_reduction_appendix_taxpayer", "Tên người nộp thuế:")} {company.CompanyNameText}", width, 75, 25));
         header.Controls.Add(Label($"[02] {T("Tax_reduction_appendix_taxcode", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 100, 25));
         header.Controls.Add(Label($"[03] {T("Tax_reduction_appendix_3", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 125, 25));
