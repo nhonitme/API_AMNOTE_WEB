@@ -50,7 +50,9 @@ public sealed class TaxReductionAppendixReport : XtraReport
                 periodDate.ToString("MM", CultureInfo.InvariantCulture),
                 periodDate.ToString("yyyy", CultureInfo.InvariantCulture))
             : T("Tax_reduction_appendix_period", "Kỳ báo cáo:");
-        header.Controls.Add(Label(periodText, width, 45, 25, false, TextAlignment.MiddleCenter));
+        var periodLabel = Label(periodText, width, 45, 25, false, TextAlignment.MiddleCenter);
+        periodLabel.Font = new DXFont("Arial", 9, DXFontStyle.Italic);
+        header.Controls.Add(periodLabel);
         header.Controls.Add(Label($"[01] {T("Tax_reduction_appendix_taxpayer", "Tên người nộp thuế:")} {company.CompanyNameText}", width, 75, 25));
         header.Controls.Add(Label($"[02] {T("Tax_reduction_appendix_taxcode", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 100, 25));
         header.Controls.Add(Label($"[03] {T("Tax_reduction_appendix_3", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 125, 25));
