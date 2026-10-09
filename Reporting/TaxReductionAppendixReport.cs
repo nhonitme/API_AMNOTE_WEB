@@ -93,9 +93,16 @@ public sealed class TaxReductionAppendixReport : XtraReport
             row["BILL_AMOUNT"] = TaxReductionAppendixCalculator.Round((decimal)row["BILL_AMOUNT"]);
         }
         var section = new DetailReportBand { DataSource = table, Level = type - 1 };
-        var heading = new GroupHeaderBand { HeightF = 115, RepeatEveryPage = true };
-        heading.Controls.Add(Label(title, width, 0, 40, true));
-        heading.Controls.Add(Row(captions, weights, width, 40, 75, true));
+        // The group title is printed once; only column captions repeat on subsequent pages.
+        var groupTitle = new GroupHeaderBand { HeightF = 40, RepeatEveryPage = false, Level = 1 };
+        groupTitle.Controls.Add(Label(title, width, 0, 40, true));
+        var columnHeader = new GroupHeaderBand { HeightF = 75, RepeatEveryPage = true, Level = 0 };
+        var columnHeaderTable = Row(captions, weights, width, 0, 75, true);
+        foreach (XRTableCell cell in columnHeaderTable.Rows[0].Cells)
+        {
+            cell.TextAlignment = TextAlignment.MiddleCenter;
+        }
+        columnHeader.Controls.Add(columnHeaderTable);
         var detail = new DetailBand { HeightF = 25 };
         var detailTable = Row(fields, weights, width, 0, 25, false);
         for (var i = 0; i < fields.Length; i++)
@@ -109,8 +116,16 @@ public sealed class TaxReductionAppendixReport : XtraReport
         var totals = new GroupFooterBand { HeightF = 28 };
         var values = fields.Select((field, i) => i == 1 ? T("Tax_reduction_appendix_total", "Tổng cộng") : field.EndsWith("AMOUNT")
             ? table.AsEnumerable().Sum(r => r.Field<decimal>(field)).ToString("N0") : "").ToArray();
-        totals.Controls.Add(Row(values, weights, width, 0, 28, true));
-        section.Bands.AddRange(new Band[] { heading, detail, totals });
+        var totalTable = Row(values, weights, width, 0, 28, true);
+        for (var i = 0; i < fields.Length; i++)
+        {
+            if (fields[i].EndsWith("AMOUNT", StringComparison.OrdinalIgnoreCase))
+            {
+                totalTable.Rows[0].Cells[i].TextAlignment = TextAlignment.MiddleRight;
+            }
+        }
+        totals.Controls.Add(totalTable);
+        section.Bands.AddRange(new Band[] { groupTitle, columnHeader, detail, totals });
         Bands.Add(section);
     }
 
