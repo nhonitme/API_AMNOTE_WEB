@@ -13,7 +13,7 @@ namespace API_AMNOTE_WEB.Reporting;
 /// <summary>Two-table appendix matching the supplied desktop export.</summary>
 public sealed class TaxReductionAppendixReport : XtraReport
 {
-    private string _language = "VIET";
+    private readonly string _language;
 
     private string T(string key, string fallback) =>
         ReportLanguageHelper.LocalizeLabelOrFallback(key, fallback, _language);
