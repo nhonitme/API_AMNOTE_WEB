@@ -33,7 +33,11 @@ public sealed class TaxReductionAppendixReport : XtraReport
         Bands.Add(header);
         var configuredTitle = config.ELEMENTS.FirstOrDefault(x => x.ITEM_KEY == "TITLE")?.CAPTION ?? "PHỤ LỤC GIẢM THUẾ GIÁ TRỊ GIA TĂNG";
         var title = T("Tax_reduction_appendix_title", configuredTitle);
-        header.Controls.Add(Label(title, width, 0, 45, true, TextAlignment.MiddleCenter));
+
+        var titleLabel = Label(title, width, 0, 45, true, TextAlignment.MiddleCenter);
+        titleLabel.Font = new DXFont("Arial", 14, DXFontStyle.Regular);
+        header.Controls.Add(titleLabel);
+
         query.TryGetValue("fromYmd", out var from);
         query.TryGetValue("toYmd", out var to);
         var hasPeriodDate = DateTime.TryParseExact(from, "yyyyMMdd", CultureInfo.InvariantCulture,
@@ -55,8 +59,8 @@ public sealed class TaxReductionAppendixReport : XtraReport
         header.Controls.Add(periodLabel);
         header.Controls.Add(Label($"[01] {T("Tax_reduction_appendix_taxpayer", "Tên người nộp thuế:")} {company.CompanyNameText}", width, 75, 25));
         header.Controls.Add(Label($"[02] {T("Tax_reduction_appendix_taxcode", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 100, 25));
-        header.Controls.Add(Label($"[03] {T("Tax_reduction_appendix_3", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 125, 25));
-        header.Controls.Add(Label($"[04] {T("Tax_reduction_appendix_4", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 150, 25));
+        header.Controls.Add(Label($"[03] {T("Tax_reduction_appendix_3", "Mã số thuế:")}", width, 125, 25));
+        header.Controls.Add(Label($"[04] {T("Tax_reduction_appendix_4", "Mã số thuế:")}", width, 150, 25));
         header.Controls.Add(Label(T("Tax_reduction_appendix_currency_unit", "Đơn vị tiền tệ: Việt Nam đồng"), width, 175, 25, false, TextAlignment.MiddleRight));
         Bands.Add(new DetailBand { HeightF = 0 });
         AddSection(data, 1, T("Tax_reduction_appendix_group1", "I. Hàng hóa, dịch vụ mua vào trong kỳ được áp dụng mức thuế suất thuế giá trị gia tăng 8%"),

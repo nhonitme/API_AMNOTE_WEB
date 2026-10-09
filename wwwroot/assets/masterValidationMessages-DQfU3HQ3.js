@@ -1,0 +1,1 @@
+function s(e,t,n,a){const r=e(t,a);return/\{0\}|\{field\}/.test(r)?r.replace(/\{0\}|\{field\}/g,n):`${n}: ${r}`}function i(e,t){return s(e,"MSG_MUST_ITEM",t,"{0} không được để trống")}function u(e,t){return s(e,"MsgEqualCode",t,"{0} đã tồn tại")}export{u as d,i as r};

@@ -1,1 +1,0 @@
-import{r as e}from"./index-CK55GjKL.js";function i(o){const[s,a]=e.useState(o),n=e.useRef(s),c=e.useCallback(t=>{a(f=>{const r=typeof t=="function"?t(f):t;return n.current=r,r})},[]);return[s,c,n]}export{i as u};

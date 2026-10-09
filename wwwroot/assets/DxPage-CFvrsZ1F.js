@@ -1,1 +1,0 @@
-import{j as t}from"./index-CK55GjKL.js";function e({children:r}){return t.jsx("div",{className:"dx-viewport h-full min-h-0 w-full",children:r})}function n({children:r}){return t.jsx(e,{children:r})}export{n as D};
