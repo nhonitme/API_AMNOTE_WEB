@@ -29,7 +29,7 @@ public sealed class TaxReductionAppendixReport : XtraReport
         RequestParameters = false;
         DisplayName = T("Tax_reduction_appendix_title", "Phụ lục giảm thuế GTGT");
         var width = PageWidth - Margins.Left - Margins.Right;
-        var header = new ReportHeaderBand { HeightF = 155 };
+        var header = new ReportHeaderBand { HeightF = 205 };
         Bands.Add(header);
         var configuredTitle = config.ELEMENTS.FirstOrDefault(x => x.ITEM_KEY == "TITLE")?.CAPTION ?? "PHỤ LỤC GIẢM THUẾ GIÁ TRỊ GIA TĂNG";
         var title = T("Tax_reduction_appendix_title", configuredTitle);
@@ -40,7 +40,9 @@ public sealed class TaxReductionAppendixReport : XtraReport
         header.Controls.Add(Label($"{T("Tax_reduction_appendix_period", "Kỳ báo cáo:")} {DateText(from)} – {DateText(to)}", width, 45, 25, false, TextAlignment.MiddleCenter));
         header.Controls.Add(Label($"[01] {T("Tax_reduction_appendix_taxpayer", "Tên người nộp thuế:")} {company.CompanyNameText}", width, 75, 25));
         header.Controls.Add(Label($"[02] {T("Tax_reduction_appendix_taxcode", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 100, 25));
-        header.Controls.Add(Label(T("Tax_reduction_appendix_currency_unit", "Đơn vị tiền tệ: Việt Nam đồng"), width, 125, 25, false, TextAlignment.MiddleRight));
+        header.Controls.Add(Label($"[03] {T("Tax_reduction_appendix_3", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 125, 25));
+        header.Controls.Add(Label($"[04] {T("Tax_reduction_appendix_4", "Mã số thuế:")} {company.CompanyInfo.TAX_CD}", width, 150, 25));
+        header.Controls.Add(Label(T("Tax_reduction_appendix_currency_unit", "Đơn vị tiền tệ: Việt Nam đồng"), width, 175, 25, false, TextAlignment.MiddleRight));
         Bands.Add(new DetailBand { HeightF = 0 });
         AddSection(data, 1, T("Tax_reduction_appendix_group1", "I. Hàng hóa, dịch vụ mua vào trong kỳ được áp dụng mức thuế suất thuế giá trị gia tăng 8%"),
             new[] { T("Tax_reduction_appendix_stt", "STT"), T("Tax_reduction_appendix_product", "Tên hàng hóa, dịch vụ"), T("Tax_reduction_appendix_purchase_value", "Giá trị mua vào chưa có thuế GTGT"), T("Tax_reduction_appendix_purchase_vat", "Thuế GTGT mua vào được khấu trừ") },
