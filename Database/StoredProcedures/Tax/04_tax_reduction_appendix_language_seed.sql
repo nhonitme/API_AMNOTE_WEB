@@ -6,7 +6,7 @@ SET NAMES utf8mb4;
 
 INSERT IGNORE INTO t_message_info (`KEY`, KOR, ENG, VIET, JPN, THA, CHN, `COMMENT`)
 VALUES
-('Tax_reduction_appendix_title', '부가가치세 감면 부속명세서', 'VAT reduction appendix', 'Phụ lục giảm thuế GTGT', '付加価値税減税付表', 'ภาคผนวกการลดภาษีมูลค่าเพิ่ม', '增值税减税附表', 'VAT reduction appendix PDF'),
+('Tax_reduction_appendix_title', '부가가치세 감면 부속명세서', 'VAT reduction appendix', 'PHỤ LỤC GIẢM THUẾ GIÁ TRỊ GIA TĂNG', '付加価値税減税付表', 'ภาคผนวกการลดภาษีมูลค่าเพิ่ม', '增值税减税附表', 'VAT reduction appendix PDF'),
 ('Tax_reduction_appendix_period', '신고 기간:', 'Reporting period:', 'Kỳ báo cáo:', '報告期間：', 'รอบระยะเวลารายงาน:', '申报期间：', 'VAT reduction appendix PDF'),
 ('Tax_reduction_appendix_taxpayer', '납세자명:', 'Taxpayer name:', 'Tên người nộp thuế:', '納税者名：', 'ชื่อผู้เสียภาษี:', '纳税人名称：', 'VAT reduction appendix PDF'),
 ('Tax_reduction_appendix_taxcode', '납세자번호:', 'Tax identification number:', 'Mã số thuế:', '納税者番号：', 'เลขประจำตัวผู้เสียภาษี:', '纳税人识别号：', 'VAT reduction appendix PDF'),
