@@ -10,6 +10,8 @@ VALUES
 ('Tax_reduction_appendix_period', '신고 기간:', 'Reporting period:', 'Kỳ báo cáo:', '報告期間：', 'รอบระยะเวลารายงาน:', '申报期间：', 'VAT reduction appendix PDF'),
 ('Tax_reduction_appendix_taxpayer', '납세자명:', 'Taxpayer name:', 'Tên người nộp thuế:', '納税者名：', 'ชื่อผู้เสียภาษี:', '纳税人名称：', 'VAT reduction appendix PDF'),
 ('Tax_reduction_appendix_taxcode', '납세자번호:', 'Tax identification number:', 'Mã số thuế:', '納税者番号：', 'เลขประจำตัวผู้เสียภาษี:', '纳税人识别号：', 'VAT reduction appendix PDF'),
+('Tax_reduction_appendix_3', '납세자번호:', 'Tax identification number:', 'Mã số thuế:', '納税者番号：', 'เลขประจำตัวผู้เสียภาษี:', '纳税人识别号：', 'VAT reduction appendix PDF'),
+('Tax_reduction_appendix_4', '납세자번호:', 'Tax identification number:', 'Mã số thuế:', '納税者番号：', 'เลขประจำตัวผู้เสียภาษี:', '纳税人识别号：', 'VAT reduction appendix PDF'),
 ('Tax_reduction_appendix_currency_unit', '통화 단위: 베트남 동', 'Currency unit: Vietnamese dong', 'Đơn vị tiền tệ: Việt Nam đồng', '通貨単位：ベトナムドン', 'หน่วยเงินตรา: ดองเวียดนาม', '货币单位：越南盾', 'VAT reduction appendix PDF'),
 ('Tax_reduction_appendix_group1', 'I. 해당 기간 8% 부가가치세율 적용 대상 매입 재화 및 용역', 'I. Goods and services purchased during the period subject to 8% VAT', 'I. Hàng hóa, dịch vụ mua vào trong kỳ được áp dụng mức thuế suất thuế giá trị gia tăng 8%', 'I. 当期に8%の付加価値税率が適用される仕入商品およびサービス', 'I. สินค้าและบริการที่ซื้อในงวดซึ่งใช้อัตราภาษีมูลค่าเพิ่ม 8%', '一、本期适用8%增值税税率的购进货物及服务', 'VAT reduction appendix PDF'),
 ('Tax_reduction_appendix_group2', 'II. 해당 기간 매출 재화 및 용역', 'II. Goods and services sold during the period', 'II. Hàng hóa, dịch vụ bán ra trong kỳ', 'II. 当期に販売した商品およびサービス', 'II. สินค้าและบริการที่ขายในงวด', '二、本期销售的货物及服务', 'VAT reduction appendix PDF'),
