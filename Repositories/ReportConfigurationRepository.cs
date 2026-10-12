@@ -147,6 +147,9 @@ namespace API_AMNOTE_WEB.Repositories
                     config.LABEL_TEXT = Common.NormalizeNullableText(config.LABEL_TEXT);
                     config.CAPTION = Common.NormalizeNullableText(config.CAPTION);
                     config.REPORT_TYPE = Common.NormalizeRequiredText(config.REPORT_TYPE);
+                    config.VIEW_TYPE = string.Equals(config.VIEW_TYPE?.Trim(), "TREE_LIST", StringComparison.OrdinalIgnoreCase)
+                        ? "TREE_LIST"
+                        : "DATA_GRID";
                     config.REPORT_SOURCE = Common.NormalizeRequiredText(config.REPORT_SOURCE);
                     config.SIGN_IDS = Common.NormalizeNullableText(config.SIGN_IDS);
                     config.DATA_SOURCE_TYPE = Common.NormalizeNullableText(config.DATA_SOURCE_TYPE);
@@ -480,6 +483,7 @@ namespace API_AMNOTE_WEB.Repositories
                 LABEL_TEXT = item.LABEL_TEXT,
                 CAPTION = item.CAPTION,
                 REPORT_TYPE = item.REPORT_TYPE,
+                VIEW_TYPE = item.VIEW_TYPE,
                 REPORT_SOURCE = item.REPORT_SOURCE,
                 DATA_SOURCE_TYPE = item.DATA_SOURCE_TYPE,
                 DATA_SOURCE_REF = item.DATA_SOURCE_REF,

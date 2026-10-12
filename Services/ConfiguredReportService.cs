@@ -176,6 +176,7 @@ namespace API_AMNOTE_WEB.Services
             var table = Common.ConvertToDataTable(
                 dataSource.Data,
                 Common.NormalizeNullableText(context.Config.DATA_SET_NAME) ?? context.Config.REPORT_CODE);
+            ApplySelectedCustomerFilter(table, context);
 
             if (string.Equals(context.ReportCode, "TAX_VAT_REDUCTION_APPENDIX", StringComparison.OrdinalIgnoreCase))
                 table = TaxReductionAppendixCalculator.Process(table);
@@ -314,6 +315,7 @@ namespace API_AMNOTE_WEB.Services
             var context = await BuildContextAsync(companyCd, reportCode, menuCode, query);
             var dataSource = await ResolveDataSourceAsync(context, includeTableLayoutMetadata, cancellationToken);
             var rawTable = Common.ConvertToDataTable(dataSource.Data, Common.NormalizeNullableText(context.Config.DATA_SET_NAME) ?? context.Config.REPORT_CODE);
+            ApplySelectedCustomerFilter(rawTable, context);
             if (string.Equals(context.ReportCode, "TAX_VAT_REDUCTION_APPENDIX", StringComparison.OrdinalIgnoreCase))
                 rawTable = TaxReductionAppendixCalculator.Process(rawTable);
 
@@ -328,6 +330,45 @@ namespace API_AMNOTE_WEB.Services
             }
 
             return new ResolvedReportData(context, rawTable);
+        }
+
+        private static void ApplySelectedCustomerFilter(DataTable table, ExecutionContext context)
+        {
+            var rawIds = GetQueryValue(context.Query, "printSelectedCustomerIds");
+            if (!string.Equals(context.ReportCode, "CUSTOMER_INFO", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(rawIds))
+            {
+                return;
+            }
+
+            var customerIdColumn = ResolveColumn(table, "CUSTOMER_ID");
+            if (customerIdColumn == null)
+            {
+                return;
+            }
+
+            var selectedIds = rawIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(value => long.TryParse(value, out var id) && id > 0)
+                .Select(long.Parse)
+                .ToHashSet();
+            if (selectedIds.Count == 0)
+            {
+                return;
+            }
+
+            foreach (DataRow row in table.Rows.Cast<DataRow>().ToArray())
+            {
+                if (!long.TryParse(Convert.ToString(row[customerIdColumn]), out var customerId) || !selectedIds.Contains(customerId))
+                {
+                    table.Rows.Remove(row);
+                }
+            }
+
         }
 
         private static PrintLayoutMode ResolvePrintLayoutMode(IReadOnlyDictionary<string, string> query)
@@ -719,7 +760,7 @@ namespace API_AMNOTE_WEB.Services
             foreach (var item in query)
             {
                 var token = Common.NormalizeToken(item.Key);
-                if (token is "fromdate" or "todate" or "pfromdate" or "ptodate")
+                if (token is "fromdate" or "todate" or "pfromdate" or "ptodate" or "printselectedcustomerids")
                 {
                     continue;
                 }
@@ -1047,6 +1088,7 @@ namespace API_AMNOTE_WEB.Services
                     context.Config.LABEL_TEXT,
                     context.ReportLanguage),
                 PREVIEW_MODE = previewMode,
+                VIEW_TYPE = context.Config.VIEW_TYPE,
                 COLUMNS = columns.ToList(),
                 ROWS = rows
             };

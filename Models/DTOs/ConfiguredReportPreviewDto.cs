@@ -6,6 +6,7 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public string REPORT_CODE { get; set; } = string.Empty;
         public string REPORT_NAME { get; set; } = string.Empty;
         public string PREVIEW_MODE { get; set; } = "FLAT_REPORT";
+        public string VIEW_TYPE { get; set; } = "DATA_GRID";
         public List<ConfiguredReportPreviewColumnDto> COLUMNS { get; set; } = new();
         public List<ConfiguredReportPreviewRowDto> ROWS { get; set; } = new();
     }

@@ -13,6 +13,7 @@ namespace API_AMNOTE_WEB.Models
         public string? LABEL_TEXT { get; set; }
         public string? CAPTION { get; set; }
         public string REPORT_TYPE { get; set; } = string.Empty;
+        public string VIEW_TYPE { get; set; } = "DATA_GRID";
         public string REPORT_SOURCE { get; set; } = string.Empty;
         public string? DATA_SOURCE_TYPE { get; set; }
         public string? DATA_SOURCE_REF { get; set; }
