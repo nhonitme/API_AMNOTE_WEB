@@ -23,7 +23,7 @@ public sealed class ServiceAllocationCheckDetailRow
 {
     public long SERVICES_CHIT_ID { get; set; }
     public string? SERVICES_CHIT_CD { get; set; }
-    public int? CHIT_TYPE { get; set; }
+    public string? CHIT_TYPE { get; set; }
     public long INVENTORY_CHIT_ID { get; set; }
     public string? INVENTORY_CHIT_CD { get; set; }
     public string? CHIT_NO { get; set; }
