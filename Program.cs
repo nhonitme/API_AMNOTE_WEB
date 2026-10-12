@@ -242,6 +242,7 @@ builder.Services.AddScoped<ICompanySignatureInfoRepository, CompanySignatureInfo
 builder.Services.AddScoped<ICompanySignatureInfoService, CompanySignatureInfoService>();
 builder.Services.AddScoped<ILanguageRepository, LanguageRepository>();
 builder.Services.AddScoped<IMenuRepository, MenuRepository>();
+builder.Services.AddScoped<IServiceAllocationCheckRepository, ServiceAllocationCheckRepository>();
 
 builder.Services.AddScoped<IProductInfoRepository, ProductInfoRepository>();
 builder.Services.AddScoped<IProductKindRepository, ProductKindRepository>();
