@@ -13,12 +13,14 @@ namespace API_AMNOTE_WEB.Repositories
         private readonly DapperExecutor _db;
         private readonly IExistenceCheckService _existenceCheckService;
         private readonly IActivityLogService _activityLogService;
+        private readonly IUserProfileService _userProfileService;
 
-        public UserInfoRepository(DapperExecutor db, IExistenceCheckService existenceCheckService, IActivityLogService activityLogService)
+        public UserInfoRepository(DapperExecutor db, IExistenceCheckService existenceCheckService, IActivityLogService activityLogService, IUserProfileService userProfileService)
         {
             _db = db;
             _existenceCheckService = existenceCheckService;
             _activityLogService = activityLogService;
+            _userProfileService = userProfileService;
         }
 
         public async Task<IEnumerable<UserInfo>> GetUserInfoAsync(string companyCd, long? userPkId = null, string? userId = null)
@@ -95,6 +97,7 @@ namespace API_AMNOTE_WEB.Repositories
                 }
 
                 session.Commit();
+                await _userProfileService.ClearCacheAsync();
                 return result;
             }
             catch
@@ -156,6 +159,7 @@ namespace API_AMNOTE_WEB.Repositories
                 }
 
                 session.Commit();
+                await _userProfileService.ClearCacheAsync();
                 return affectedRows;
             }
             catch

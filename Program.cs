@@ -1,4 +1,5 @@
 using API_AMNOTE_WEB.Einvoice.Helpers;
+
 using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Interfaces;
@@ -42,6 +43,7 @@ using System.Threading.RateLimiting;
 Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 var builder = WebApplication.CreateBuilder(args);
+
 EInvoiceFtpClient.Configure(builder.Configuration);
 
 
@@ -364,6 +366,7 @@ builder.Services.AddScoped<ISystemService, SystemService>();
 
 builder.Services.AddScoped<IUserInfoRepository, UserInfoRepository>();
 builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
+builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IExcelImportLookupRepository, ExcelImportLookupRepository>();
 builder.Services.AddScoped<API_AMNOTE_WEB.Services.Lookup.ILookupService, API_AMNOTE_WEB.Services.Lookup.LookupService>();
 builder.Services.Configure<API_AMNOTE_WEB.Services.TaxLookup.TaxLookupOptions>(builder.Configuration.GetSection("TaxLookup"));

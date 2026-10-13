@@ -1,5 +1,6 @@
 using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Interfaces;
+using API_AMNOTE_WEB.Interfaces.Catalog;
 using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Models.DTOs;
 using API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers;
@@ -10,13 +11,17 @@ namespace API_AMNOTE_WEB.Services.Inventory
     public sealed class InventoryVoucherWriteService : IInventoryVoucherWriteService
     {
         private readonly IInventoryVoucherRepository _repository;
+        private readonly ICustomerInfoService _customerInfoService;
 
-        public InventoryVoucherWriteService(IInventoryVoucherRepository repository)
+        public InventoryVoucherWriteService(
+            IInventoryVoucherRepository repository,
+            ICustomerInfoService customerInfoService)
         {
             _repository = repository;
+            _customerInfoService = customerInfoService;
         }
 
-        public Task<long> CreateAsync(
+        public async Task<long> CreateAsync(
             string companyCd,
             string inputType,
             string chitType,
@@ -27,10 +32,13 @@ namespace API_AMNOTE_WEB.Services.Inventory
             string? lang = null)
         {
             var normalized = BuildCreateRequest(request, companyCd, inputType, chitType, codeMaps, lang);
-            return _repository.SaveInventoryVoucherAsync(companyCd, inputType, userId, normalized, databaseName);
+            var customer = await ResolveInventoryCustomerAsync(companyCd, normalized.CUSTOMER_ID, normalized.CUSTOMER_CD);
+            normalized.CUSTOMER_ID = customer.Id;
+            normalized.CUSTOMER_CD = customer.Code;
+            return await _repository.SaveInventoryVoucherAsync(companyCd, inputType, userId, normalized, databaseName);
         }
 
-        public Task<long> UpdateAsync(
+        public async Task<long> UpdateAsync(
             string companyCd,
             string inputType,
             string chitType,
@@ -42,7 +50,37 @@ namespace API_AMNOTE_WEB.Services.Inventory
             string? lang = null)
         {
             var normalized = BuildUpdateRequest(existing, request, companyCd, inputType, chitType, codeMaps, lang);
-            return _repository.SaveInventoryVoucherAsync(companyCd, inputType, userId, normalized, databaseName);
+            var customer = await ResolveInventoryCustomerAsync(companyCd, normalized.CUSTOMER_ID, normalized.CUSTOMER_CD);
+            normalized.CUSTOMER_ID = customer.Id;
+            normalized.CUSTOMER_CD = customer.Code;
+            return await _repository.SaveInventoryVoucherAsync(companyCd, inputType, userId, normalized, databaseName);
+        }
+
+        private async Task<(long? Id, string? Code)> ResolveInventoryCustomerAsync(
+            string companyCd,
+            long? customerId,
+            string? customerCode)
+        {
+            var normalizedId = Common.NormalizeNullablePositiveLong(customerId);
+            var normalizedCode = NormalizeNullableText(customerCode);
+
+            if (normalizedId.HasValue)
+            {
+                var customer = (await _customerInfoService.GetListAsync(companyCd, normalizedId)).FirstOrDefault();
+                if (customer == null)
+                    throw new InvalidOperationException($"Customer ID '{normalizedId.Value}' was not found for company '{companyCd}'.");
+
+                return (customer.CUSTOMER_ID, NormalizeNullableText(customer.CUSTOMER_CD));
+            }
+
+            if (normalizedCode == null)
+                return (null, null);
+
+            var customerByCode = (await _customerInfoService.GetListAsync(companyCd, null, normalizedCode)).FirstOrDefault();
+            if (customerByCode == null)
+                throw new InvalidOperationException($"Customer code '{normalizedCode}' was not found for company '{companyCd}'.");
+
+            return (customerByCode.CUSTOMER_ID, NormalizeNullableText(customerByCode.CUSTOMER_CD));
         }
 
         private static InventoryVoucherRequest BuildCreateRequest(
@@ -70,6 +108,8 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 AMOUNT = request.AMOUNT,
                 TOTAL_QTY = request.TOTAL_QTY,
                 REMARK = NormalizeNullableText(request.REMARK) ?? NormalizeNullableText(request.NOTE),
+                CUSTOMER_ID = request.CUSTOMER_ID,
+                CUSTOMER_CD = request.CUSTOMER_CD,
                 PAYER_INFO = NormalizeNullableText(request.PAYER_INFO),
                 ISDEL = "0",
                 IS_LOCK = NormalizeFlagString(request.IS_LOCK, "0"),
@@ -103,6 +143,16 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 : NormalizeNullableYmdText(request.CHIT_YMD, nameof(InventoryVoucherRequest.CHIT_YMD));
             var inputs = NormalizeInputs(request.INPUTS, companyCd, headerDate, chitType, codeMaps);
             var outputs = NormalizeOutputs(request.OUTPUTS, companyCd, headerDate, chitType, codeMaps);
+            var customerId = request.CLEAR_CUSTOMER == true
+                ? null
+                : request.CUSTOMER_ID.HasValue || NormalizeNullableText(request.CUSTOMER_CD) != null
+                    ? request.CUSTOMER_ID
+                    : existing.CUSTOMER_ID;
+            string? customerCode = request.CLEAR_CUSTOMER == true
+                ? null
+                : request.CUSTOMER_ID.HasValue || NormalizeNullableText(request.CUSTOMER_CD) != null
+                    ? request.CUSTOMER_CD
+                    : existing.CUSTOMER_CD;
             ValidateInventoryLines(chitType, inputs, outputs, lang);
 
             return new InventoryVoucherRequest
@@ -117,6 +167,8 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 AMOUNT = request.AMOUNT,
                 TOTAL_QTY = request.TOTAL_QTY,
                 REMARK = request.REMARK == null ? NormalizeNullableText(existing.REMARK ?? existing.NOTE) : NormalizeNullableText(request.REMARK),
+                CUSTOMER_ID = customerId,
+                CUSTOMER_CD = customerCode,
                 PAYER_INFO = request.PAYER_INFO == null ? NormalizeNullableText(existing.PAYER_INFO) : NormalizeNullableText(request.PAYER_INFO),
                 ISDEL = "0",
                 IS_LOCK = request.IS_LOCK == null ? NormalizeFlagString(existing.IS_LOCK, "0") : NormalizeFlagString(request.IS_LOCK, "0"),
@@ -267,5 +319,6 @@ namespace API_AMNOTE_WEB.Services.Inventory
 
             return ExcelImportReferenceValidation.ResolveId(code, idsByCode);
         }
+
     }
 }

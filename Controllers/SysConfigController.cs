@@ -10,12 +10,10 @@ namespace API_AMNOTE_WEB.Controllers
     [Route("api/[controller]")]
     public class SysConfigController : BaseApiController
     {
-        private readonly ISysConfigRepository _repository;
         private readonly ISysConfigService _sysConfigService;
 
-        public SysConfigController(ISysConfigRepository repository, ISysConfigService sysConfigService)
+        public SysConfigController(ISysConfigService sysConfigService)
         {
-            _repository = repository;
             _sysConfigService = sysConfigService;
         }
 
@@ -24,7 +22,7 @@ namespace API_AMNOTE_WEB.Controllers
         public async Task<IActionResult> Get([FromQuery] string? configGroup = null, [FromQuery] string? configKey = null, [FromQuery] bool activeOnly = true)
         {
             var resolvedCompanyCd = Common.GetCompanyCode();
-            var items = (await _repository.GetSysConfigsAsync(resolvedCompanyCd, configGroup, configKey, activeOnly))
+            var items = (await _sysConfigService.GetSysConfigsAsync(resolvedCompanyCd, configGroup, configKey, activeOnly))
                 .Select(MapToDto)
                 .ToList();
 
@@ -46,7 +44,7 @@ namespace API_AMNOTE_WEB.Controllers
             }
 
             var resolvedCompanyCd = Common.GetCompanyCode();
-            var item = await _repository.GetSysConfigAsync(resolvedCompanyCd, configGroup.Trim(), configKey.Trim(), activeOnly);
+            var item = await _sysConfigService.GetSysConfigAsync(resolvedCompanyCd, configGroup.Trim(), configKey.Trim(), activeOnly);
             if (item == null)
             {
                 return NotFound("SysConfig not found");

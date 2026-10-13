@@ -435,6 +435,8 @@ namespace API_AMNOTE_WEB.Repositories
                 @p_AMOUNT,
                 @p_TOTAL_QTY,
                 @p_REMARK,
+                @p_CUSTOMER_ID,
+                @p_CUSTOMER_CD,
                 @p_SORT,
                 @p_USER
             )";
@@ -451,6 +453,8 @@ namespace API_AMNOTE_WEB.Repositories
                 p_AMOUNT = amount,
                 p_TOTAL_QTY = totalQty,
                 p_REMARK = remark,
+                p_CUSTOMER_ID = (long?)null,
+                p_CUSTOMER_CD = (string?)null,
                 p_SORT = sort,
                 p_USER = userId
             });

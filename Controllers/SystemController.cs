@@ -19,7 +19,9 @@ namespace API_AMNOTE_WEB.Controllers
 
         [HttpGet("sys-codes")]
         [Authorize]
-        public async Task<IActionResult> GetSysCodes([FromQuery] string? codeType = null, [FromQuery] bool refresh = false)
+        public async Task<IActionResult> GetSysCodes(
+            [FromQuery] string? codeType = null,
+            [FromQuery] bool refresh = false)
         {
             var companyCd = GetCompanyCode();
             var result = await _systemService.GetSysCodesAsync(companyCd, codeType, refresh);

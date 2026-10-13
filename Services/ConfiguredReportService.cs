@@ -1396,7 +1396,11 @@ namespace API_AMNOTE_WEB.Services
         {
             var (db, sql) = Common.ParseCommandReference(commandText);
             sql = NormalizeSpCall(dataSourceType, sql);
-            var parameters = BuildCommandParameters(sql, context);
+            var parameterNames = ExtractSqlParameterNames(sql);
+            var selectedChitIds = ResolveSelectedChitIds(context.Query);
+            var useSingleChitBatchFallback = selectedChitIds.Count > 1
+                && parameterNames.Any(IsChitIdParameter)
+                && !parameterNames.Any(IsChitIdsParameter);
 
             var tableName = Common.NormalizeNullableText(context.Config.DATA_SET_NAME)
                             ?? context.Config.REPORT_CODE;
@@ -1409,15 +1413,37 @@ namespace API_AMNOTE_WEB.Services
 
             using var connection = _db.GetOpenConnection(db, databaseName);
 
-            var command = new CommandDefinition(
-                sql,
-                parameters,
-                cancellationToken: cancellationToken);
-            using var reader = await connection.ExecuteReaderAsync(command);
+            DataTable? dataTable = null;
+            var queryContexts = useSingleChitBatchFallback
+                ? selectedChitIds.Select(id => WithSelectedChitId(context, id))
+                : new[] { context };
 
-            cancellationToken.ThrowIfCancellationRequested();
-            var dataTable = new DataTable(tableName);
-            dataTable.Load(reader);
+            foreach (var queryContext in queryContexts)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var parameters = BuildCommandParameters(sql, queryContext);
+                var command = new CommandDefinition(
+                    sql,
+                    parameters,
+                    cancellationToken: cancellationToken);
+                using var reader = await connection.ExecuteReaderAsync(command);
+
+                cancellationToken.ThrowIfCancellationRequested();
+                var resultTable = new DataTable(tableName);
+                resultTable.Load(reader);
+                if (dataTable == null)
+                {
+                    dataTable = resultTable;
+                }
+                else
+                {
+                    dataTable.Merge(resultTable, false, MissingSchemaAction.Add);
+                }
+
+                Common.LogQuery(sql, parameters, sw.ElapsedMilliseconds);
+            }
+
+            dataTable ??= new DataTable(tableName);
             cancellationToken.ThrowIfCancellationRequested();
 
             var metadataTable = includeTableLayoutMetadata
@@ -1434,11 +1460,49 @@ namespace API_AMNOTE_WEB.Services
             }
 
             sw.Stop();
-            Common.LogQuery(sql, parameters, sw.ElapsedMilliseconds);
 
             return new ReportDataSourceResult
             {
                 Data = dataTable
+            };
+        }
+
+        private static IReadOnlyList<long> ResolveSelectedChitIds(IReadOnlyDictionary<string, string> query)
+        {
+            var rawIds = GetQueryValue(query, "chitIds");
+            return Common.ParsePositiveIds(rawIds);
+        }
+
+        private static bool IsChitIdParameter(string parameterName)
+        {
+            return Common.NormalizeToken(parameterName).Equals("chitid", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsChitIdsParameter(string parameterName)
+        {
+            return Common.NormalizeToken(parameterName).Equals("chitids", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static ExecutionContext WithSelectedChitId(ExecutionContext context, long chitId)
+        {
+            var namedValues = context.NamedValues.ToDictionary(item => item.Key, item => item.Value, Comparer);
+            var normalizedValues = context.NormalizedValues.ToDictionary(item => item.Key, item => item.Value, Comparer);
+            var query = context.Query.ToDictionary(item => item.Key, item => item.Value, Comparer);
+            query["chitId"] = chitId.ToString(CultureInfo.InvariantCulture);
+            query["chitIds"] = chitId.ToString(CultureInfo.InvariantCulture);
+
+            AddValue(namedValues, normalizedValues, "chitId", chitId);
+            AddValue(namedValues, normalizedValues, "CHIT_ID", chitId);
+            AddValue(namedValues, normalizedValues, "p_CHIT_ID", chitId);
+            AddValue(namedValues, normalizedValues, "chitIds", query["chitIds"]);
+            AddValue(namedValues, normalizedValues, "CHIT_IDS", query["chitIds"]);
+            AddValue(namedValues, normalizedValues, "p_CHIT_IDS", query["chitIds"]);
+
+            return context with
+            {
+                Query = query,
+                NamedValues = namedValues,
+                NormalizedValues = normalizedValues
             };
         }
 

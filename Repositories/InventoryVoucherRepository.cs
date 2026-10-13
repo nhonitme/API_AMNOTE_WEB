@@ -28,6 +28,8 @@ namespace API_AMNOTE_WEB.Repositories
             public decimal AMOUNT { get; set; }
             public decimal TOTAL_QTY { get; set; }
             public string? REMARK { get; set; }
+            public long? CUSTOMER_ID { get; set; }
+            public string? CUSTOMER_CD { get; set; }
             public int? SORT { get; set; }
             public string? ISDEL { get; set; }
             [API_AMNOTE_WEB.Helpers.BackendAudit]
@@ -234,7 +236,6 @@ namespace API_AMNOTE_WEB.Repositories
                 var remark = Common.NormalizeNullableText(request.REMARK)
                     ?? Common.NormalizeNullableText(request.NOTE)
                     ?? existingHeader?.REMARK;
-
                 const string upsertHeaderQuery = @"CALL setChitInventoryTransfer(
                     @p_TRANSFER_ID,
                     @p_COMPANY_CD,
@@ -246,6 +247,8 @@ namespace API_AMNOTE_WEB.Repositories
                     @p_AMOUNT,
                     @p_TOTAL_QTY,
                     @p_REMARK,
+                    @p_CUSTOMER_ID,
+                    @p_CUSTOMER_CD,
                     @p_SORT,
                     @p_USER
                 )";
@@ -262,6 +265,8 @@ namespace API_AMNOTE_WEB.Repositories
                     p_AMOUNT = normalizedChitType == "IO" ? activeOutputs.Sum(x => Math.Round(x.AMOUNT_CC, 2, MidpointRounding.AwayFromZero)) : request.AMOUNT ?? amount,
                     p_TOTAL_QTY = totalQty,
                     p_REMARK = remark,
+                    p_CUSTOMER_ID = request.CUSTOMER_ID,
+                    p_CUSTOMER_CD = request.CUSTOMER_CD,
                     p_SORT = 0,
                     p_USER = userId
                 });
@@ -350,6 +355,8 @@ namespace API_AMNOTE_WEB.Repositories
                         AMOUNT = request.AMOUNT ?? amount,
                         TOTAL_QTY = totalQty,
                         REMARK = remark,
+                        CUSTOMER_ID = request.CUSTOMER_ID,
+                        CUSTOMER_CD = request.CUSTOMER_CD,
                         UPDATE_BY = userId
                     },
                     Inputs = activeInputs,
@@ -584,6 +591,8 @@ namespace API_AMNOTE_WEB.Repositories
                 AMOUNT = item.AMOUNT,
                 TOTAL_QTY = item.TOTAL_QTY,
                 REMARK = item.REMARK,
+                CUSTOMER_ID = item.CUSTOMER_ID,
+                CUSTOMER_CD = item.CUSTOMER_CD,
                 PAYER_INFO = null,
                 ISDEL = item.ISDEL,
                 IS_LOCK = "0",

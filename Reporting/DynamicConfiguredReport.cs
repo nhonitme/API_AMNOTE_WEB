@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Hosting;
 using System.Data;
 using System.Drawing;
 using System.Drawing.Printing;
+using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace API_AMNOTE_WEB.Reporting
 {
@@ -28,6 +30,9 @@ namespace API_AMNOTE_WEB.Reporting
         private const int DefaultMarginBottom = 25;
         private const float DefaultHeaderHeight = 28f;
         private const float DefaultDetailHeight = 24f;
+        private static readonly Regex InlineTemplateTokenRegex = new(
+            @"\{\{(?<source>[A-Z]+):(?<field>[^{}|]+)(?:\|(?<format>[^{}]+))?\}\}",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         private readonly IReadOnlyList<ReportColumnDefinition> _columns;
         private readonly ReportTableLayout? _tableLayout;
@@ -348,7 +353,15 @@ namespace API_AMNOTE_WEB.Reporting
                 var rightElements = rowElements.Where(IsRightAreaElement).ToList();
                 var centerElements = rowElements.Where(IsCenterAreaElement).ToList();
 
-                if (fullWidthElements.Count > 0 || centerElements.Count > 0)
+                if (IsAutoInlineRow(rowElements))
+                {
+                    fullTop = AddMeasuredElementGroup(
+                        controls, rowElements, rowElements, companyContext, table,
+                        contentWidth, Math.Max(fullTop, Math.Max(leftTop, rightTop)), bindDataFields);
+                    leftTop = fullTop;
+                    rightTop = fullTop;
+                }
+                else if (fullWidthElements.Count > 0 || centerElements.Count > 0)
                 {
                     fullTop = Math.Max(fullTop, Math.Max(leftTop, rightTop));
                     var renderElements = fullWidthElements.Concat(centerElements);
@@ -420,14 +433,19 @@ namespace API_AMNOTE_WEB.Reporting
                 return startTop;
             }
 
+            var autoInlineBounds = IsAutoInlineRow(rowElements)
+                ? ResolveAutoInlineBounds(rowElements, companyContext, table, contentWidth, startTop)
+                : null;
             var measuredElements = elements
                 .Select(element =>
                 {
                     var text = ResolveElementDisplayText(element, companyContext, table, null);
-                    var bounds = ResolveElementBounds(element, rowElements, contentWidth, startTop, 0f);
+                    var bounds = autoInlineBounds != null
+                        ? autoInlineBounds[element]
+                        : ResolveElementBounds(element, rowElements, contentWidth, startTop, 0f);
                     var font = CreateElementFont(element);
                     var neededWidth = MeasureGdiTextWidthHundredths(text, font, typographic: true) + 4f;
-                    var width = ResolveWidthWithoutSiblingOverlap(
+                    var width = autoInlineBounds != null ? bounds.Width : ResolveWidthWithoutSiblingOverlap(
                         element,
                         rowElements,
                         contentWidth,
@@ -435,6 +453,7 @@ namespace API_AMNOTE_WEB.Reporting
                         bounds.Width,
                         neededWidth);
                     var height = ResolveElementHeight(element, text, width);
+                    var alignment = ResolveElementAlignment(element.ALIGN, autoInlineBounds != null ? null : element.AREA_CODE);
                     return new
                     {
                         Element = element,
@@ -442,7 +461,8 @@ namespace API_AMNOTE_WEB.Reporting
                         Font = font,
                         Left = bounds.Left,
                         Width = width,
-                        Height = height
+                        Height = height,
+                        Alignment = alignment
                     };
                 })
                 .ToList();
@@ -460,7 +480,7 @@ namespace API_AMNOTE_WEB.Reporting
                     item.Height,
                     item.Text,
                     item.Font,
-                    ResolveElementAlignment(item.Element.ALIGN, item.Element.AREA_CODE));
+                    item.Alignment);
                 label.Multiline = true;
                 label.WordWrap = true;
                 label.CanGrow = true;
@@ -477,6 +497,55 @@ namespace API_AMNOTE_WEB.Reporting
             }
 
             return startTop + groupHeight;
+        }
+
+        private static bool IsAutoInlineRow(IReadOnlyList<CompanyReportElementInfo> elements)
+        {
+            // Separate column numbers opt into inline auto layout; same-column area layout stays intact.
+            return elements.Count > 1
+                && elements.Select(element => element.COL_NO).Distinct().Count() == elements.Count
+                && elements.All(element => element.COL_SPAN == 1
+                    && !(element.WIDTH > 0) && !(element.WIDTH_PERCENT > 0)
+                    && string.Equals(element.ALIGN, "LEFT", StringComparison.OrdinalIgnoreCase))
+                && elements.All(element => !IsFullWidthElement(element) && !IsCenterAreaElement(element));
+        }
+
+        private Dictionary<CompanyReportElementInfo, RectangleF> ResolveAutoInlineBounds(
+            IReadOnlyList<CompanyReportElementInfo> elements,
+            ReportCompanyContext companyContext,
+            DataTable table,
+            float contentWidth,
+            float top)
+        {
+            var items = elements.OrderBy(element => element.COL_NO).ThenBy(element => element.SORT_ORDER)
+                .Select(element =>
+                {
+                    var font = CreateElementFont(element);
+                    var text = ResolveElementDisplayText(element, companyContext, table, null);
+                    // Measure spaces between characters so GDI does not discard trailing spaces.
+                    var gap = Math.Max(0f,
+                        MeasureGdiTextWidthHundredths("x    x", font, typographic: true)
+                        - MeasureGdiTextWidthHundredths("xx", font, typographic: true));
+                    // Use the same measurement as ResolveElementHeight to avoid a false extra line.
+                    var width = Math.Max(
+                        MeasureGdiTextWidthHundredths(text, font, typographic: true),
+                        MeasureGdiTextWidthHundredths(text, font, typographic: false)) + 4f;
+                    return new { Element = element, Width = width, Gap = gap };
+                }).ToList();
+            var totalGap = items.Take(items.Count - 1).Sum(item => item.Gap);
+            var gapScale = totalGap > 0f ? Math.Min(1f, contentWidth / (2f * totalGap)) : 1f;
+            var availableWidth = Math.Max(0f, contentWidth - totalGap * gapScale);
+            var widthScale = Math.Min(1f, availableWidth / items.Sum(item => item.Width));
+            var bounds = new Dictionary<CompanyReportElementInfo, RectangleF>();
+            var left = 0f;
+            foreach (var item in items)
+            {
+                var width = item.Width * widthScale;
+                bounds[item.Element] = new RectangleF(left, top, width, 0f);
+                left += width + item.Gap * gapScale;
+            }
+
+            return bounds;
         }
 
         private RectangleF ResolveElementBounds(
@@ -614,16 +683,111 @@ namespace API_AMNOTE_WEB.Reporting
             var label = ResolveElementLabelText(element);
             if (IsStaticFixedText(element))
             {
-                return label ?? string.Empty;
+                return ResolveInlineTemplate(label ?? string.Empty, element, companyContext, table, row);
             }
 
             var value = ResolveElementValueText(element, companyContext, table, row);
             if (!string.IsNullOrWhiteSpace(label) && !string.IsNullOrWhiteSpace(value) && !string.Equals(label, value, StringComparison.Ordinal))
             {
-                return $"{label} {value}";
+                return ResolveInlineTemplate($"{label} {value}", element, companyContext, table, row);
             }
 
-            return FirstNonEmpty(value, ResolveElementStaticText(element.CAPTION), label) ?? string.Empty;
+            var displayText = FirstNonEmpty(value, ResolveElementStaticText(element.CAPTION), label) ?? string.Empty;
+            return ResolveInlineTemplate(displayText, element, companyContext, table, row);
+        }
+
+        private string ResolveInlineTemplate(
+            string text,
+            CompanyReportElementInfo element,
+            ReportCompanyContext companyContext,
+            DataTable table,
+            DataRow? row)
+        {
+            if (text.IndexOf("{{", StringComparison.Ordinal) < 0)
+            {
+                return text;
+            }
+
+            return InlineTemplateTokenRegex.Replace(text, match =>
+            {
+                var source = Common.NormalizeToken(match.Groups["source"].Value);
+                var field = match.Groups["field"].Value.Trim();
+                var format = Common.NormalizeNullableText(match.Groups["format"].Value);
+                var value = source switch
+                {
+                    "data" => ResolveInlineDataValue(table, row, field),
+                    "param" => ResolveInlineParameterValue(field),
+                    "company" => ResolveCompanyElementValue(companyContext, field),
+                    "system" => ResolveSystemElementValue(companyContext, field),
+                    _ => null
+                };
+
+                return FormatInlineTemplateValue(value, format, element);
+            });
+        }
+
+        private static object? ResolveInlineDataValue(DataTable table, DataRow? row, string field)
+        {
+            var columnName = ResolveColumn(table, field);
+            if (columnName == null)
+            {
+                return null;
+            }
+
+            var sourceRow = row ?? (table.Rows.Count > 0 ? table.Rows[0] : null);
+            return sourceRow == null ? null : sourceRow[columnName];
+        }
+
+        private object? ResolveInlineParameterValue(string field)
+        {
+            foreach (var key in EnumerateParamLookupKeys(field))
+            {
+                if (_namedValues.TryGetValue(key, out var namedValue) && namedValue != null && namedValue != DBNull.Value)
+                {
+                    return namedValue;
+                }
+
+                var token = Common.NormalizeToken(key);
+                if (token.Length > 0 && _normalizedValues.TryGetValue(token, out var normalizedValue)
+                    && normalizedValue != null && normalizedValue != DBNull.Value)
+                {
+                    return normalizedValue;
+                }
+            }
+
+            return null;
+        }
+
+        private string FormatInlineTemplateValue(object? value, string? format, CompanyReportElementInfo element)
+        {
+            if (value == null || value == DBNull.Value)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                if (value is DateTime dateTime)
+                {
+                    return dateTime.ToString(format ?? "dd/MM/yyyy", CultureInfo.InvariantCulture);
+                }
+
+                if (value is IFormattable formattable && !string.IsNullOrWhiteSpace(format))
+                {
+                    return formattable.ToString(format, CultureInfo.InvariantCulture) ?? string.Empty;
+                }
+
+                if (value is IFormattable invariantValue)
+                {
+                    return invariantValue.ToString(null, CultureInfo.InvariantCulture) ?? string.Empty;
+                }
+
+                return Common.NormalizeNullableText(value.ToString()) ?? string.Empty;
+            }
+            catch (FormatException)
+            {
+                return FormatElementValue(value, element) ?? string.Empty;
+            }
         }
 
         private static bool IsStaticFixedText(CompanyReportElementInfo element)
@@ -935,9 +1099,14 @@ namespace API_AMNOTE_WEB.Reporting
             return companyContext.Signatures.Count > 0;
         }
 
-        private static bool IsDataBoundElement(CompanyReportElementInfo element)
+        private bool IsDataBoundElement(CompanyReportElementInfo element)
         {
-            return Common.NormalizeToken(element.VALUE_SOURCE) == "data";
+            if (Common.NormalizeToken(element.VALUE_SOURCE) == "data")
+            {
+                return true;
+            }
+
+            return ResolveElementLabelText(element)?.IndexOf("{{DATA:", StringComparison.OrdinalIgnoreCase) is >= 0;
         }
 
         private static bool IsElementNumeric(string? dataType)

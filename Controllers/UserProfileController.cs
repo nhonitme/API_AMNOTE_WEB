@@ -12,20 +12,20 @@ namespace API_AMNOTE_WEB.Controllers
     [ApiController]
     public class UserProfileController : BaseApiController
     {
-        private readonly IUserProfileRepository _repository;
+        private readonly IUserProfileService _service;
         private readonly IUserInfoRepository _userInfoRepository;
         private readonly IPasswordCipher _passwordCipher;
         private readonly IWebHostEnvironment _environment;
         private readonly ILogger<UserProfileController> _logger;
 
         public UserProfileController(
-            IUserProfileRepository repository,
+            IUserProfileService service,
             IUserInfoRepository userInfoRepository,
             IPasswordCipher passwordCipher,
             IWebHostEnvironment environment,
             ILogger<UserProfileController> logger)
         {
-            _repository = repository;
+            _service = service;
             _userInfoRepository = userInfoRepository;
             _passwordCipher = passwordCipher;
             _environment = environment;
@@ -38,7 +38,7 @@ namespace API_AMNOTE_WEB.Controllers
         {
             var companyCd = Common.GetCompanyCode();
             var userId = Common.GetUserId();
-            var profile = await _repository.GetUserProfileAsync(companyCd, userId);
+            var profile = await _service.GetUserProfileAsync(companyCd, userId);
 
             if (profile == null)
             {
@@ -60,7 +60,7 @@ namespace API_AMNOTE_WEB.Controllers
 
             var companyCd = Common.GetCompanyCode();
             var userId = Common.GetUserId();
-            var existing = await _repository.GetUserProfileAsync(companyCd, userId);
+            var existing = await _service.GetUserProfileAsync(companyCd, userId);
             if (existing == null)
             {
                 return NotFound((await Common.getLanguage("USERID", currentLang)) + " " + (await Common.getLanguage("NOT_FOUND", currentLang)));
@@ -79,13 +79,13 @@ namespace API_AMNOTE_WEB.Controllers
             }
 
             var payload = BuildUpdateRequest(request);
-            var result = await _repository.UpdateUserProfileAsync(companyCd, userId, payload);
+            var result = await _service.UpdateUserProfileAsync(companyCd, userId, payload);
             if (result <= 0)
             {
                 return ServerError((await Common.getLanguage("USERNM", currentLang)) + " " + (await Common.getLanguage("UPDATE_FAILED", currentLang)));
             }
 
-            var updated = await _repository.GetUserProfileAsync(companyCd, userId);
+            var updated = await _service.GetUserProfileAsync(companyCd, userId);
             return Updated(
                 MapUserProfileDto(updated ?? existing),
                 (await Common.getLanguage("USERNM", currentLang)) + " " + (await Common.getLanguage("UPDATE_SUCCESS", currentLang)));
@@ -143,7 +143,7 @@ namespace API_AMNOTE_WEB.Controllers
                 return BusinessError("Current password is invalid");
             }
 
-            var result = await _repository.ChangePasswordAsync(
+            var result = await _service.ChangePasswordAsync(
                 companyCd,
                 userId,
                 userId,
@@ -169,7 +169,7 @@ namespace API_AMNOTE_WEB.Controllers
 
             var companyCd = Common.GetCompanyCode();
             var userId = Common.GetUserId();
-            var existing = await _repository.GetUserProfileAsync(companyCd, userId);
+            var existing = await _service.GetUserProfileAsync(companyCd, userId);
             if (existing == null || existing.USER_PK_ID <= 0)
             {
                 return NotFound("Profile not found");
@@ -208,7 +208,7 @@ namespace API_AMNOTE_WEB.Controllers
                     NOTE = existing.NOTE
                 });
 
-                var result = await _repository.UpdateUserProfileAsync(companyCd, userId, payload);
+                var result = await _service.UpdateUserProfileAsync(companyCd, userId, payload);
                 if (result <= 0)
                 {
                     UserAvatarImageStorage.TryDeleteStoredPath(_environment, publicPath);
@@ -220,7 +220,7 @@ namespace API_AMNOTE_WEB.Controllers
                     UserAvatarImageStorage.TryDeleteStoredPath(_environment, previousPath);
                 }
 
-                var updated = await _repository.GetUserProfileAsync(companyCd, userId);
+                var updated = await _service.GetUserProfileAsync(companyCd, userId);
                 return Updated(MapUserProfileDto(updated ?? existing), "Uploaded successfully");
             }
             catch (InvalidOperationException ex)
@@ -240,7 +240,7 @@ namespace API_AMNOTE_WEB.Controllers
         {
             var companyCd = Common.GetCompanyCode();
             var userId = Common.GetUserId();
-            var existing = await _repository.GetUserProfileAsync(companyCd, userId);
+            var existing = await _service.GetUserProfileAsync(companyCd, userId);
             if (existing == null)
             {
                 return NotFound("Profile not found");

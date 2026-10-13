@@ -15,6 +15,8 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public decimal? AMOUNT { get; set; }
         public decimal? TOTAL_QTY { get; set; }
         public string? REMARK { get; set; }
+        public long? CUSTOMER_ID { get; set; }
+        public string? CUSTOMER_CD { get; set; }
         public string? PAYER_INFO { get; set; }
         public string? ISDEL { get; set; }
         public string? IS_LOCK { get; set; }
@@ -45,6 +47,9 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public decimal? AMOUNT { get; set; }
         public decimal? TOTAL_QTY { get; set; }
         public string? REMARK { get; set; }
+        public long? CUSTOMER_ID { get; set; }
+        public string? CUSTOMER_CD { get; set; }
+        public bool? CLEAR_CUSTOMER { get; set; }
         public string? PAYER_INFO { get; set; }
         public string? ISDEL { get; set; }
         public string? IS_LOCK { get; set; }

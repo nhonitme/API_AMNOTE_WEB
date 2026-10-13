@@ -22,6 +22,7 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
         private IReadOnlyDictionary<string, long>? _productIdsByCode;
         private IReadOnlyDictionary<string, long>? _storeIdsByCode;
         private IReadOnlyDictionary<string, long>? _unitIdsByCode;
+        private IReadOnlyDictionary<string, long>? _customerIdsByCode;
 
         public InventoryVoucherImportHandler(IInventoryVoucherWriteService writeService, IExcelImportLookupRepository lookupRepository)
         {
@@ -46,7 +47,10 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                 ExcelImportReferenceValidation.AddMissingCodeError(validateResults, rowNo, "PRODUCT_CD", ExcelImportReferenceValidation.GetString(row, "DETAIL_PRODUCT_CD", "INPUT_PRODUCT_CD", "OUTPUT_PRODUCT_CD", "PRODUCT_CD"), _productIdsByCode!, lang);
                 ExcelImportReferenceValidation.AddMissingCodeError(validateResults, rowNo, "STORE_CD", ExcelImportReferenceValidation.GetString(row, "DETAIL_STORE_CD", "INPUT_STORE_CD", "OUTPUT_STORE_CD", "STORE_CD"), _storeIdsByCode!, lang);
                 ExcelImportReferenceValidation.AddMissingCodeError(validateResults, rowNo, "UNIT_CD", ExcelImportReferenceValidation.GetString(row, "DETAIL_UNIT_CD", "INPUT_UNIT_CD", "OUTPUT_UNIT_CD", "UNIT_CD"), _unitIdsByCode!, lang);
+                ExcelImportReferenceValidation.AddMissingCodeError(validateResults, rowNo, "CUSTOMER_CD", ExcelImportReferenceValidation.GetString(row, "CUSTOMER_CD"), _customerIdsByCode!, lang);
             }
+
+            ValidateConsistentVoucherCustomers(rows, validateResults);
         }
 
         public async Task SaveAsync(List<Dictionary<string, object>> rows, ExcelImportJobRequest request, IExcelImportJobProgressWriter progressWriter, CancellationToken cancellationToken)
@@ -73,6 +77,14 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                 StoreIdsByCode = _storeIdsByCode,
                 UnitIdsByCode = _unitIdsByCode
             };
+            foreach (var record in orderedRecords.Select(item => item.Record))
+            {
+                if (!string.IsNullOrWhiteSpace(record.CUSTOMER_CD))
+                {
+                    record.CUSTOMER_ID = ExcelImportReferenceValidation.ResolveId(record.CUSTOMER_CD, _customerIdsByCode!);
+                }
+            }
+
             for (var i = 0; i < orderedRecords.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -131,6 +143,13 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                 }
 
                 MergeInventoryHeaderValues(item.Record, row, templateKeys);
+                var rowCustomerCode = Common.NormalizeNullableText(Common.GetStringValue(row, "CUSTOMER_CD"));
+                var currentCustomerCode = Common.NormalizeNullableText(item.Record.CUSTOMER_CD);
+                if (rowCustomerCode != null && currentCustomerCode != null &&
+                    !string.Equals(rowCustomerCode, currentCustomerCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    errors.Add($"Row {rowNumber}: customer code '{rowCustomerCode}' conflicts with '{currentCustomerCode}' on the same inventory voucher.");
+                }
                 item.Record.COMPANY_CD = companyCd;
                 item.Record.INPUT_TYPE = inputType;
                 item.Record.CHIT_TYPE = chitType;
@@ -204,6 +223,37 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             }
 
             return $"ROW:{rowNumber}";
+        }
+
+        private static void ValidateConsistentVoucherCustomers(
+            IReadOnlyList<Dictionary<string, object>> rows,
+            List<ExcelImportResultRowDto> validateResults)
+        {
+            var customerByVoucher = new Dictionary<string, (string Code, int RowNo)>(StringComparer.OrdinalIgnoreCase);
+            for (var index = 0; index < rows.Count; index++)
+            {
+                var row = rows[index];
+                var rowNo = ExcelImportHandlerHelper.GetExcelRowNo(row, index);
+                var code = Common.NormalizeNullableText(Common.GetStringValue(row, "CUSTOMER_CD"));
+                if (code == null)
+                {
+                    continue;
+                }
+
+                var groupKey = GetInventoryImportGroupKey(row, rowNo);
+                if (!customerByVoucher.TryGetValue(groupKey, out var existing))
+                {
+                    customerByVoucher[groupKey] = (code, rowNo);
+                    continue;
+                }
+
+                if (!string.Equals(code, existing.Code, StringComparison.OrdinalIgnoreCase))
+                {
+                    validateResults.Add(ExcelImportHandlerHelper.BuildError(
+                        rowNo,
+                        $"Customer code '{code}' conflicts with '{existing.Code}' from row {existing.RowNo} on the same inventory voucher."));
+                }
+            }
         }
 
         private static void MergeInventoryHeaderValues(InventoryVoucherRequest record, IDictionary<string, object> row, IReadOnlyList<string> templateKeys)
@@ -431,6 +481,7 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             _productIdsByCode ??= await _lookupRepository.GetProductIdsByCodeAsync(companyCd, databaseName);
             _storeIdsByCode ??= await _lookupRepository.GetStoreIdsByCodeAsync(companyCd, databaseName);
             _unitIdsByCode ??= await _lookupRepository.GetProductUnitIdsByCodeAsync(companyCd, databaseName);
+            _customerIdsByCode ??= await _lookupRepository.GetCustomerIdsByCodeAsync(companyCd, databaseName);
         }
 
         private sealed record InventoryImportModule(string InputType, string ChitType);
