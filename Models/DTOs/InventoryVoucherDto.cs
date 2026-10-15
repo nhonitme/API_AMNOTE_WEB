@@ -11,6 +11,7 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public string? CHIT_NO { get; set; }
         public string? CHIT_YMD { get; set; }
         public string CHIT_TYPE { get; set; } = string.Empty;
+        public string IS_COGS { get; set; } = "0";
         public string INPUT_TYPE { get; set; } = string.Empty;
         public decimal? AMOUNT { get; set; }
         public decimal? TOTAL_QTY { get; set; }
@@ -44,6 +45,7 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public string? CHIT_NO { get; set; }
         public string? CHIT_YMD { get; set; }
         public string? CHIT_TYPE { get; set; }
+        public string? IS_COGS { get; set; }
         public decimal? AMOUNT { get; set; }
         public decimal? TOTAL_QTY { get; set; }
         public string? REMARK { get; set; }

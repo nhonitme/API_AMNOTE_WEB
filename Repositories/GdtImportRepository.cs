@@ -55,6 +55,24 @@ SELECT
             };
         }
 
+        public async Task<string?> ReadInvoiceJsonAsync(
+            string invoiceType,
+            string mhdon,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var (_, jsonTable) = Tables(invoiceType);
+            var rows = await _db.QueryAsync<string?>(
+                Net_DB.Net_DB_Company,
+                $@"SELECT json
+FROM `{jsonTable}`
+WHERE mhdon = @mhdon
+  AND IFNULL(ISDEL, '') != '1'
+LIMIT 1",
+                new { mhdon });
+            return rows.FirstOrDefault();
+        }
+
         private sealed class GdtExistingInvoiceRow
         {
             public int HasList { get; set; }
@@ -273,6 +291,93 @@ ON DUPLICATE KEY UPDATE
                     new { companyCd, username, password, token });
 
                 session.Commit();
+            }
+            catch
+            {
+                session.Rollback();
+                throw;
+            }
+        }
+
+        public async Task<IReadOnlyList<GdtInvoiceVoucherLinkResult>> LinkInvoicesToVouchersAsync(
+            string invoiceType,
+            IReadOnlyList<GdtInvoiceVoucherLinkItem> items,
+            CancellationToken cancellationToken = default)
+        {
+            if (items == null || items.Count == 0)
+            {
+                return Array.Empty<GdtInvoiceVoucherLinkResult>();
+            }
+
+            var (headerTable, _) = Tables(invoiceType);
+            var expectedInputType = string.Equals(invoiceType, "BUY", StringComparison.OrdinalIgnoreCase) ? "AP" : "AR";
+            await using var session = await _db.CreateSessionAsync(Net_DB.Net_DB_Company);
+            try
+            {
+                var results = new List<GdtInvoiceVoucherLinkResult>(items.Count);
+                foreach (var item in items)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var mhdon = (item.Mhdon ?? "").Trim();
+                    var chitCd = (item.ChitCd ?? "").Trim();
+                    var result = new GdtInvoiceVoucherLinkResult { Mhdon = mhdon, ChitCd = chitCd };
+                    if (mhdon.Length == 0 || chitCd.Length == 0)
+                    {
+                        result.Status = "INVALID";
+                        result.Error = "Mã hóa đơn và mã chứng từ là bắt buộc.";
+                        results.Add(result);
+                        continue;
+                    }
+
+                    var voucherExists = await session.QueryFirstOrDefaultAsync<long?>(
+                        @"SELECT CHIT_ID
+FROM chitinfo
+WHERE CHIT_CD = @chitCd
+  AND INPUT_TYPE = @expectedInputType
+  AND IFNULL(ISDEL, '') != '1'
+LIMIT 1",
+                        new { chitCd, expectedInputType },
+                        commandTimeout: 15);
+                    if (!voucherExists.HasValue)
+                    {
+                        result.Status = "VOUCHER_NOT_FOUND";
+                        result.Error = "Không tìm thấy chứng từ tương ứng với loại hóa đơn.";
+                        results.Add(result);
+                        continue;
+                    }
+
+                    var currentChitCd = await session.QueryFirstOrDefaultAsync<string>(
+                        $"SELECT IFNULL(AUTO_CHIT_CD, '') FROM `{headerTable}` WHERE mhdon = @mhdon AND IFNULL(ISDEL, '') != '1' FOR UPDATE",
+                        new { mhdon },
+                        commandTimeout: 15);
+                    if (currentChitCd == null)
+                    {
+                        result.Status = "NOT_FOUND";
+                        result.Error = "Không tìm thấy hóa đơn hoặc hóa đơn đã bị xóa.";
+                    }
+                    else if (string.Equals(currentChitCd.Trim(), chitCd, StringComparison.OrdinalIgnoreCase))
+                    {
+                        result.Status = "ALREADY_LINKED";
+                    }
+                    else if (currentChitCd.Trim().Length > 0)
+                    {
+                        result.Status = "CONFLICT";
+                        result.Error = "Hóa đơn đã được liên kết với chứng từ khác.";
+                    }
+                    else
+                    {
+                        await session.ExecuteAsync(
+                            $"UPDATE `{headerTable}` SET AUTO_CHIT_CD = @chitCd WHERE mhdon = @mhdon AND IFNULL(AUTO_CHIT_CD, '') = '' AND IFNULL(ISDEL, '') != '1'",
+                            new { mhdon, chitCd },
+                            commandTimeout: 15);
+                        result.Status = "LINKED";
+                    }
+
+                    results.Add(result);
+                }
+
+                session.Commit();
+                return results;
             }
             catch
             {

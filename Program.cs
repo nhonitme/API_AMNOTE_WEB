@@ -270,6 +270,7 @@ builder.Services.AddScoped<IInventoryOpeningRepository, InventoryOpeningReposito
 builder.Services.AddScoped<IInventoryLinkRepository>(provider => provider.GetRequiredService<ChitInfoRepository>());
 builder.Services.AddScoped<IInventoryValuationRepository, InventoryValuationRepository>();
 builder.Services.AddScoped<IInventoryValuationService, InventoryValuationService>();
+builder.Services.AddScoped<InventoryPriceUpdateRepository>();
 builder.Services.AddScoped<IExchangeRevaluationRepository, ExchangeRevaluationRepository>();
 builder.Services.AddScoped<IExchangeRevaluationService, ExchangeRevaluationService>();
 builder.Services.AddScoped<ICashExchangeRevaluationRepository, CashExchangeRevaluationRepository>();

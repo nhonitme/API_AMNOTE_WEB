@@ -93,4 +93,49 @@ namespace API_AMNOTE_WEB.Models.DTOs
         /// <summary>Token mới sau login GDT — null/empty giữ TOKEN cũ trên DB.</summary>
         public string? Token { get; set; }
     }
+
+    public class GdtInvoiceVoucherLinkRequest
+    {
+        public string Type { get; set; } = "BUY";
+        public List<GdtInvoiceVoucherLinkItem>? Items { get; set; }
+    }
+
+    public class GdtInvoiceVoucherLinkItem
+    {
+        public string Mhdon { get; set; } = "";
+        public string ChitCd { get; set; } = "";
+    }
+
+    public class GdtInvoiceVoucherLinkResult
+    {
+        public string Mhdon { get; set; } = "";
+        public string ChitCd { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string? Error { get; set; }
+    }
+
+    public class GdtVoucherCreateBatchRequest
+    {
+        public string Type { get; set; } = "BUY";
+        /// <summary>PO/PS for BUY; SO for SELL. Empty keeps the legacy default.</summary>
+        public string? VoucherType { get; set; }
+        public List<GdtVoucherCreateBatchItem>? Items { get; set; }
+    }
+
+    public class GdtVoucherCreateBatchItem
+    {
+        public List<string> Mhdon { get; set; } = new();
+        public API_AMNOTE_WEB.Models.ChitInfoRequest? Voucher { get; set; }
+    }
+
+    public class GdtVoucherCreateBatchItemResult
+    {
+        public int Index { get; set; }
+        public long? ChitId { get; set; }
+        public string? ChitCd { get; set; }
+        public string? ChitNo { get; set; }
+        public string Status { get; set; } = "";
+        public string? Error { get; set; }
+        public List<GdtInvoiceVoucherLinkResult> Links { get; set; } = new();
+    }
 }

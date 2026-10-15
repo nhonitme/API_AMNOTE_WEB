@@ -9,6 +9,11 @@ namespace API_AMNOTE_WEB.Interfaces
             string mhdon,
             CancellationToken cancellationToken = default);
 
+        Task<string?> ReadInvoiceJsonAsync(
+            string invoiceType,
+            string mhdon,
+            CancellationToken cancellationToken = default);
+
         Task InsertListAsync(
             string invoiceType,
             GdtImportInvoiceRow row,
@@ -41,6 +46,11 @@ namespace API_AMNOTE_WEB.Interfaces
             string username,
             string password,
             string? token = null,
+            CancellationToken cancellationToken = default);
+
+        Task<IReadOnlyList<GdtInvoiceVoucherLinkResult>> LinkInvoicesToVouchersAsync(
+            string invoiceType,
+            IReadOnlyList<GdtInvoiceVoucherLinkItem> items,
             CancellationToken cancellationToken = default);
     }
 

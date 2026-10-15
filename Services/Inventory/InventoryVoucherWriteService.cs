@@ -105,6 +105,7 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 CHIT_NO = NormalizeNullableText(request.CHIT_NO),
                 CHIT_YMD = headerDate,
                 CHIT_TYPE = chitType,
+                IS_COGS = request.IS_COGS == "1" ? "1" : "0",
                 AMOUNT = request.AMOUNT,
                 TOTAL_QTY = request.TOTAL_QTY,
                 REMARK = NormalizeNullableText(request.REMARK) ?? NormalizeNullableText(request.NOTE),
@@ -164,6 +165,9 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 CHIT_NO = request.CHIT_NO == null ? NormalizeNullableText(existing.CHIT_NO) : NormalizeNullableText(request.CHIT_NO),
                 CHIT_YMD = headerDate,
                 CHIT_TYPE = chitType,
+                IS_COGS = request.IS_COGS == null
+                    ? (existing.IS_COGS == "1" ? "1" : "0")
+                    : (request.IS_COGS == "1" ? "1" : "0"),
                 AMOUNT = request.AMOUNT,
                 TOTAL_QTY = request.TOTAL_QTY,
                 REMARK = request.REMARK == null ? NormalizeNullableText(existing.REMARK ?? existing.NOTE) : NormalizeNullableText(request.REMARK),
@@ -251,8 +255,6 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 .Select((item, index) => new InventoryOutput
                 {
                     OUTPUT_ID = Common.NormalizeNullablePositiveLong(item.OUTPUT_ID),
-                    COGS_DEBIT = NormalizeNullableText(item.COGS_DEBIT),
-                    COGS_CREDIT = NormalizeNullableText(item.COGS_CREDIT),
                     OUTPUT_CD = NormalizeNullableText(item.OUTPUT_CD) ?? string.Empty,
                     INVENTORY_ID = Common.NormalizeNullablePositiveLong(item.INVENTORY_ID),
                     INVENTORY_CD = NormalizeNullableText(item.INVENTORY_CD),
@@ -266,15 +268,20 @@ namespace API_AMNOTE_WEB.Services.Inventory
                     UNIT_CD = NormalizeNullableText(item.UNIT_CD) ?? string.Empty,
                     QUANTITY = item.QUANTITY,
                     UNIT_PRICE_CC = item.UNIT_PRICE_CC,
+                    REVENUE_UNIT_PRICE_CC = item.REVENUE_UNIT_PRICE_CC,
                     FC_TYPE = NormalizeNullableText(item.FC_TYPE) ?? "VND",
                     UNIT_PRICE_FC = item.UNIT_PRICE_FC,
+                    REVENUE_UNIT_PRICE_FC = item.REVENUE_UNIT_PRICE_FC,
                     EXCHANGE_RATES = item.EXCHANGE_RATES,
                     AMOUNT_CC = chitType == "IO" ? item.AMOUNT_CC : (item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC),
+                    REVENUE_AMOUNT_CC = item.REVENUE_AMOUNT_CC,
                     AMOUNT_FC = item.AMOUNT_FC,
+                    REVENUE_AMOUNT_FC = item.REVENUE_AMOUNT_FC,
                     SUMMARY = NormalizeNullableText(item.SUMMARY) ?? string.Empty,
                     INVENTORY_YMD = NormalizeNullableInventoryDateTimeText(item.INVENTORY_YMD, nameof(InventoryOutput.INVENTORY_YMD)) ?? headerDate,
                     STATE = NormalizeNullableText(item.STATE) ?? "1",
                     CHITDETAIL_ID = Common.NormalizeNullablePositiveLong(item.CHITDETAIL_ID),
+                    CHITDETAIL_ID_COGS = Common.NormalizeNullablePositiveLong(item.CHITDETAIL_ID_COGS),
                     CHITDETAIL_CD = NormalizeNullableText(item.CHITDETAIL_CD) ?? string.Empty,
                     SORT = item.SORT.GetValueOrDefault() > 0 ? item.SORT : index + 1,
                     ISDEL = "0"

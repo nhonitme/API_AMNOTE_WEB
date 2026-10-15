@@ -19,6 +19,7 @@ namespace API_AMNOTE_WEB.Repositories
         {
             public long TRANSFER_ID { get; set; }
             public long? CHIT_ID_COGS { get; set; }
+            public string IS_COGS { get; set; } = "0";
             public string COMPANY_CD { get; set; } = string.Empty;
             public string TRANSFER_CD { get; set; } = string.Empty;
             public string? TRANSFER_NO { get; set; }
@@ -65,6 +66,11 @@ namespace API_AMNOTE_WEB.Repositories
             public long OUTPUT_ID { get; set; }
             public long INVENTORY_ID { get; set; }
             public long CHITDETAIL_ID { get; set; }
+        }
+
+        private sealed class InventoryCogsSourceRow
+        {
+            public long INVENTORY_CHIT_ID { get; set; }
         }
 
         private readonly DapperExecutor _db;
@@ -134,15 +140,40 @@ namespace API_AMNOTE_WEB.Repositories
                 foreach (var voucher in vouchers)
                 {
                     voucher.COGS = await ReadInventoryCogsAsync(session, companyCd, voucher.CHIT_ID, voucher.OUTPUTS);
-                    foreach (var output in voucher.OUTPUTS)
-                    {
-                        var detail = voucher.COGS.DETAILS.Single(x => x.OUTPUT_ID == output.OUTPUT_ID);
-                        output.COGS_DEBIT = detail.DEBIT;
-                        output.COGS_CREDIT = detail.CREDIT;
-                    }
                 }
             }
             return (vouchers, result.TotalRecords);
+        }
+
+        public async Task<long?> GetInventoryIssueIdByCogsVoucherIdAsync(string companyCd, long cogsVoucherId)
+        {
+            if (cogsVoucherId <= 0)
+            {
+                return null;
+            }
+
+            const string query = @"
+                SELECT transfer.INVENTORY_ID AS INVENTORY_CHIT_ID
+                FROM chit_inventory_info transfer
+                INNER JOIN chitinfo cogs
+                    ON cogs.COMPANY_CD=transfer.COMPANY_CD
+                    AND cogs.CHIT_ID=transfer.CHIT_ID_COGS
+                    AND cogs.CHIT_TYPE='OT'
+                    AND cogs.INPUT_TYPE='AR'
+                    AND cogs.ISDEL='0'
+                WHERE transfer.COMPANY_CD=@companyCd
+                    AND transfer.CHIT_TYPE='IO'
+                    AND transfer.INPUT_TYPE='AR'
+                    AND transfer.ISDEL='0'
+                    AND transfer.CHIT_ID_COGS=@cogsVoucherId
+                LIMIT 1";
+
+            var source = (await _db.QueryAsync<InventoryCogsSourceRow>(
+                Net_DB.Net_DB_Company,
+                query,
+                new { companyCd, cogsVoucherId })).FirstOrDefault();
+
+            return source is { INVENTORY_CHIT_ID: > 0 } ? source.INVENTORY_CHIT_ID : null;
         }
 
         public async Task<long> SaveInventoryVoucherAsync(string companyCd, string inputType, string userId, InventoryVoucherRequest request, string? databaseName = null)
@@ -166,17 +197,27 @@ namespace API_AMNOTE_WEB.Repositories
                 InventoryCogsDto? existingCogs = null;
                 if (request.CHIT_ID.GetValueOrDefault() > 0 && existingHeader == null)
                     throw new InvalidOperationException($"Inventory voucher {request.CHIT_ID} does not exist.");
+                var isCogsEnabled = normalizedChitType == "IO" && request.IS_COGS == "1";
                 if (normalizedChitType == "IO")
                 {
-                    await EnsureCogsPeriodOpenAsync(session, companyCd, request.CHIT_YMD);
                     if (existingHeader != null)
                     {
                         await LockInventoryIssueAsync(session, companyCd, existingHeader.TRANSFER_ID);
-                        await EnsureCogsPeriodOpenAsync(session, companyCd, existingHeader.TRANSFER_YMD);
-                        existingCogs = await ReadInventoryCogsAsync(session, companyCd, existingHeader.TRANSFER_ID,
-                            await ReadIssueOutputsAsync(session, companyCd, existingHeader.TRANSFER_ID));
-                        EnsureCogsUnlocked(existingCogs, existingHeader.TRANSFER_ID);
+                        if (existingHeader.CHIT_ID_COGS.HasValue)
+                        {
+                            await EnsureCogsPeriodOpenAsync(session, companyCd, existingHeader.TRANSFER_YMD);
+                            existingCogs = await ReadInventoryCogsAsync(session, companyCd, existingHeader.TRANSFER_ID,
+                                await ReadIssueOutputsAsync(session, companyCd, existingHeader.TRANSFER_ID));
+                            if (existingCogs == null)
+                                throw new InvalidOperationException($"Issue voucher {existingHeader.TRANSFER_ID}: linked COGS voucher was not found.");
+                            EnsureCogsUnlocked(existingCogs, existingHeader.TRANSFER_ID);
+                            if (!isCogsEnabled)
+                                throw new InvalidOperationException("Remove or resolve the linked OT COGS voucher before turning off IS_COGS.");
+                        }
                     }
+
+                    if (isCogsEnabled)
+                        await EnsureCogsPeriodOpenAsync(session, companyCd, request.CHIT_YMD);
                 }
                 var activeInputs = Common.UsesInventoryInput(normalizedChitType)
                     ? (request.INPUTS ?? new List<InventoryInput>()).Where(IsValidInventoryInput).ToList()
@@ -193,7 +234,23 @@ namespace API_AMNOTE_WEB.Repositories
                     if (requestedOutputs.Count == 0 || requestedOutputs.Count != activeOutputs.Count)
                         throw new ArgumentException("Every issue output requires product, warehouse, unit and a positive quantity.");
                     if (activeOutputs.Any(x => x.AMOUNT_CC < 0 || x.UNIT_PRICE_CC < 0))
-                        throw new ArgumentException("Issue COGS amount and unit price cannot be negative.");
+                        throw new ArgumentException("Issue amount and unit price cannot be negative.");
+                    if (isCogsEnabled)
+                    {
+                        foreach (var output in activeOutputs)
+                        {
+                            // Preserve the existing issue-price formula on first use while persisting it separately as cost.
+                            if (output.CHITDETAIL_ID_COGS == null)
+                            {
+                                if (output.REVENUE_UNIT_PRICE_CC == 0) output.REVENUE_UNIT_PRICE_CC = output.UNIT_PRICE_CC;
+                                if (output.REVENUE_AMOUNT_CC == 0) output.REVENUE_AMOUNT_CC = output.AMOUNT_CC;
+                                if (output.REVENUE_UNIT_PRICE_FC == 0) output.REVENUE_UNIT_PRICE_FC = output.UNIT_PRICE_FC;
+                                if (output.REVENUE_AMOUNT_FC == 0) output.REVENUE_AMOUNT_FC = output.AMOUNT_FC;
+                            }
+                            if (output.REVENUE_AMOUNT_CC < 0 || output.REVENUE_UNIT_PRICE_CC < 0)
+                                throw new ArgumentException("Issue cost amount and unit price cannot be negative.");
+                        }
+                    }
                     if (existingCogs != null)
                     {
                         var ids = activeOutputs.Where(x => x.OUTPUT_ID > 0).Select(x => x.OUTPUT_ID!.Value).ToList();
@@ -244,6 +301,7 @@ namespace API_AMNOTE_WEB.Repositories
                     @p_TRANSFER_YMD,
                     @p_CHIT_TYPE,
                     @p_INPUT_TYPE,
+                    @p_IS_COGS,
                     @p_AMOUNT,
                     @p_TOTAL_QTY,
                     @p_REMARK,
@@ -262,6 +320,7 @@ namespace API_AMNOTE_WEB.Repositories
                     p_TRANSFER_YMD = request.CHIT_YMD,
                     p_CHIT_TYPE = normalizedChitType,
                     p_INPUT_TYPE = inputType,
+                    p_IS_COGS = string.Equals(request.IS_COGS, "1", StringComparison.Ordinal) ? "1" : "0",
                     p_AMOUNT = normalizedChitType == "IO" ? activeOutputs.Sum(x => Math.Round(x.AMOUNT_CC, 2, MidpointRounding.AwayFromZero)) : request.AMOUNT ?? amount,
                     p_TOTAL_QTY = totalQty,
                     p_REMARK = remark,
@@ -337,7 +396,7 @@ namespace API_AMNOTE_WEB.Repositories
                     await SoftDeleteInventoryOutputAsync(session, companyCd, userId, chitId: voucherId);
                 }
 
-                var savedCogs = normalizedChitType == "IO"
+                var savedCogs = isCogsEnabled
                     ? await SaveInventoryCogsAsync(session, companyCd, userId, voucherId, voucherNo!, request.CHIT_YMD!, activeOutputs, existingCogs)
                     : null;
 
@@ -406,10 +465,15 @@ namespace API_AMNOTE_WEB.Repositories
                 if (normalizedChitType == "IO")
                 {
                     await LockInventoryIssueAsync(session, companyCd, chitId);
-                    var cogs = await ReadInventoryCogsAsync(session, companyCd, chitId, await ReadIssueOutputsAsync(session, companyCd, chitId));
-                    EnsureCogsUnlocked(cogs, chitId);
-                    await EnsureCogsPeriodOpenAsync(session, companyCd, cogs.CHIT_YMD);
-                    await DeleteInventoryCogsAsync(session, companyCd, userId, cogs.CHIT_ID);
+                    if (existingHeader?.CHIT_ID_COGS is > 0)
+                    {
+                        var cogs = await ReadInventoryCogsAsync(session, companyCd, chitId, await ReadIssueOutputsAsync(session, companyCd, chitId));
+                        if (cogs == null)
+                            throw new InvalidOperationException($"Issue voucher {chitId}: linked COGS voucher was not found.");
+                        EnsureCogsUnlocked(cogs, chitId);
+                        await EnsureCogsPeriodOpenAsync(session, companyCd, cogs.CHIT_YMD);
+                        await DeleteInventoryCogsAsync(session, companyCd, userId, cogs.CHIT_ID);
+                    }
                 }
                 const string query = "CALL delChitInventoryTransfer(@p_COMPANY_CD, @p_INPUT_TYPE, @p_TRANSFER_ID, @p_UPDATE_BY)";
                 var result = await session.ExecuteAsync(query, new
@@ -588,6 +652,7 @@ namespace API_AMNOTE_WEB.Repositories
                 CHIT_NO = item.TRANSFER_NO,
                 CHIT_YMD = item.TRANSFER_YMD,
                 CHIT_TYPE = Common.NormalizeInventoryChitType(item.CHIT_TYPE),
+                IS_COGS = item.IS_COGS,
                 AMOUNT = item.AMOUNT,
                 TOTAL_QTY = item.TOTAL_QTY,
                 REMARK = item.REMARK,
@@ -812,7 +877,7 @@ namespace API_AMNOTE_WEB.Repositories
             var sourceDetailCd = Common.NormalizeNullableText(output.CHITDETAIL_CD);
 
             return session.QuerySingleAsync<long>(
-                "CALL setChitInventoryOutput(@p_OUTPUT_ID, @p_OUTPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
+                "CALL setChitInventoryOutput(@p_OUTPUT_ID, @p_OUTPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_REVENUE_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_REVENUE_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_REVENUE_AMOUNT_CC, @p_AMOUNT_FC, @p_REVENUE_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
                 new
                 {
                     p_OUTPUT_ID = output.OUTPUT_ID > 0 ? output.OUTPUT_ID : (long?)null,
@@ -829,11 +894,15 @@ namespace API_AMNOTE_WEB.Repositories
                     p_UNIT_CD = output.UNIT_CD,
                     p_QUANTITY = output.QUANTITY,
                     p_UNIT_PRICE_CC = output.UNIT_PRICE_CC,
+                    p_REVENUE_UNIT_PRICE_CC = output.REVENUE_UNIT_PRICE_CC,
                     p_FC_TYPE = string.IsNullOrWhiteSpace(output.FC_TYPE) ? "VND" : output.FC_TYPE,
                     p_UNIT_PRICE_FC = output.UNIT_PRICE_FC,
+                    p_REVENUE_UNIT_PRICE_FC = output.REVENUE_UNIT_PRICE_FC,
                     p_EXCHANGE_RATES = output.EXCHANGE_RATES,
                     p_AMOUNT_CC = output.AMOUNT_CC,
+                    p_REVENUE_AMOUNT_CC = output.REVENUE_AMOUNT_CC,
                     p_AMOUNT_FC = output.AMOUNT_FC,
+                    p_REVENUE_AMOUNT_FC = output.REVENUE_AMOUNT_FC,
                     p_SUMMARY = output.SUMMARY,
                     p_INVENTORY_YMD = output.INVENTORY_YMD,
                     p_STATE = string.IsNullOrWhiteSpace(output.STATE) ? "1" : output.STATE,

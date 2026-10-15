@@ -4,8 +4,6 @@ namespace API_AMNOTE_WEB.Models
     {
         public long? OUTPUT_ID { get; set; }
         public long? CHITDETAIL_ID_COGS { get; set; }
-        public string? COGS_DEBIT { get; set; }
-        public string? COGS_CREDIT { get; set; }
         public string? OUTPUT_CD { get; set; } = string.Empty;
         public long? INVENTORY_ID { get; set; }
         public string? INVENTORY_CD { get; set; } = string.Empty;
@@ -34,11 +32,15 @@ namespace API_AMNOTE_WEB.Models
 
         public decimal QUANTITY { get; set; }
         public decimal UNIT_PRICE_CC { get; set; }
+        public decimal REVENUE_UNIT_PRICE_CC { get; set; }
         public string? FC_TYPE { get; set; } = "VND";
         public decimal UNIT_PRICE_FC { get; set; }
+        public decimal REVENUE_UNIT_PRICE_FC { get; set; }
         public decimal EXCHANGE_RATES { get; set; }
         public decimal AMOUNT_CC { get; set; }
+        public decimal REVENUE_AMOUNT_CC { get; set; }
         public decimal AMOUNT_FC { get; set; }
+        public decimal REVENUE_AMOUNT_FC { get; set; }
         public string SUMMARY { get; set; } = string.Empty;
         public string? INVENTORY_YMD { get; set; }
         public string? STATE { get; set; } = "1";

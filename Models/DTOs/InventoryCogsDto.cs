@@ -16,7 +16,9 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public long OUTPUT_ID { get; set; }
         public long CHITDETAIL_ID { get; set; }
         public string CHITDETAIL_CD { get; set; } = string.Empty;
+        [System.Text.Json.Serialization.JsonIgnore]
         public string DEBIT { get; set; } = string.Empty;
+        [System.Text.Json.Serialization.JsonIgnore]
         public string CREDIT { get; set; } = string.Empty;
         public decimal AMOUNT { get; set; }
     }

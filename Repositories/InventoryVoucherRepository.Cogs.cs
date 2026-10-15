@@ -45,18 +45,62 @@ namespace API_AMNOTE_WEB.Repositories
                 throw new InvalidOperationException($"COGS for issue voucher {transferId} is locked.");
         }
 
-        private static async Task<InventoryCogsDto> ReadInventoryCogsAsync(
+        private static async Task<(string Debit, string Credit)> ResolveCogsAccountsAsync(
+            DapperSession session, string companyCd, InventoryOutput output)
+        {
+            var credit = (await session.QueryAsync<string>(@"
+                SELECT DIVISION FROM product_info
+                WHERE COMPANY_CD=@companyCd AND PRODUCT_ID=@productId AND IFNULL(ISDEL,'0')='0' LIMIT 1",
+                new { companyCd, productId = output.PRODUCT_ID })).FirstOrDefault()?.Trim();
+            if (string.IsNullOrWhiteSpace(credit) || !credit.StartsWith("156", StringComparison.Ordinal))
+                throw new ArgumentException($"Issue voucher output {output.OUTPUT_ID}: product must have an inventory account starting with 156.");
+
+            var creditExists = await session.QuerySingleAsync<int>(@"
+                SELECT COUNT(*) FROM acclist_info
+                WHERE COMPANY_CD=@companyCd AND ACC_CD=@credit AND ISDEL='0'",
+                new { companyCd, credit });
+            if (creditExists == 0)
+                throw new ArgumentException($"Issue voucher output {output.OUTPUT_ID}: inventory account {credit} does not exist.");
+
+            var debit = (await session.QueryAsync<string>(@"
+                SELECT ACC_CD FROM acclist_info
+                WHERE COMPANY_CD=@companyCd AND ACC_CD LIKE '632%' AND ACC_CD<>'632' AND ISDEL='0'
+                ORDER BY ACC_CD LIMIT 1",
+                new { companyCd })).FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(debit))
+            {
+                debit = "632";
+                var debitExists = await session.QuerySingleAsync<int>(@"
+                    SELECT COUNT(*) FROM acclist_info
+                    WHERE COMPANY_CD=@companyCd AND ACC_CD=@debit AND ISDEL='0'",
+                    new { companyCd, debit });
+                if (debitExists == 0)
+                    throw new ArgumentException("Cost account 632 is missing.");
+            }
+
+            return (debit, credit);
+        }
+
+        private static async Task<InventoryCogsDto?> ReadInventoryCogsAsync(
             DapperSession session, string companyCd, long transferId, IReadOnlyList<InventoryOutput> outputs)
         {
             var headers = (await session.QueryAsync<InventoryCogsDto>(@"
                 SELECT h.CHIT_ID,h.CHIT_CD,h.CHIT_NO,h.CHIT_YMD,h.AMOUNT,e.IS_LOCK
                 FROM chit_inventory_info t
                 INNER JOIN chitinfo h ON h.CHIT_ID=t.CHIT_ID_COGS AND h.COMPANY_CD=t.COMPANY_CD AND h.ISDEL='0'
-                    AND h.CHIT_TYPE='IO_COGS' AND h.INPUT_TYPE='AR'
+                    AND h.CHIT_TYPE IN ('OT','IO_COGS') AND h.INPUT_TYPE='AR'
                 INNER JOIN chitinfo_ext e ON e.CHIT_ID=h.CHIT_ID AND e.COMPANY_CD=h.COMPANY_CD AND e.ISDEL='0'
                 WHERE t.COMPANY_CD=@companyCd AND t.INVENTORY_ID=@transferId
-                    AND t.ISDEL='0' AND t.CHIT_TYPE='IO' AND t.INVENTORY_YMD=h.CHIT_YMD AND t.AMOUNT=h.AMOUNT FOR UPDATE",
+                    AND t.ISDEL='0' AND t.CHIT_TYPE='IO' AND t.INVENTORY_YMD=h.CHIT_YMD FOR UPDATE",
                 new { companyCd, transferId })).ToList();
+            if (headers.Count == 0)
+            {
+                var cogsId = await session.QuerySingleAsync<long?>(@"
+                    SELECT CHIT_ID_COGS FROM chit_inventory_info
+                    WHERE COMPANY_CD=@companyCd AND INVENTORY_ID=@transferId AND ISDEL='0' AND CHIT_TYPE='IO'",
+                    new { companyCd, transferId });
+                if (!cogsId.HasValue) return null;
+            }
             if (headers.Count != 1)
                 throw new InvalidOperationException($"Issue voucher {transferId}: missing or invalid COGS header/link.");
             var header = headers[0];
@@ -80,17 +124,10 @@ namespace API_AMNOTE_WEB.Repositories
         private static async Task<InventoryCogsDto> SaveInventoryCogsAsync(DapperSession session, string companyCd, string userId,
             long transferId, string voucherNo, string ymd, IReadOnlyList<InventoryOutput> outputs, InventoryCogsDto? existing)
         {
+            var cogsAccounts = new Dictionary<long, (string Debit, string Credit)>();
             foreach (var output in outputs)
-            {
-                if (string.IsNullOrWhiteSpace(output.COGS_DEBIT) || string.IsNullOrWhiteSpace(output.COGS_CREDIT))
-                    throw new ArgumentException($"Issue voucher {transferId}, output {output.OUTPUT_ID}: COGS debit and credit are required.");
-                var accounts = (await session.QueryAsync<string>(@"
-                    SELECT ACC_CD FROM acclist_info WHERE COMPANY_CD=@companyCd AND ACC_CD IN (@debit,@credit) AND ISDEL='0'",
-                    new { companyCd, debit = output.COGS_DEBIT, credit = output.COGS_CREDIT })).ToHashSet(StringComparer.Ordinal);
-                if (!accounts.Contains(output.COGS_DEBIT) || !accounts.Contains(output.COGS_CREDIT))
-                    throw new ArgumentException($"Issue voucher {transferId}, output {output.OUTPUT_ID}: invalid COGS accounts {output.COGS_DEBIT}/{output.COGS_CREDIT}.");
-            }
-            var total = outputs.Sum(x => Math.Round(x.AMOUNT_CC, 2, MidpointRounding.AwayFromZero));
+                cogsAccounts[output.OUTPUT_ID.GetValueOrDefault()] = await ResolveCogsAccountsAsync(session, companyCd, output);
+            var total = outputs.Sum(x => Math.Round(x.REVENUE_AMOUNT_CC, 2, MidpointRounding.AwayFromZero));
             long chitId;
             string chitCd;
             if (existing == null)
@@ -98,7 +135,7 @@ namespace API_AMNOTE_WEB.Repositories
                 chitCd = Common.GenerateKeyCd("C");
                 await session.ExecuteAsync(@"
                     INSERT INTO chitinfo (COMPANY_CD,CHIT_CD,CHIT_NO,CHIT_YMD,CHIT_TYPE,INPUT_TYPE,AMOUNT,CREATE_BY,UPDATE_BY)
-                    VALUES (@companyCd,@chitCd,@voucherNo,@ymd,'IO_COGS','AR',@total,@userId,@userId)",
+                    VALUES (@companyCd,@chitCd,@voucherNo,@ymd,'OT','AR',@total,@userId,@userId)",
                     new { companyCd, chitCd, voucherNo, ymd, total, userId });
                 chitId = await session.QuerySingleAsync<long>("SELECT LAST_INSERT_ID()");
                 await session.ExecuteAsync(@"
@@ -113,17 +150,18 @@ namespace API_AMNOTE_WEB.Repositories
                 chitId = existing.CHIT_ID;
                 chitCd = existing.CHIT_CD;
                 await session.ExecuteAsync(@"
-                    UPDATE chitinfo SET CHIT_NO=@voucherNo,CHIT_YMD=@ymd,AMOUNT=@total,UPDATE_BY=@userId
+                    UPDATE chitinfo SET CHIT_TYPE='OT',INPUT_TYPE='AR',CHIT_NO=@voucherNo,CHIT_YMD=@ymd,AMOUNT=@total,UPDATE_BY=@userId
                     WHERE COMPANY_CD=@companyCd AND CHIT_ID=@chitId AND ISDEL='0'",
                     new { companyCd, chitId, voucherNo, ymd, total, userId });
             }
             foreach (var output in outputs)
             {
-                if (output.AMOUNT_CC < 0 || output.UNIT_PRICE_CC < 0)
+                if (output.REVENUE_AMOUNT_CC < 0 || output.REVENUE_UNIT_PRICE_CC < 0)
                     throw new ArgumentException($"Issue voucher {transferId}, output {output.OUTPUT_ID}: COGS cannot be negative.");
                 var oldDetail = existing?.DETAILS.SingleOrDefault(x => x.OUTPUT_ID == output.OUTPUT_ID);
                 var detailCd = oldDetail == null ? Common.GenerateKeyCd("D") : oldDetail.CHITDETAIL_CD;
-                var amount = Math.Round(output.AMOUNT_CC, 2, MidpointRounding.AwayFromZero);
+                var amount = Math.Round(output.REVENUE_AMOUNT_CC, 2, MidpointRounding.AwayFromZero);
+                var accounts = cogsAccounts[output.OUTPUT_ID.GetValueOrDefault()];
                 long detailId;
                 if (oldDetail == null)
                 {
@@ -131,7 +169,7 @@ namespace API_AMNOTE_WEB.Repositories
                     await session.ExecuteAsync(@"
                         INSERT INTO chitdetailinfo (COMPANY_CD,CHIT_ID,CHIT_CD,CHITDETAIL_CD,CHIT_YMD,DEBIT,CREDIT,AMOUNT,FC_TYPE,SORT,CREATE_BY,UPDATE_BY)
                         VALUES (@companyCd,@chitId,@chitCd,@detailCd,@ymd,@debit,@credit,@amount,'VND',@sort,@userId,@userId)",
-                        new { companyCd, chitId, chitCd, detailCd, ymd, amount, sort = output.SORT, userId, debit = output.COGS_DEBIT, credit = output.COGS_CREDIT });
+                        new { companyCd, chitId, chitCd, detailCd, ymd, amount, sort = output.SORT, userId, debit = accounts.Debit, credit = accounts.Credit });
                     detailId = await session.QuerySingleAsync<long>("SELECT LAST_INSERT_ID()");
                     await session.ExecuteAsync(@"
                         INSERT INTO chitdetailinfo_ext (COMPANY_CD,CHITDETAIL_ID,CHITDETAIL_CD,HASINVENTORY,INVENTORY_YMD,CREATE_BY,UPDATE_BY)
@@ -149,7 +187,7 @@ namespace API_AMNOTE_WEB.Repositories
                         WHERE COMPANY_CD=@companyCd AND CHITDETAIL_ID=@detailId AND ISDEL='0';
                         UPDATE chitdetailinfo_ext SET INVENTORY_YMD=@ymd,UPDATE_BY=@userId
                         WHERE COMPANY_CD=@companyCd AND CHITDETAIL_ID=@detailId AND ISDEL='0'",
-                        new { companyCd, detailId, ymd, amount, sort = output.SORT, userId, debit = output.COGS_DEBIT, credit = output.COGS_CREDIT });
+                        new { companyCd, detailId, ymd, amount, sort = output.SORT, userId, debit = accounts.Debit, credit = accounts.Credit });
                 }
                 await session.ExecuteAsync(@"
                     DELETE FROM chitdetaildescriptioninfo WHERE COMPANY_CD=@companyCd AND CHITDETAIL_ID=@detailId;
