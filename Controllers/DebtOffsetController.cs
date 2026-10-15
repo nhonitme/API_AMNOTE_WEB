@@ -38,19 +38,37 @@ public sealed class DebtOffsetController : BaseApiController
         string.IsNullOrEmpty(value) ||
         Regex.IsMatch(value, @"^([12]\|)?(VND|USD|EUR|JPY|KRW|CNY)$");
 
+    private static bool ValidAccountCode(string? value) =>
+        string.IsNullOrWhiteSpace(value) || Regex.IsMatch(value, @"^[0-9]{3,20}$");
+
     [HttpGet("available")]
     public async Task<IActionResult> Available(
         [FromQuery] string? kind, [FromQuery] string? fromYmd,
         [FromQuery] string? toYmd, [FromQuery] string? customerIds = "ALL",
-        [FromQuery] string? currencyFilter = "VND")
+        [FromQuery] string? currencyFilter = "VND",
+        [FromQuery] string? accCd = null, [FromQuery] string? accCd1 = null,
+        [FromQuery] string? accCd2 = null)
     {
         await EnsurePermissionAsync(MenuCode, "VIEW");
         if (!ValidKind(kind) || !ValidOptionalFromYmd(fromYmd) || !ValidYmd(toYmd) ||
             (!string.IsNullOrEmpty(fromYmd) && string.CompareOrdinal(fromYmd, toYmd) > 0) ||
-            !ValidCustomerIds(customerIds) || !ValidCurrencyFilter(currencyFilter))
+            !ValidCustomerIds(customerIds) || !ValidCurrencyFilter(currencyFilter) ||
+            !ValidAccountCode(accCd) || !ValidAccountCode(accCd1) || !ValidAccountCode(accCd2))
             return ValidationError("Invalid debt offset filters");
+
+        // Matching account determines receivable/payable direction, never a stale UI mode.
+        string selectedAccount = string.IsNullOrWhiteSpace(accCd) ? (kind == "COLLECT" ? "131" : "331") : accCd.Trim();
+        string selectedAccount1 = string.IsNullOrWhiteSpace(accCd1) ? "131" : accCd1.Trim();
+        string selectedAccount2 = string.IsNullOrWhiteSpace(accCd2) ? "331" : accCd2.Trim();
+        if (kind != "CLEARING" &&
+            (kind == "COLLECT" ? !selectedAccount.StartsWith("131") : !selectedAccount.StartsWith("331")))
+            return ValidationError("Account does not match debt direction");
+        if (kind == "CLEARING" &&
+            (!selectedAccount1.StartsWith("131") || !selectedAccount2.StartsWith("331")))
+            return ValidationError("Clearing requires receivable 131* and payable 331* accounts");
         var data = await _repo.AvailableAsync(Common.GetCompanyCode(), kind!, fromYmd ?? string.Empty, toYmd!,
-            string.IsNullOrWhiteSpace(customerIds) ? "ALL" : customerIds!, currencyFilter ?? "", Common.GetDatabaseName());
+            string.IsNullOrWhiteSpace(customerIds) ? "ALL" : customerIds!, currencyFilter ?? "",
+            selectedAccount, selectedAccount1, selectedAccount2, Common.GetDatabaseName());
         return Success(data);
     }
 
@@ -58,15 +76,19 @@ public sealed class DebtOffsetController : BaseApiController
     public async Task<IActionResult> History(
         [FromQuery] string? kind, [FromQuery] string? fromYmd,
         [FromQuery] string? toYmd, [FromQuery] string? customerIds = "ALL",
-        [FromQuery] string? currencyFilter = "VND")
+        [FromQuery] string? currencyFilter = "VND",
+        [FromQuery] string? accCd = null)
     {
         await EnsurePermissionAsync(MenuCode, "VIEW");
         if (!ValidKind(kind) || !ValidOptionalFromYmd(fromYmd) || !ValidYmd(toYmd) ||
             (!string.IsNullOrEmpty(fromYmd) && string.CompareOrdinal(fromYmd, toYmd) > 0) ||
-            !ValidCustomerIds(customerIds) || !ValidCurrencyFilter(currencyFilter))
+            !ValidCustomerIds(customerIds) || !ValidCurrencyFilter(currencyFilter) ||
+            !ValidAccountCode(accCd))
             return ValidationError("Invalid debt offset history filters");
         return Success(await _repo.HistoryAsync(Common.GetCompanyCode(), kind!, fromYmd ?? string.Empty, toYmd!,
-            string.IsNullOrWhiteSpace(customerIds) ? "ALL" : customerIds!, currencyFilter ?? "", Common.GetDatabaseName()));
+            string.IsNullOrWhiteSpace(customerIds) ? "ALL" : customerIds!, currencyFilter ?? "",
+            string.IsNullOrWhiteSpace(accCd) ? (kind == "COLLECT" ? "131" : "331") : accCd.Trim(),
+            Common.GetDatabaseName()));
     }
 
     [HttpPost("save")]
