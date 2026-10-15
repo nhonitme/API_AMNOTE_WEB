@@ -233,7 +233,7 @@ namespace API_AMNOTE_WEB.Repositories
                   AND detail.CHITDETAIL_ID = @p_CHITDETAIL_ID
                   AND IFNULL(detail.ISDEL, '0') = '0'
                   AND IFNULL(header.ISDEL, '0') = '0'
-                  AND IFNULL(header.CHIT_TYPE, '') IN ('PO', 'PD', 'PR', 'SO', 'SD', 'SR')
+                  AND IFNULL(header.CHIT_TYPE, '') IN ('PO', 'PD', 'PR', 'SO', 'SD', 'SR', 'OT')
                 LIMIT 1";
 
             var items = await _db.QueryAsync<ChitInventorySourceVoucherDto>(Net_DB.Net_DB_Company, query, new

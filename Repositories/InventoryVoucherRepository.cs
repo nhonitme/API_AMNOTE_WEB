@@ -211,8 +211,8 @@ namespace API_AMNOTE_WEB.Repositories
                             if (existingCogs == null)
                                 throw new InvalidOperationException($"Issue voucher {existingHeader.TRANSFER_ID}: linked COGS voucher was not found.");
                             EnsureCogsUnlocked(existingCogs, existingHeader.TRANSFER_ID);
-                            if (!isCogsEnabled)
-                                throw new InvalidOperationException("Remove or resolve the linked OT COGS voucher before turning off IS_COGS.");
+                            if (!isCogsEnabled && request.CLEAR_COGS_LINK != true)
+                                throw new InvalidOperationException("Confirm clearing the linked OT COGS voucher before turning off IS_COGS.");
                         }
                     }
 
@@ -253,9 +253,12 @@ namespace API_AMNOTE_WEB.Repositories
                     }
                     if (existingCogs != null)
                     {
-                        var ids = activeOutputs.Where(x => x.OUTPUT_ID > 0).Select(x => x.OUTPUT_ID!.Value).ToList();
-                        if (ids.Distinct().Count() != ids.Count || ids.Any(id => !existingCogs.DETAILS.Any(x => x.OUTPUT_ID == id)))
-                            throw new InvalidOperationException($"Issue voucher {request.CHIT_ID}: duplicate or foreign OUTPUT_ID.");
+                        if (existingCogs.DETAILS.Any(x => x.OUTPUT_ID > 0))
+                        {
+                            var ids = activeOutputs.Where(x => x.OUTPUT_ID > 0).Select(x => x.OUTPUT_ID!.Value).ToList();
+                            if (ids.Distinct().Count() != ids.Count || ids.Any(id => !existingCogs.DETAILS.Any(x => x.OUTPUT_ID == id)))
+                                throw new InvalidOperationException($"Issue voucher {request.CHIT_ID}: duplicate or foreign OUTPUT_ID.");
+                        }
                     }
                 }
 
@@ -397,8 +400,10 @@ namespace API_AMNOTE_WEB.Repositories
                 }
 
                 var savedCogs = isCogsEnabled
-                    ? await SaveInventoryCogsAsync(session, companyCd, userId, voucherId, voucherNo!, request.CHIT_YMD!, activeOutputs, existingCogs)
+                    ? await SaveInventoryCogsAsync(session, companyCd, userId, voucherId, voucherNo!, request.CHIT_YMD!, activeOutputs, request.COGS_AMOUNT, existingCogs)
                     : null;
+                if (!isCogsEnabled && existingCogs != null && request.CLEAR_COGS_LINK == true)
+                    await UnlinkInventoryCogsAsync(session, companyCd, userId, voucherId, existingCogs.CHIT_ID);
 
                 var newData = JsonSerializer.Serialize(new
                 {

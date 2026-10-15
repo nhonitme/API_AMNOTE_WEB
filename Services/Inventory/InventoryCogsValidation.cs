@@ -10,6 +10,14 @@ namespace API_AMNOTE_WEB.Services.Inventory
             if (header.CHIT_ID <= 0 || string.IsNullOrWhiteSpace(header.CHIT_CD) ||
                 string.IsNullOrWhiteSpace(header.CHIT_NO) || header.IS_LOCK is not ("0" or "1"))
                 throw new InvalidOperationException($"Issue voucher {transferId}: invalid COGS header.");
+            if (persistedDetailCount == 1 && header.DETAILS.Count == 1 && header.DETAILS[0].OUTPUT_ID == 0)
+            {
+                var aggregate = header.DETAILS[0];
+                if (string.IsNullOrWhiteSpace(aggregate.CHITDETAIL_CD) || aggregate.DEBIT != "632" || aggregate.CREDIT != "156" ||
+                    aggregate.AMOUNT < 0 || aggregate.AMOUNT != header.AMOUNT)
+                    throw new InvalidOperationException($"Issue voucher {transferId}: invalid aggregate COGS detail.");
+                return;
+            }
             if (header.DETAILS.Select(x => x.OUTPUT_ID).Distinct().Count() != header.DETAILS.Count ||
                 header.DETAILS.Select(x => x.CHITDETAIL_ID).Distinct().Count() != header.DETAILS.Count ||
                 outputs.Select(x => x.OUTPUT_ID).Distinct().Count() != outputs.Count)

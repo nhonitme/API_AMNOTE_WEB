@@ -106,6 +106,8 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 CHIT_YMD = headerDate,
                 CHIT_TYPE = chitType,
                 IS_COGS = request.IS_COGS == "1" ? "1" : "0",
+                COGS_AMOUNT = request.COGS_AMOUNT,
+                CLEAR_COGS_LINK = request.CLEAR_COGS_LINK,
                 AMOUNT = request.AMOUNT,
                 TOTAL_QTY = request.TOTAL_QTY,
                 REMARK = NormalizeNullableText(request.REMARK) ?? NormalizeNullableText(request.NOTE),
@@ -168,6 +170,8 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 IS_COGS = request.IS_COGS == null
                     ? (existing.IS_COGS == "1" ? "1" : "0")
                     : (request.IS_COGS == "1" ? "1" : "0"),
+                COGS_AMOUNT = request.COGS_AMOUNT,
+                CLEAR_COGS_LINK = request.CLEAR_COGS_LINK,
                 AMOUNT = request.AMOUNT,
                 TOTAL_QTY = request.TOTAL_QTY,
                 REMARK = request.REMARK == null ? NormalizeNullableText(existing.REMARK ?? existing.NOTE) : NormalizeNullableText(request.REMARK),
