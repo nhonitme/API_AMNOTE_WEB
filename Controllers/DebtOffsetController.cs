@@ -26,6 +26,10 @@ public sealed class DebtOffsetController : BaseApiController
     private static bool ValidYmd(string? ymd) =>
         DateTime.TryParseExact(ymd, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
 
+    // An empty From date means "from the beginning", as used by the optional report filter.
+    private static bool ValidOptionalFromYmd(string? ymd) =>
+        string.IsNullOrEmpty(ymd) || ValidYmd(ymd);
+
     private static bool ValidCustomerIds(string? value) =>
         string.IsNullOrWhiteSpace(value) || value == "ALL" ||
         Regex.IsMatch(value, @"^[0-9]+(,[0-9]+)*$");
@@ -41,11 +45,11 @@ public sealed class DebtOffsetController : BaseApiController
         [FromQuery] string? currencyFilter = "VND")
     {
         await EnsurePermissionAsync(MenuCode, "VIEW");
-        if (!ValidKind(kind) || !ValidYmd(fromYmd) || !ValidYmd(toYmd) ||
-            string.CompareOrdinal(fromYmd, toYmd) > 0 ||
+        if (!ValidKind(kind) || !ValidOptionalFromYmd(fromYmd) || !ValidYmd(toYmd) ||
+            (!string.IsNullOrEmpty(fromYmd) && string.CompareOrdinal(fromYmd, toYmd) > 0) ||
             !ValidCustomerIds(customerIds) || !ValidCurrencyFilter(currencyFilter))
             return ValidationError("Invalid debt offset filters");
-        var data = await _repo.AvailableAsync(Common.GetCompanyCode(), kind!, fromYmd!, toYmd!,
+        var data = await _repo.AvailableAsync(Common.GetCompanyCode(), kind!, fromYmd ?? string.Empty, toYmd!,
             string.IsNullOrWhiteSpace(customerIds) ? "ALL" : customerIds!, currencyFilter ?? "", Common.GetDatabaseName());
         return Success(data);
     }
@@ -57,11 +61,11 @@ public sealed class DebtOffsetController : BaseApiController
         [FromQuery] string? currencyFilter = "VND")
     {
         await EnsurePermissionAsync(MenuCode, "VIEW");
-        if (!ValidKind(kind) || !ValidYmd(fromYmd) || !ValidYmd(toYmd) ||
-            string.CompareOrdinal(fromYmd, toYmd) > 0 ||
+        if (!ValidKind(kind) || !ValidOptionalFromYmd(fromYmd) || !ValidYmd(toYmd) ||
+            (!string.IsNullOrEmpty(fromYmd) && string.CompareOrdinal(fromYmd, toYmd) > 0) ||
             !ValidCustomerIds(customerIds) || !ValidCurrencyFilter(currencyFilter))
             return ValidationError("Invalid debt offset history filters");
-        return Success(await _repo.HistoryAsync(Common.GetCompanyCode(), kind!, fromYmd!, toYmd!,
+        return Success(await _repo.HistoryAsync(Common.GetCompanyCode(), kind!, fromYmd ?? string.Empty, toYmd!,
             string.IsNullOrWhiteSpace(customerIds) ? "ALL" : customerIds!, currencyFilter ?? "", Common.GetDatabaseName()));
     }
 
