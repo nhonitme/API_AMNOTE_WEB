@@ -15,7 +15,8 @@ public sealed class DebtOffsetRepository
 
     public async Task<DebtOffsetAvailable> AvailableAsync(
         string companyCd, string kind, string fromYmd, string toYmd,
-        string customerIds, string currencyFilter, string? databaseName)
+        string customerIds, string currencyFilter, string accountCd, string accountCd1,
+        string accountCd2, string? databaseName)
     {
         string query = kind == "CLEARING"
             ? "CALL sp_chit_clearing_get(@p_COMPANY_CD,@p_DEBT_TYPE,@p_FROM_YMD,@p_TO_YMD,@p_CUSTOMER_IDS,@p_FC_TYPE,@p_ACC_CD_1,@p_ACC_CD_2)"
@@ -29,16 +30,16 @@ public sealed class DebtOffsetRepository
                 p_TO_YMD = toYmd,
                 p_CUSTOMER_IDS = customerIds,
                 p_FC_TYPE = currencyFilter,
-                p_ACC_CD = kind == "COLLECT" ? "131" : "331",
-                p_ACC_CD_1 = "131",
-                p_ACC_CD_2 = "331"
+                p_ACC_CD = accountCd,
+                p_ACC_CD_1 = accountCd1,
+                p_ACC_CD_2 = accountCd2
             }, databaseName);
         return new DebtOffsetAvailable { SOURCES = sources.ToList(), DEBTS = debts.ToList() };
     }
 
     public async Task<IReadOnlyList<DebtOffsetHistory>> HistoryAsync(
         string companyCd, string kind, string fromYmd, string toYmd,
-        string customerIds, string currencyFilter, string? databaseName)
+        string customerIds, string currencyFilter, string accountCd, string? databaseName)
     {
         string query = kind == "CLEARING"
             ? "CALL sp_chit_clearing_debt_get(@p_COMPANY_CD,@p_DEBT_TYPE,@p_FROM_YMD,@p_TO_YMD,@p_CUSTOMER_IDS,@p_FC_TYPE)"
@@ -51,7 +52,7 @@ public sealed class DebtOffsetRepository
             p_TO_YMD = toYmd,
             p_CUSTOMER_IDS = customerIds,
             p_FC_TYPE = currencyFilter,
-            p_ACC_CD = kind == "COLLECT" ? "131" : "331"
+            p_ACC_CD = accountCd
         }, databaseName);
         return rows.ToList();
     }
