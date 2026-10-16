@@ -1,0 +1,1 @@
+function n(t){const r=String(t??"").trim().toUpperCase();if(!r)return"";const e=r.replace(/\D/g,"");return e.length===13?`${e.slice(0,10)}-${e.slice(10)}`:e.length===10?e:r.replace(/[\s.]+/g,"").replace(/-+/g,"-")}export{n};
