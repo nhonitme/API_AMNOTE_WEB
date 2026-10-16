@@ -40,6 +40,7 @@ public sealed class DebtOffsetHistory
     public string? CHIT_YMD_PAY { get; set; }
     public string? CHIT_YMD_DEBT { get; set; }
     public string? DESCRIPTION_VIET_PAY { get; set; }
+    public string? DESCRIPTION_VIET_DEBT { get; set; }
     public decimal PAYAMOUNT { get; set; }
     public decimal PAYAMOUNT_FC { get; set; }
 }
