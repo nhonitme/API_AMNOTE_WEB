@@ -3,6 +3,7 @@ namespace API_AMNOTE_WEB.Models;
 public sealed class DebtOffsetVoucher
 {
     public long CUSTOMER_ID { get; set; }
+    public string? CUSTOMER_CD { get; set; }
     public string? CUSTOMER_NM_VIET { get; set; }
     public string? CUSTOMER_NM_ENG { get; set; }
     public long PAY_ID { get; set; }
@@ -28,6 +29,7 @@ public sealed class DebtOffsetAvailable
 public sealed class DebtOffsetHistory
 {
     public long CUSTOMER_ID { get; set; }
+    public string? CUSTOMER_CD { get; set; }
     public string? CUSTOMER_NM_VIET { get; set; }
     public long CHITPAYMENT_ID { get; set; }
     public long CHITCOLLECT_ID { get; set; }
@@ -37,6 +39,7 @@ public sealed class DebtOffsetHistory
     public string? CHIT_NO_DEBT { get; set; }
     public string? CHIT_YMD_PAY { get; set; }
     public string? CHIT_YMD_DEBT { get; set; }
+    public string? DESCRIPTION_VIET_PAY { get; set; }
     public decimal PAYAMOUNT { get; set; }
     public decimal PAYAMOUNT_FC { get; set; }
 }
