@@ -2,6 +2,7 @@
 -- Execute in EACH company database (for example am_web_001).
 -- No BOM version; no price or wastage. COMPANY_CD is always validated.
 -- Existing table is preserved by CREATE TABLE IF NOT EXISTS.
+-- Naming: sp_{table_or_module}_{action}, parameters p_{DB_COLUMN}.
 
 CREATE TABLE IF NOT EXISTS product_material_info (
   MATERIAL_ID BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT 'ID dòng liên kết',
@@ -20,14 +21,20 @@ CREATE TABLE IF NOT EXISTS product_material_info (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
   COMMENT='Danh sách nguyên vật liệu cấu thành sản phẩm';
 
+-- Remove old non-standard names, if an earlier script was installed.
 DROP PROCEDURE IF EXISTS getProductMaterialInfo;
 DROP PROCEDURE IF EXISTS getProductMaterialSummary;
 DROP PROCEDURE IF EXISTS setProductMaterialInfo;
 DROP PROCEDURE IF EXISTS delProductMaterialInfo;
 
+DROP PROCEDURE IF EXISTS sp_product_material_info_get;
+DROP PROCEDURE IF EXISTS sp_product_material_summary_get;
+DROP PROCEDURE IF EXISTS sp_product_material_info_upsert;
+DROP PROCEDURE IF EXISTS sp_product_material_info_delete;
+
 DELIMITER $$
 
-CREATE PROCEDURE getProductMaterialInfo(
+CREATE PROCEDURE sp_product_material_info_get(
   IN p_COMPANY_CD VARCHAR(20),
   IN p_PRODUCT_ID BIGINT
 )
@@ -60,7 +67,7 @@ BEGIN
   ORDER BY p.PRODUCT_CD, m.MATERIAL_ID;
 END$$
 
-CREATE PROCEDURE getProductMaterialSummary(
+CREATE PROCEDURE sp_product_material_summary_get(
   IN p_COMPANY_CD VARCHAR(20)
 )
 BEGIN
@@ -75,13 +82,14 @@ BEGIN
   GROUP BY m.PRODUCT_ID;
 END$$
 
-CREATE PROCEDURE setProductMaterialInfo(
+CREATE PROCEDURE sp_product_material_info_upsert(
   IN p_MATERIAL_ID BIGINT,
   IN p_COMPANY_CD VARCHAR(20),
   IN p_PRODUCT_ID BIGINT,
   IN p_MATERIAL_PRODUCT_ID BIGINT,
   IN p_QUANTITY DECIMAL(18,6),
-  IN p_USERID VARCHAR(20)
+  IN p_CREATE_BY VARCHAR(20),
+  IN p_UPDATE_BY VARCHAR(20)
 )
 BEGIN
   DECLARE v_MATERIAL_ID BIGINT DEFAULT 0;
@@ -136,7 +144,7 @@ BEGIN
       ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
     ) VALUES (
       p_COMPANY_CD, p_PRODUCT_ID, p_MATERIAL_PRODUCT_ID, p_QUANTITY,
-      '0', p_USERID, NOW(), p_USERID, NOW()
+      '0', p_CREATE_BY, NOW(), p_UPDATE_BY, NOW()
     );
     SET v_MATERIAL_ID = LAST_INSERT_ID();
   ELSE
@@ -151,7 +159,7 @@ BEGIN
     UPDATE product_material_info
     SET MATERIAL_PRODUCT_ID = p_MATERIAL_PRODUCT_ID,
         QUANTITY = p_QUANTITY,
-        UPDATE_BY = p_USERID,
+        UPDATE_BY = p_UPDATE_BY,
         UPDATE_AT = NOW()
     WHERE MATERIAL_ID = p_MATERIAL_ID AND COMPANY_CD = p_COMPANY_CD
       AND PRODUCT_ID = p_PRODUCT_ID AND IFNULL(ISDEL,'0') = '0';
@@ -161,14 +169,14 @@ BEGIN
   SELECT v_MATERIAL_ID AS MATERIAL_ID;
 END$$
 
-CREATE PROCEDURE delProductMaterialInfo(
+CREATE PROCEDURE sp_product_material_info_delete(
   IN p_COMPANY_CD VARCHAR(20),
   IN p_MATERIAL_ID BIGINT,
-  IN p_USERID VARCHAR(20)
+  IN p_UPDATE_BY VARCHAR(20)
 )
 BEGIN
   UPDATE product_material_info
-     SET ISDEL = '1', UPDATE_BY = p_USERID, UPDATE_AT = NOW()
+     SET ISDEL = '1', UPDATE_BY = p_UPDATE_BY, UPDATE_AT = NOW()
    WHERE COMPANY_CD = p_COMPANY_CD
      AND MATERIAL_ID = p_MATERIAL_ID
      AND IFNULL(ISDEL,'0') = '0';
@@ -181,7 +189,7 @@ END$$
 DELIMITER ;
 
 -- Example (replace with your company and product ID):
--- CALL getProductMaterialSummary('0001');
--- CALL getProductMaterialInfo('0001', 101);
--- CALL setProductMaterialInfo(0, '0001', 101, 202, 2.500000, 'admin');
--- CALL delProductMaterialInfo('0001', 1, 'admin');
+-- CALL sp_product_material_summary_get('0001');
+-- CALL sp_product_material_info_get('0001', 101);
+-- CALL sp_product_material_info_upsert(0, '0001', 101, 202, 2.500000, 'admin');
+-- CALL sp_product_material_info_delete('0001', 1, 'admin');
