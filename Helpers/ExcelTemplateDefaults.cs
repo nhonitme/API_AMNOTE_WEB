@@ -26,6 +26,12 @@ namespace API_AMNOTE_WEB.Helpers
                     Col("MATERIAL_PRODUCT_CD", required: true, label: "Mã NVL"),
                     Col("QUANTITY", required: true, label: "Số lượng định mức"),
                 ],
+                "ProductMaterialInfoAll" =>
+                [
+                    Col("PRODUCT_CD", required: true, label: "Mã thành phẩm"),
+                    Col("MATERIAL_PRODUCT_CD", required: true, label: "Mã NVL"),
+                    Col("QUANTITY", required: true, label: "Số lượng định mức"),
+                ],
                 "InventoryOpening" =>
                 [
                     Col("PRODUCT_CD", required: true),
