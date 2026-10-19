@@ -34,9 +34,13 @@ public sealed class DebtOffsetController : BaseApiController
         string.IsNullOrWhiteSpace(value) || value == "ALL" ||
         Regex.IsMatch(value, @"^[0-9]+(,[0-9]+)*$");
 
+    // Optional 1| or 2| keeps the existing foreign-currency filter mode. Any currency code is allowed.
+    private static bool ValidCurrencyCode(string? value) =>
+        !string.IsNullOrEmpty(value) && Regex.IsMatch(value, @"^[A-Za-z0-9]{1,20}$");
+
     private static bool ValidCurrencyFilter(string? value) =>
         string.IsNullOrEmpty(value) ||
-        Regex.IsMatch(value, @"^([12]\|)?(VND|USD|EUR|JPY|KRW|CNY)$");
+        Regex.IsMatch(value, @"^([12]\|)?[A-Za-z0-9]{1,20}$");
 
     private static bool ValidAccountCode(string? value) =>
         string.IsNullOrWhiteSpace(value) || Regex.IsMatch(value, @"^[0-9]{3,20}$");
@@ -98,7 +102,7 @@ public sealed class DebtOffsetController : BaseApiController
         if (request == null || !ValidKind(request.Kind) || request.CustomerId <= 0 ||
             request.Amount < 0 || request.AmountFc < 0 ||
             (request.Amount == 0 && request.AmountFc == 0) ||
-            !Regex.IsMatch(request.Currency ?? "", @"^(VND|USD|EUR|JPY|KRW|CNY)$"))
+            !ValidCurrencyCode(request.Currency))
             return ValidationError("Invalid debt offset data");
 
         bool validSource = request.SourceChitId > 0 ||
