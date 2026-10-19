@@ -81,11 +81,8 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                     validateResults.Add(Error(rowNo, $"NVL {code} đã khai báo cho thành phẩm."));
                 }
 
-                var rawQuantity = Common.GetString(row, "QUANTITY")?.Trim();
-                var qtyValid = decimal.TryParse(rawQuantity, NumberStyles.Number, CultureInfo.InvariantCulture, out var quantity)
-                    || decimal.TryParse(rawQuantity, NumberStyles.Number, CultureInfo.GetCultureInfo("vi-VN"), out quantity);
-                if (!qtyValid || quantity <= 0m || quantity > 999999999999.999999m ||
-                    decimal.Round(quantity, 6) != quantity)
+                if (!TryGetQuantity(row, out var quantity) || quantity <= 0m ||
+                    quantity > 999999999999.999999m || decimal.Round(quantity, 6) != quantity)
                 {
                     validateResults.Add(Error(rowNo, "QUANTITY phải > 0, tối đa 6 chữ số thập phân."));
                 }
@@ -117,7 +114,10 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                 if (!productIds.TryGetValue(code, out var materialId))
                     throw new InvalidOperationException($"Dòng {rowNo}: mã NVL không tồn tại.");
 
-                var quantity = Common.GetDecimal(row, "QUANTITY");
+                if (!TryGetQuantity(row, out var quantity) || quantity <= 0m ||
+                    quantity > 999999999999.999999m || decimal.Round(quantity, 6) != quantity)
+                    throw new InvalidOperationException($"Dòng {rowNo}: số lượng định mức không hợp lệ.");
+
                 try
                 {
                     await session.QuerySingleAsync<long>(
@@ -152,6 +152,21 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             cancellationToken.ThrowIfCancellationRequested();
             session.Commit();
             await progressWriter.ReportPercentAsync(100, $"Đã nhập {rows.Count} nguyên vật liệu.", cancellationToken);
+        }
+
+        private static bool TryGetQuantity(IReadOnlyDictionary<string, object> row, out decimal quantity)
+        {
+            quantity = 0m;
+            if (!row.TryGetValue("QUANTITY", out var value) || value == null)
+                return false;
+
+            // Template cells are numeric, but users can paste "2.5" or "2,5".
+            // Do not allow a thousands separator: it could turn 2,5 into 25.
+            var raw = Convert.ToString(value, CultureInfo.InvariantCulture)?.Trim().Replace(',', '.');
+            return !string.IsNullOrEmpty(raw)
+                && decimal.TryParse(
+                    raw, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign,
+                    CultureInfo.InvariantCulture, out quantity);
         }
 
         private static bool TryGetProductId(ExcelImportJobRequest request, out long productId)
