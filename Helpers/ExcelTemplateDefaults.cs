@@ -21,6 +21,11 @@ namespace API_AMNOTE_WEB.Helpers
                 "OpeningBalanceBank" => WithEntityCode("BANK_CD", SharedAmountColumns()),
                 "OpeningBalanceCustomer" => WithEntityCode("CUSTOMER_CD", SharedAmountColumns()),
                 "OpeningBalanceCostObject" => WithEntityCode("DEPARTMENT_CD", SharedAmountColumns()),
+                "ProductMaterialInfo" =>
+                [
+                    Col("MATERIAL_PRODUCT_CD", required: true),
+                    Col("QUANTITY", required: true),
+                ],
                 "InventoryOpening" =>
                 [
                     Col("PRODUCT_CD", required: true),
