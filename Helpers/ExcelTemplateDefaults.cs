@@ -23,8 +23,8 @@ namespace API_AMNOTE_WEB.Helpers
                 "OpeningBalanceCostObject" => WithEntityCode("DEPARTMENT_CD", SharedAmountColumns()),
                 "ProductMaterialInfo" =>
                 [
-                    Col("MATERIAL_PRODUCT_CD", required: true),
-                    Col("QUANTITY", required: true),
+                    Col("MATERIAL_PRODUCT_CD", required: true, label: "Mã NVL"),
+                    Col("QUANTITY", required: true, label: "Số lượng định mức"),
                 ],
                 "InventoryOpening" =>
                 [
@@ -86,10 +86,12 @@ namespace API_AMNOTE_WEB.Helpers
             return columns;
         }
 
-        private static ExcelTemplateColumnInfo Col(string key, bool required = false)
+        private static ExcelTemplateColumnInfo Col(string key, bool required = false, string? label = null)
             => new()
             {
                 FIELD_NAME = key,
+                LABEL_TEXT = label,
+                CAPTION = label,
                 IS_REQUIRED = required ? "1" : "0",
                 IS_PRIMARY_KEY = "0",
                 TABLE_NM = string.Empty,
