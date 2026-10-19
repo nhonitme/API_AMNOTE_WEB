@@ -191,5 +191,5 @@ DELIMITER ;
 -- Example (replace with your company and product ID):
 -- CALL sp_product_material_summary_get('0001');
 -- CALL sp_product_material_info_get('0001', 101);
--- CALL sp_product_material_info_upsert(0, '0001', 101, 202, 2.500000, 'admin');
+-- CALL sp_product_material_info_upsert(0, '0001', 101, 202, 2.500000, 'admin', 'admin');
 -- CALL sp_product_material_info_delete('0001', 1, 'admin');
