@@ -223,6 +223,7 @@ builder.Services.AddScoped<IExcelImportModuleHandler, StoreKindInfoImportHandler
 builder.Services.AddScoped<IExcelImportModuleHandler, StoreInfoImportHandler>();
 builder.Services.AddScoped<IExcelImportModuleHandler, DepartmentInfoImportHandler>();
 builder.Services.AddScoped<IExcelImportModuleHandler, ProductInfoImportHandler>();
+builder.Services.AddScoped<IExcelImportModuleHandler, ProductMaterialInfoImportHandler>();
 builder.Services.AddScoped<IExcelImportModuleHandler, ProductKindImportHandler>();
 builder.Services.AddScoped<IExcelImportModuleHandler, ProductUnitImportHandler>();
 builder.Services.AddScoped<IExcelImportModuleHandler, ChitInfoImportHandler>();
