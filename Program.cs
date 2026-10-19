@@ -248,6 +248,7 @@ builder.Services.AddScoped<IServiceAllocationCheckRepository, ServiceAllocationC
 builder.Services.AddScoped<DebtOffsetRepository>();
 
 builder.Services.AddScoped<IProductInfoRepository, ProductInfoRepository>();
+builder.Services.AddScoped<ProductMaterialInfoRepository>();
 builder.Services.AddScoped<IProductKindRepository, ProductKindRepository>();
 builder.Services.AddScoped<IProductUnitRepository, ProductUnitRepository>();
 
