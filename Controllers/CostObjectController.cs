@@ -17,7 +17,7 @@ namespace API_AMNOTE_WEB.Controllers
     {
         private const string InventoryMenuCode = "MD_INVENTORY";
         // DepartmentInfoController hiện đang bảo vệ thao tác bằng mã này.
-        private const string DepartmentPermissionCode = "MD_DEPARTMENT";
+        private const string DepartmentPermissionCode = "MD_COST_CENTER";
         private const string DefaultFinishedGoodsAccountPrefix = "155";
 
         private readonly IProductInfoService _products;
