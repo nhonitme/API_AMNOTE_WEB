@@ -44,6 +44,8 @@ Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 var builder = WebApplication.CreateBuilder(args);
 
+
+
 EInvoiceFtpClient.Configure(builder.Configuration);
 
 
@@ -430,10 +432,18 @@ builder.Services
       options.Cookie.Path = "/";
       options.Cookie.SameSite = SameSiteMode.None;
       options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-      options.SlidingExpiration = true;
+      options.SlidingExpiration = false;
       options.ExpireTimeSpan = TimeSpan.FromMinutes(sessionCookieMinutes);
       options.Events = new CookieAuthenticationEvents
       {
+          OnValidatePrincipal = async context =>
+          {
+              if (!API_AMNOTE_WEB.Helpers.DailySession.IsValid(context.Principal))
+              {
+                  context.RejectPrincipal();
+                  await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.SignOutAsync(context.HttpContext, "BffSession", null);
+              }
+          },
           OnRedirectToLogin = context =>
           {
               context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -448,6 +458,15 @@ builder.Services
   })
   .AddJwtBearer(options =>
   {
+      options.Events = new JwtBearerEvents
+      {
+          OnTokenValidated = context =>
+          {
+              if (!API_AMNOTE_WEB.Helpers.DailySession.IsValid(context.Principal))
+                  context.Fail("SESSION_EXPIRED");
+              return Task.CompletedTask;
+          }
+      };
       options.TokenValidationParameters = new TokenValidationParameters
       {
           ValidateIssuer = true,

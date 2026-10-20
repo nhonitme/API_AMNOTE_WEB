@@ -8,6 +8,7 @@ namespace API_AMNOTE_WEB.Services
 {
     public class RefreshTokenSession
     {
+        public DateTimeOffset ExpiresAtUtc { get; set; }
         public long UserPkId { get; set; }
         public string UserId { get; set; } = "";
         public string Username { get; set; } = "";
@@ -56,13 +57,14 @@ namespace API_AMNOTE_WEB.Services
                     p_DB_NAME = dbName,
                     p_ROLES_JSON = rolesJson,
                     p_REFRESH_TOKEN_HASH = hash,
-                    p_CREATE_AT = DateTime.Now,
+                    p_CREATE_AT = DateTime.UtcNow,
                     p_EXPIRES_AT = expiresAtUtc
                 });
         }
 
         public async Task<RefreshTokenSession?> ValidateAsync(string refreshRaw)
         {
+            if (!refreshRaw.StartsWith(DailySession.RefreshPrefix, StringComparison.Ordinal)) return null;
             var hash = TokenService.Sha256Hex(refreshRaw);
 
             var rows = await _db.QueryAsync<dynamic>(
@@ -74,7 +76,8 @@ namespace API_AMNOTE_WEB.Services
             if (row == null) return null;
             if (row.REVOKED_AT != null) return null;
             if (row.REPLACED_BY_HASH != null) return null;
-            if (((DateTime)row.EXPIRES_AT) <= DateTime.Now) return null;
+            var deadline = new DateTimeOffset(DateTime.SpecifyKind((DateTime)row.EXPIRES_AT, DateTimeKind.Utc));
+            if (deadline <= DateTimeOffset.UtcNow || deadline > DailySession.NextMidnight(DateTimeOffset.UtcNow)) return null;
 
             var roles = Array.Empty<string>();
             try
@@ -115,6 +118,7 @@ namespace API_AMNOTE_WEB.Services
 
             return new RefreshTokenSession
             {
+                ExpiresAtUtc = deadline,
                 UserPkId = userPkId,
                 UserId = userId,
                 Username = username,
@@ -122,21 +126,22 @@ namespace API_AMNOTE_WEB.Services
             };
         }
 
-        public async Task RotateAsync(string oldRefreshRaw, string newRefreshRaw, DateTime newExpiresUtc)
+        public async Task<bool> RotateAsync(string oldRefreshRaw, string newRefreshRaw, DateTime newExpiresUtc)
         {
             var oldHash = TokenService.Sha256Hex(oldRefreshRaw);
             var newHash = TokenService.Sha256Hex(newRefreshRaw);
 
-            await _db.ExecuteAsync(
+            var result = await _db.QueryAsync<int>(
                 Net_DB.Net_DB_Manager,
                 "CALL rotate_refresh_token_session(@p_OLD_REFRESH_TOKEN_HASH, @p_NEW_REFRESH_TOKEN_HASH, @p_CREATE_AT, @p_EXPIRES_AT)",
                 new
                 {
                     p_OLD_REFRESH_TOKEN_HASH = oldHash,
                     p_NEW_REFRESH_TOKEN_HASH = newHash,
-                    p_CREATE_AT = DateTime.Now,
+                    p_CREATE_AT = DateTime.UtcNow,
                     p_EXPIRES_AT = newExpiresUtc
                 });
+            return result.FirstOrDefault() == 1;
         }
 
         public async Task RevokeAsync(string refreshRaw)
@@ -145,7 +150,7 @@ namespace API_AMNOTE_WEB.Services
             await _db.ExecuteAsync(
                 Net_DB.Net_DB_Manager,
                 "CALL revoke_refresh_token_session(@p_REFRESH_TOKEN_HASH, @p_NOW)",
-                new { p_REFRESH_TOKEN_HASH = hash, p_NOW = DateTime.Now });
+                new { p_REFRESH_TOKEN_HASH = hash, p_NOW = DateTime.UtcNow });
         }
     }
 }

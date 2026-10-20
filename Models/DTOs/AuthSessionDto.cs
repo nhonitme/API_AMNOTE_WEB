@@ -2,6 +2,8 @@ namespace API_AMNOTE_WEB.Models.DTOs
 {
     public class AuthSessionDto
     {
+        public DateTimeOffset? SessionExpiresAtUtc { get; set; }
+        public DateTimeOffset ServerNowUtc { get; set; } = DateTimeOffset.UtcNow;
         public bool IsAuthenticated { get; set; }
         public string DefaultCompanyCd { get; set; } = string.Empty;
         public long UserPkId { get; set; }

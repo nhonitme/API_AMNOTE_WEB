@@ -18,7 +18,7 @@ namespace API_AMNOTE_WEB.Services
         }
 
         public int AccessMinutes => int.Parse(_config["Jwt:AccessTokenMinutes"] ?? "30");
-        public int RefreshDays => int.Parse(_config["Jwt:RefreshTokenDays"] ?? "14");
+        public int SessionMinutes => int.Parse(_config["Auth:SessionCookieMinutes"] ?? _config["Jwt:AccessTokenMinutes"] ?? "30");
 
         public IReadOnlyCollection<Claim> CreateClaims(long userPkId, string userId, string username, string lang, string[] roles)
         {
@@ -46,7 +46,7 @@ namespace API_AMNOTE_WEB.Services
             return claims;
         }
 
-        public ClaimsPrincipal CreatePrincipal(long userPkId, string userId, string username, string lang, string[] roles)
+        public ClaimsPrincipal CreatePrincipal(long userPkId, string userId, string username, string lang, string[] roles, DateTimeOffset deadline)
         {
             var identity = new ClaimsIdentity(
                 CreateClaims(userPkId, userId, username, lang, roles),
@@ -54,6 +54,7 @@ namespace API_AMNOTE_WEB.Services
                 ClaimTypes.Name,
                 ClaimTypes.Role);
 
+            identity.AddClaim(new Claim(DailySession.DeadlineClaim, deadline.ToString("O")));
             return new ClaimsPrincipal(identity);
         }
 
@@ -64,7 +65,10 @@ namespace API_AMNOTE_WEB.Services
             var audience = jwt["Audience"];
             var secret = jwt["Secret"]!;
 
+            var now = DateTimeOffset.UtcNow;
+            var deadline = DailySession.NextMidnight(now);
             var claims = CreateClaims(userPkId, userId, username, lang, roles).ToList();
+            claims.Add(new Claim(DailySession.DeadlineClaim, deadline.ToString("O")));
             claims.Add(new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()));
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -73,8 +77,8 @@ namespace API_AMNOTE_WEB.Services
                 issuer: issuer,
                 audience: audience,
                 claims: claims,
-                notBefore: DateTime.Now,
-                expires: DateTime.Now.AddMinutes(AccessMinutes),
+                notBefore: now.UtcDateTime,
+                expires: (now.AddMinutes(AccessMinutes) < deadline ? now.AddMinutes(AccessMinutes) : deadline).UtcDateTime,
                 signingCredentials: creds);
 
             return new JwtSecurityTokenHandler().WriteToken(token);
@@ -83,7 +87,7 @@ namespace API_AMNOTE_WEB.Services
         public string CreateRefreshToken()
         {
             var bytes = RandomNumberGenerator.GetBytes(64);
-            return Convert.ToBase64String(bytes);
+            return DailySession.RefreshPrefix + Convert.ToBase64String(bytes);
         }
 
         public static string Sha256Hex(string raw)

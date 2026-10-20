@@ -97,6 +97,7 @@ namespace API_AMNOTE_WEB.Controllers
             var userNm = string.IsNullOrWhiteSpace(currentLogin.USERNM) ? userId : currentLogin.USERNM.Trim();
             var roles = BuildRoles(companies);
             var lang = Common.NormalizeLanguageCode(req.Lang);
+            var deadline = DailySession.NextMidnight(DateTimeOffset.UtcNow);
             var refreshToken = _tokenService.CreateRefreshToken();
             var defaultCompanyCd = ResolveDefaultCompanyCd(companies, loginCompanyCd);
 
@@ -106,14 +107,14 @@ namespace API_AMNOTE_WEB.Controllers
                 userNm,
                 roles,
                 refreshToken,
-                DateTime.Now.AddDays(_tokenService.RefreshDays),
+                deadline.UtcDateTime,
                 defaultCompanyCd);
 
-            var principal = _tokenService.CreatePrincipal(currentLogin.USER_PK_ID, userId, userNm, lang, roles);
-            await HttpContext.SignInAsync(BffSessionScheme, principal, BuildAuthProperties());
+            var principal = _tokenService.CreatePrincipal(currentLogin.USER_PK_ID, userId, userNm, lang, roles, deadline);
+            await HttpContext.SignInAsync(BffSessionScheme, principal, BuildAuthProperties(deadline));
 
-            SetRefreshCookie(refreshToken, _tokenService.RefreshDays);
-            SetLanguageCookie(lang, _tokenService.RefreshDays);
+            SetRefreshCookie(refreshToken, deadline);
+            SetLanguageCookie(lang, deadline);
 
             return Success(BuildSessionDto(principal, companies, loginCompanyCd));
         }
@@ -124,13 +125,13 @@ namespace API_AMNOTE_WEB.Controllers
             var oldRefresh = Request.Cookies[RefreshCookieName];
             if (string.IsNullOrWhiteSpace(oldRefresh))
             {
-                return Unauthorized("Refresh token is missing");
+                return await ExpiredSession();
             }
 
             var session = await _store.ValidateAsync(oldRefresh);
             if (session == null)
             {
-                return Unauthorized("Refresh token is invalid");
+                return await ExpiredSession();
             }
 
             if (session.UserPkId <= 0)
@@ -138,16 +139,18 @@ namespace API_AMNOTE_WEB.Controllers
                 return Unauthorized("Refresh token is missing user identity");
             }
 
+            var deadline = session.ExpiresAtUtc;
             var lang = Common.NormalizeLanguageCode(Request.Cookies[LanguageCookieName]);
             var newRefresh = _tokenService.CreateRefreshToken();
 
-            await _store.RotateAsync(oldRefresh, newRefresh, DateTime.Now.AddDays(_tokenService.RefreshDays));
+            if (!await _store.RotateAsync(oldRefresh, newRefresh, deadline.UtcDateTime))
+                return await ExpiredSession();
 
-            var principal = _tokenService.CreatePrincipal(session.UserPkId, session.UserId, session.Username, lang, session.Roles);
-            await HttpContext.SignInAsync(BffSessionScheme, principal, BuildAuthProperties());
+            var principal = _tokenService.CreatePrincipal(session.UserPkId, session.UserId, session.Username, lang, session.Roles, deadline);
+            await HttpContext.SignInAsync(BffSessionScheme, principal, BuildAuthProperties(deadline));
 
-            SetRefreshCookie(newRefresh, _tokenService.RefreshDays);
-            SetLanguageCookie(lang, _tokenService.RefreshDays);
+            SetRefreshCookie(newRefresh, deadline);
+            SetLanguageCookie(lang, deadline);
 
             return Success(await BuildSessionDtoAsync(principal));
         }
@@ -173,55 +176,64 @@ namespace API_AMNOTE_WEB.Controllers
             }
 
             await HttpContext.SignOutAsync(BffSessionScheme);
-            Response.Cookies.Delete(RefreshCookieName, BuildRefreshCookieOptions(0));
-            Response.Cookies.Delete(LanguageCookieName, BuildLanguageCookieOptions(0));
+            Response.Cookies.Delete(RefreshCookieName, BuildRefreshCookieOptions(DateTimeOffset.UnixEpoch));
+            Response.Cookies.Delete(LanguageCookieName, BuildLanguageCookieOptions(DateTimeOffset.UnixEpoch));
 
             return Success(new AuthSessionDto { IsAuthenticated = false });
         }
 
-        private AuthenticationProperties BuildAuthProperties()
+        private async Task<IActionResult> ExpiredSession()
         {
+            await HttpContext.SignOutAsync(BffSessionScheme);
+            Response.Cookies.Delete(RefreshCookieName, BuildRefreshCookieOptions(DateTimeOffset.UnixEpoch));
+            return Unauthorized(new { Code = "SESSION_EXPIRED", Message = "Session expired. Please sign in again." });
+        }
+
+        private AuthenticationProperties BuildAuthProperties(DateTimeOffset deadline)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var accessExpires = now.AddMinutes(_tokenService.SessionMinutes);
             return new AuthenticationProperties
             {
-                AllowRefresh = true,
+                AllowRefresh = false,
                 IsPersistent = true,
-                IssuedUtc = DateTimeOffset.UtcNow,
-                ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(_tokenService.AccessMinutes)
+                IssuedUtc = now,
+                ExpiresUtc = accessExpires < deadline ? accessExpires : deadline
             };
         }
 
-        private static CookieOptions BuildRefreshCookieOptions(int days)
+        private static CookieOptions BuildRefreshCookieOptions(DateTimeOffset deadline)
         {
             return new CookieOptions
             {
                 HttpOnly = true,
                 Secure = true,
                 SameSite = SameSiteMode.None,
-                Expires = DateTimeOffset.UtcNow.AddDays(days),
+                Expires = deadline,
                 Path = "/api/auth"
             };
         }
 
-        private static CookieOptions BuildLanguageCookieOptions(int days)
+        private static CookieOptions BuildLanguageCookieOptions(DateTimeOffset deadline)
         {
             return new CookieOptions
             {
                 HttpOnly = true,
                 Secure = true,
                 SameSite = SameSiteMode.None,
-                Expires = DateTimeOffset.UtcNow.AddDays(days),
+                Expires = deadline,
                 Path = "/"
             };
         }
 
-        private void SetRefreshCookie(string token, int days)
+        private void SetRefreshCookie(string token, DateTimeOffset deadline)
         {
-            Response.Cookies.Append(RefreshCookieName, token, BuildRefreshCookieOptions(days));
+            Response.Cookies.Append(RefreshCookieName, token, BuildRefreshCookieOptions(deadline));
         }
 
-        private void SetLanguageCookie(string lang, int days)
+        private void SetLanguageCookie(string lang, DateTimeOffset deadline)
         {
-            Response.Cookies.Append(LanguageCookieName, lang, BuildLanguageCookieOptions(days));
+            Response.Cookies.Append(LanguageCookieName, lang, BuildLanguageCookieOptions(deadline));
         }
 
         private async Task<AuthSessionDto> BuildSessionDtoAsync(ClaimsPrincipal? principal)
@@ -256,6 +268,8 @@ namespace API_AMNOTE_WEB.Controllers
 
             return new AuthSessionDto
             {
+                SessionExpiresAtUtc = DailySession.Deadline(principal),
+                ServerNowUtc = DateTimeOffset.UtcNow,
                 IsAuthenticated = true,
                 DefaultCompanyCd = defaultCompanyCd,
                 UserPkId = ResolveUserPkId(principal),
