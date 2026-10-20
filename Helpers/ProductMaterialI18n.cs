@@ -8,6 +8,7 @@ namespace API_AMNOTE_WEB.Helpers
         private static readonly IReadOnlyDictionary<string, string> Fallbacks =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["PM_PRODUCT_CODE"] = "Mã thành phẩm",
                 ["PM_API_REQUEST_REQUIRED"] = "Thiếu nội dung yêu cầu.",
                 ["PM_API_PRODUCT_ID_REQUIRED"] = "PRODUCT_ID phải lớn hơn 0.",
                 ["PM_API_MATERIAL_ID_REQUIRED"] = "MATERIAL_ID phải lớn hơn 0.",
