@@ -1,4 +1,5 @@
 using API_AMNOTE_WEB.Helpers;
+using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Interfaces.Catalog;
 using API_AMNOTE_WEB.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -15,36 +16,37 @@ namespace API_AMNOTE_WEB.Controllers
     [Authorize]
     public sealed class CostObjectController : BaseApiController
     {
-        private const string InventoryMenuCode = "MD_INVENTORY";
-        // DepartmentInfoController hiện đang bảo vệ thao tác bằng mã này.
-        private const string DepartmentPermissionCode = "MD_COST_CENTER";
+        private const string CostObjectRoutePath = "/cost/cost-object";
         private const string DefaultFinishedGoodsAccountPrefix = "155";
 
         private readonly IProductInfoService _products;
         private readonly IDepartmentInfoService _departments;
+        private readonly IMenuRepository _menus;
         private readonly ILogger<CostObjectController> _logger;
 
         public CostObjectController(
             IProductInfoService products,
             IDepartmentInfoService departments,
+            IMenuRepository menus,
             ILogger<CostObjectController> logger)
         {
             _products = products;
             _departments = departments;
+            _menus = menus;
             _logger = logger;
         }
 
         [HttpGet]
         public async Task<IActionResult> GetOverview([FromQuery] string? divisionPrefix = null)
         {
-            await EnsurePermissionAsync(InventoryMenuCode, "VIEW");
-            await EnsurePermissionAsync(DepartmentPermissionCode, "VIEW");
+            var companyCd = Common.GetCompanyCode();
+            if (!await HasCostObjectPermissionAsync(companyCd, "VIEW"))
+                return Forbidden("Bạn không có quyền xem chức năng khai báo đối tượng tập hợp chi phí.");
 
             var prefix = NormalizeDivisionPrefix(divisionPrefix);
             if (prefix == null)
                 return ValidationError("Mã tài khoản thành phẩm không hợp lệ (1-20 chữ số).");
 
-            var companyCd = Common.GetCompanyCode();
             var products = (await _products.GetListAsync(companyCd))
                 .Where(p => IsFinishedGood(p, prefix))
                 .GroupBy(p => p.PRODUCT_CD.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -92,8 +94,9 @@ namespace API_AMNOTE_WEB.Controllers
         [HttpPost("sync")]
         public async Task<IActionResult> Sync([FromBody] CostObjectSyncRequest? request)
         {
-            await EnsurePermissionAsync(InventoryMenuCode, "VIEW");
-            await EnsurePermissionAsync(DepartmentPermissionCode, "ADD");
+            var companyCd = Common.GetCompanyCode();
+            if (!await HasCostObjectPermissionAsync(companyCd, "ADD"))
+                return Forbidden("Bạn không có quyền tạo đối tượng tập hợp chi phí.");
 
             if (request?.ProductIds == null || request.ProductIds.Count == 0)
                 return ValidationError("Vui lòng chọn ít nhất một thành phẩm.");
@@ -106,7 +109,6 @@ namespace API_AMNOTE_WEB.Controllers
             if (prefix == null)
                 return ValidationError("Mã tài khoản thành phẩm không hợp lệ (1-20 chữ số).");
 
-            var companyCd = Common.GetCompanyCode();
             var userId = Common.GetUserId();
             var eligibleProducts = (await _products.GetListAsync(companyCd))
                 .Where(p => IsFinishedGood(p, prefix))
@@ -203,6 +205,27 @@ namespace API_AMNOTE_WEB.Controllers
             }
 
             return Success(result);
+        }
+
+        // Menu code comes from the menu configured for this route, not from unrelated master modules.
+        // Missing permission is an authorization failure (403), not an expired login (401).
+        private async Task<bool> HasCostObjectPermissionAsync(string companyCd, string action)
+        {
+            var routeMenuCodes = (await _menus.GetMenuByCompanyAsync(companyCd))
+                .Where(menu => !menu.IS_DISABLED
+                    && string.Equals(menu.ROUTE_PATH?.Trim().TrimEnd('/'), CostObjectRoutePath, StringComparison.OrdinalIgnoreCase))
+                .Select(menu => menu.MENU_CODE?.Trim())
+                .Where(code => !string.IsNullOrWhiteSpace(code))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var menuCode in routeMenuCodes)
+            {
+                if (await Common.HasPermissionAsync(menuCode!, action))
+                    return true;
+            }
+
+            _logger.LogWarning("Permission denied for cost object action {Action}, Company {CompanyCd}", action, companyCd);
+            return false;
         }
 
         private static bool IsFinishedGood(ProductInfoDto product, string prefix)
