@@ -124,16 +124,35 @@ VALUES {string.Join(",\n", values)}";
             return await session.ExecuteAsync(sql, parameters);
         }
 
-        public Task<int> DeleteDepartmentInfoAsync(DapperSession session, string companyCd, long departmentId, string userId)
+        public async Task<int> DeleteDepartmentInfoAsync(DapperSession session, string companyCd, long departmentId, string userId)
         {
-            return session.ExecuteAsync(
+            var parameters = new
+            {
+                p_COMPANY_CD = companyCd,
+                p_DEPARTMENT_ID = departmentId,
+                p_USERID = userId
+            };
+
+            var affectedRows = await session.ExecuteAsync(
                 "CALL delDepartmentInfo(@p_COMPANY_CD, @p_DEPARTMENT_ID, @p_USERID)",
-                new
-                {
-                    p_COMPANY_CD = companyCd,
-                    p_DEPARTMENT_ID = departmentId,
-                    p_USERID = userId
-                });
+                parameters);
+
+            if (affectedRows > 0)
+                return affectedRows;
+
+            // MySQL stored procedures can report zero or -1 affected rows even when
+            // the underlying DELETE / soft-delete succeeded. Verify the row state
+            // inside the same transaction so audit logging and cache invalidation
+            // are not skipped for a successful delete.
+            var remainingActiveRows = await session.QuerySingleAsync<int>(
+                @"SELECT COUNT(*)
+                    FROM department_info
+                   WHERE COMPANY_CD = @p_COMPANY_CD
+                     AND DEPARTMENT_ID = @p_DEPARTMENT_ID
+                     AND COALESCE(ISDEL, '0') <> '1'",
+                parameters);
+
+            return remainingActiveRows == 0 ? 1 : 0;
         }
 
         public async Task<IEnumerable<DepartmentLookupItem>> GetDepartmentLookupAsync(string companyCd, string lang = "VIET")

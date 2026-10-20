@@ -162,11 +162,13 @@ namespace API_AMNOTE_WEB.Services.Catalog
                     "department_info",
                     "Delete department_info"));
 
+            // The transaction has committed. Always invalidate this company's
+            // department list, even if the stored procedure reported no affected rows.
+            await _cache.ClearAsync(CacheScope, companyCd);
+
             if (result > 0)
-            {
-                await _cache.ClearAsync(CacheScope, companyCd);
-                _logger.LogInformation("DepartmentInfo deleted: count={Count}, company={Company}", ids.Count, companyCd);
-            }
+                _logger.LogInformation("DepartmentInfo deleted: count={Count}, company={Company}", result, companyCd);
+
             return result;
         }
 
