@@ -308,7 +308,12 @@ namespace API_AMNOTE_WEB.Helpers
                     var iStart_row = 1;
                     var col = templateColumns[i];
 
-                    var col_caption = ResolveTemplateColumnCaption(col, lang);
+                    // ProductMaterial templates use t_message_info keys in every language.
+                    var isProductMaterialTemplate = string.Equals(moduleCd, "ProductMaterialInfo", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(moduleCd, "ProductMaterialInfoAll", StringComparison.OrdinalIgnoreCase);
+                    var col_caption = isProductMaterialTemplate
+                        ? await ResolveTemplateColumnCaptionAsync(col.FIELD_NAME, lang, moduleCd)
+                        : ResolveTemplateColumnCaption(col, lang);
 
                     if (string.IsNullOrWhiteSpace(col_caption)
                         || string.Equals(col_caption, col.FIELD_NAME, StringComparison.OrdinalIgnoreCase))
@@ -400,6 +405,19 @@ namespace API_AMNOTE_WEB.Helpers
             var normalizedModule = moduleCd?.Trim().ToUpperInvariant();
             var normalizedColumnKey = Common.NormalizeNullableText(columnKey) ?? string.Empty;
             var normalizedColumn = normalizedColumnKey.ToUpperInvariant();
+
+            if (normalizedModule == "PRODUCTMATERIALINFO" || normalizedModule == "PRODUCTMATERIALINFOALL")
+            {
+                var key = normalizedColumn switch
+                {
+                    "PRODUCT_CD" => "PM_PRODUCT_CODE",
+                    "MATERIAL_PRODUCT_CD" => "PM_MATERIAL_CODE",
+                    "QUANTITY" => "PM_QUANTITY",
+                    _ => normalizedColumnKey
+                };
+                var messages = await ProductMaterialI18n.LoadAsync(lang);
+                return messages.T(key);
+            }
 
             if (normalizedModule == "DEPARTMENTINFO" && normalizedColumn == "PRODUCT_CD")
             {

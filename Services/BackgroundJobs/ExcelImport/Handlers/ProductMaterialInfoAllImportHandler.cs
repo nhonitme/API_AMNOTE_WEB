@@ -38,6 +38,7 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             List<ExcelImportResultRowDto> validateResults,
             CancellationToken cancellationToken)
         {
+            var i18n = await ProductMaterialI18n.LoadAsync(ExcelImportHandlerHelper.GetRequestLanguage(request));
             var idsByCode = await _lookupRepository.GetProductIdsByCodeAsync(
                 request.CompanyCd, request.DatabaseName);
 
@@ -80,20 +81,20 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                 var materialValid = idsByCode.TryGetValue(materialCode, out var materialId);
 
                 if (!productValid)
-                    validateResults.Add(Error(rowNo, $"Mã thành phẩm không tồn tại: {productCode}"));
+                    validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_PRODUCT_UNKNOWN", productCode)));
                 if (!materialValid)
-                    validateResults.Add(Error(rowNo, $"Mã NVL không tồn tại: {materialCode}"));
+                    validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_MATERIAL_UNKNOWN", materialCode)));
 
                 if (productValid && materialValid)
                 {
                     if (productId == materialId)
-                        validateResults.Add(Error(rowNo, "Thành phẩm không thể là NVL của chính nó."));
+                        validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_SELF_REFERENCE")));
 
                     var pair = (ProductId: productId, MaterialId: materialId);
                     if (!seen.Add(pair))
-                        validateResults.Add(Error(rowNo, $"Trùng cặp thành phẩm / NVL trong file: {productCode} / {materialCode}"));
+                        validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_DUPLICATE_PAIR", productCode, materialCode)));
                     if (alreadyDeclared.Contains(pair))
-                        validateResults.Add(Error(rowNo, $"NVL đã tồn tại trong thành phẩm: {productCode} / {materialCode}"));
+                        validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_ALREADY_EXISTS_PAIR", productCode, materialCode)));
                 }
 
                 if (!TryGetQuantity(row, out var quantity) ||
@@ -101,7 +102,7 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                     quantity > 999999999999.999999m ||
                     decimal.Round(quantity, 6) != quantity)
                 {
-                    validateResults.Add(Error(rowNo, "Số lượng phải lớn hơn 0 và có tối đa 6 chữ số thập phân."));
+                    validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_QUANTITY_INVALID")));
                 }
             }
         }
@@ -112,12 +113,13 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             IExcelImportJobProgressWriter progressWriter,
             CancellationToken cancellationToken)
         {
+            var i18n = await ProductMaterialI18n.LoadAsync(ExcelImportHandlerHelper.GetRequestLanguage(request));
             var idsByCode = await _lookupRepository.GetProductIdsByCodeAsync(
                 request.CompanyCd, request.DatabaseName);
             var userId = request.UserId ?? string.Empty;
 
             await progressWriter.ReportPercentAsync(
-                35, "Bắt đầu lưu định mức NVL cho nhiều thành phẩm...", cancellationToken);
+                35, i18n.T("PM_IMPORT_SAVE_ALL_START"), cancellationToken);
 
             await using var session = await _db.CreateSessionAsync(
                 Net_DB.Net_DB_Company, request.DatabaseName);
@@ -134,12 +136,12 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
 
                     if (!idsByCode.TryGetValue(productCode, out var productId) ||
                         !idsByCode.TryGetValue(materialCode, out var materialId))
-                        throw new InvalidOperationException($"Dòng {rowNo}: mã thành phẩm hoặc NVL không tồn tại.");
+                        throw new InvalidOperationException(i18n.T("PM_IMPORT_ROW_ERROR", rowNo, i18n.T("PM_IMPORT_ROW_CODES_NOT_FOUND")));
 
                     if (productId == materialId || !TryGetQuantity(row, out var quantity) ||
                         quantity <= 0m || quantity > 999999999999.999999m ||
                         decimal.Round(quantity, 6) != quantity)
-                        throw new InvalidOperationException($"Dòng {rowNo}: thành phẩm/NVL/số lượng không hợp lệ.");
+                        throw new InvalidOperationException(i18n.T("PM_IMPORT_ROW_ERROR", rowNo, i18n.T("PM_IMPORT_ROW_DATA_INVALID")));
 
                     try
                     {
@@ -160,7 +162,7 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                     }
                     catch (Exception ex)
                     {
-                        throw new InvalidOperationException($"Dòng {rowNo}: {ex.Message}", ex);
+                        throw new InvalidOperationException(i18n.T("PM_IMPORT_ROW_ERROR", rowNo, i18n.TranslateStoredProcedureError(ex.Message)), ex);
                     }
 
                     if ((i + 1) % 25 == 0 || i == rows.Count - 1)
@@ -168,7 +170,7 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                         await progressWriter.ReportAsync(
                             i + 1, rows.Count,
                             35 + (int)((i + 1) * 60m / rows.Count),
-                            $"Đang lưu {i + 1}/{rows.Count} dòng...", cancellationToken);
+                            i18n.T("PM_IMPORT_PROGRESS", i + 1, rows.Count), cancellationToken);
                     }
                 }
 
@@ -182,7 +184,7 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             }
 
             await progressWriter.ReportPercentAsync(
-                100, $"Đã nhập {rows.Count} dòng định mức.", cancellationToken);
+                100, i18n.T("PM_IMPORT_ALL_DONE", rows.Count), cancellationToken);
         }
 
         private static string NormalizeCode(string? code)
