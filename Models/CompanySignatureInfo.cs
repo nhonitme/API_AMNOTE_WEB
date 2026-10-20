@@ -14,7 +14,6 @@ namespace API_AMNOTE_WEB.Models
         public string? SIGN_IMAGE_URL { get; set; }
         public int? SORT_ORDER { get; set; }
         public string? IS_ACTIVE { get; set; }
-        public string? ISDEL { get; set; }
         [API_AMNOTE_WEB.Helpers.BackendAudit]
         public string? CREATE_BY { get; set; }
         [API_AMNOTE_WEB.Helpers.BackendAudit]
@@ -35,7 +34,6 @@ namespace API_AMNOTE_WEB.Models
         public string? SIGN_IMAGE_URL { get; set; }
         public int? SORT_ORDER { get; set; }
         public string? IS_ACTIVE { get; set; }
-        public string? ISDEL { get; set; }
     }
 
     public class DeleteCompanySignaturesRequest

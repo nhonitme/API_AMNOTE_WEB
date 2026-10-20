@@ -114,7 +114,7 @@ namespace API_AMNOTE_WEB.Repositories
         private static async Task<InventoryCogsDto> SaveInventoryCogsAsync(DapperSession session, string companyCd, string userId,
             long transferId, string voucherNo, string ymd, IReadOnlyList<InventoryOutput> outputs, decimal? cogsAmount, InventoryCogsDto? existing)
         {
-            var total = cogsAmount ?? outputs.Sum(x => Math.Round(x.REVENUE_AMOUNT_CC, 2, MidpointRounding.AwayFromZero));
+            var total = cogsAmount ?? outputs.Sum(x => Math.Round(x.AMOUNT_CC, 2, MidpointRounding.AwayFromZero));
             var accounts = await ResolveCogsAccountsAsync(session, companyCd);
             long chitId;
             string chitCd;

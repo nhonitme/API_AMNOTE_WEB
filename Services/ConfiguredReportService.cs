@@ -171,6 +171,7 @@ namespace API_AMNOTE_WEB.Services
         {
             var context = await BuildContextAsync(companyCd, reportCode, menuCode, query);
             var printLayoutMode = ResolvePrintLayoutMode(query);
+            ApplyPageSetupOverrides(context.Config, query);
             var includeTableLayoutMetadata = printLayoutMode != PrintLayoutMode.Grid;
             var dataSource = await ResolveDataSourceAsync(context, includeTableLayoutMetadata, cancellationToken);
             var table = Common.ConvertToDataTable(
@@ -207,12 +208,11 @@ namespace API_AMNOTE_WEB.Services
 
             var signatures = await ResolveReportSignaturesAsync(context.CompanyCd, context.Config.SIGNATURES, query);
             var companyContext = ReportCompanyContextFactory.Create(context.CompanyInfo, signatures, context.CompanyCd, context.ReportLanguage);
-
             if (context.ReportCode.Equals("TAX_VAT_REDUCTION_APPENDIX", StringComparison.OrdinalIgnoreCase)
                 && printLayoutMode != PrintLayoutMode.Grid)
                 return new TaxReductionAppendixReport(context.Config, table, companyContext, query);
 
-            return new DynamicConfiguredReport(
+            var report = new DynamicConfiguredReport(
                 context.Config,
                 table,
                 companyContext,
@@ -220,6 +220,7 @@ namespace API_AMNOTE_WEB.Services
                 _environment,
                 context.NamedValues,
                 context.NormalizedValues);
+            return report;
         }
 
         public async Task<ConfiguredReportPreviewDto> BuildPreviewAsync(
@@ -371,6 +372,22 @@ namespace API_AMNOTE_WEB.Services
 
         }
 
+        private static void ApplyPageSetupOverrides(
+            ReportConfigurationInfo configuration,
+            IReadOnlyDictionary<string, string> query)
+        {
+            // Configuration is a per-request clone; overrides must not change the shared company defaults.
+            var orientation = Common.NormalizeNullableText(GetQueryValue(query, "printPageOrientation"))?.ToUpperInvariant();
+            var paperKind = Common.NormalizeNullableText(GetQueryValue(query, "printPaperKind"))?.ToUpperInvariant();
+            if (orientation != null && orientation is not ("AUTO" or "PORTRAIT" or "LANDSCAPE"))
+                throw new ArgumentException("printPageOrientation must be AUTO, PORTRAIT, or LANDSCAPE.");
+            if (paperKind != null && paperKind is not ("AUTO" or "A4" or "A3"))
+                throw new ArgumentException("printPaperKind must be AUTO, A4, or A3.");
+
+            if (orientation != null) configuration.PAGE_ORIENTATION = orientation;
+            if (paperKind != null) configuration.PAPER_KIND = paperKind;
+        }
+
         private static PrintLayoutMode ResolvePrintLayoutMode(IReadOnlyDictionary<string, string> query)
         {
             var printLayout = GetQueryValue(query, "printLayout");
@@ -519,7 +536,6 @@ namespace API_AMNOTE_WEB.Services
                 isActive: "1");
 
             var resolved = rows
-                .Where(item => string.Equals(Common.NormalizeFlagString(item.ISDEL, "0"), "0", StringComparison.OrdinalIgnoreCase))
                 .Where(item => !string.IsNullOrWhiteSpace(Common.NormalizeNullableText(item.SIGN_CODE)))
                 .OrderBy(item => item.SORT_ORDER ?? int.MaxValue)
                 .ThenBy(item => item.SIGN_CODE, StringComparer.OrdinalIgnoreCase)
@@ -689,6 +705,20 @@ namespace API_AMNOTE_WEB.Services
                 table,
                 columnSettings,
                 applyVisibilityFilter: true);
+
+            // Match the sys grid caption chain, including the original column label/caption.
+            foreach (var column in columns)
+            {
+                var setting = columnSettings.FirstOrDefault(item =>
+                    string.Equals(item.FIELD_NAME, column.FIELD_NAME, StringComparison.OrdinalIgnoreCase));
+                if (setting == null) continue;
+
+                column.CAPTION = new[] { setting.LABEL_TEXT, setting.COLUMN_LABEL_TEXT, setting.FIELD_NAME }
+                    .Select(key => ReportLanguageHelper.ResolveDisplayLabel(key, context.ReportLanguage))
+                    .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text))
+                    ?? Common.NormalizeNullableText(setting.CAPTION)
+                    ?? setting.FIELD_NAME;
+            }
 
             return columns.Count > 0 ? columns : BuildPreviewColumns(table);
         }
@@ -1181,7 +1211,8 @@ namespace API_AMNOTE_WEB.Services
             var previewColumn = CreatePreviewColumn(column, index);
             var settingLabel = Common.NormalizeNullableText(setting.LABEL_TEXT);
 
-            // Setting only overrides LABEL_TEXT; CAPTION stays from schema / sys_grid_column.
+            // Preserve both the label key and the sys grid caption fallback.
+            previewColumn.CAPTION = Common.NormalizeNullableText(setting.CAPTION) ?? previewColumn.CAPTION;
             if (settingLabel != null)
             {
                 previewColumn.LABEL_TEXT = settingLabel;

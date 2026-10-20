@@ -41,6 +41,7 @@ namespace API_AMNOTE_WEB.Models
         public decimal REVENUE_AMOUNT_CC { get; set; }
         public decimal AMOUNT_FC { get; set; }
         public decimal REVENUE_AMOUNT_FC { get; set; }
+        public decimal REVENUE_AMOUNT_TOTAL { get; set; }
         public string SUMMARY { get; set; } = string.Empty;
         public string? INVENTORY_YMD { get; set; }
         public string? STATE { get; set; } = "1";

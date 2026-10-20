@@ -1,4 +1,4 @@
-﻿using API_AMNOTE_WEB.Helpers;
+using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Reports;
 using DevExpress.Drawing;
@@ -760,7 +760,7 @@ namespace API_AMNOTE_WEB.Reporting
 
         private string FormatInlineTemplateValue(object? value, string? format, CompanyReportElementInfo element)
         {
-            if (value == null || value == DBNull.Value)
+            if (value == null || value == DBNull.Value || IsNumericZero(value))
             {
                 return string.Empty;
             }
@@ -968,6 +968,11 @@ namespace API_AMNOTE_WEB.Reporting
 
         private string? FormatElementValue(object? value, CompanyReportElementInfo element)
         {
+            if (IsNumericZero(value))
+            {
+                return string.Empty;
+            }
+
             if (value == null || value == DBNull.Value)
             {
                 return ResolveElementLabelText(element);
@@ -1303,6 +1308,7 @@ namespace API_AMNOTE_WEB.Reporting
                 Padding = new PaddingInfo(2, 2, 1, 1),
                 CanGrow = false,
                 Multiline = true,
+                WordWrap = true,
                 BackColor = GetConfiguredTableHeaderBackColor()
             };
         }
@@ -1320,6 +1326,7 @@ namespace API_AMNOTE_WEB.Reporting
                 Padding = new PaddingInfo(2, 2, 1, 1),
                 CanGrow = false,
                 Multiline = true,
+                WordWrap = true,
                 BackColor = GetConfiguredTableHeaderBackColor()
             };
             return label;
@@ -1508,9 +1515,15 @@ namespace API_AMNOTE_WEB.Reporting
                 : Common.NormalizeNullableText(value.ToString());
         }
 
+        private static bool IsNumericZero(object? value)
+        {
+            return value is sbyte or byte or short or ushort or int or uint or long or ulong or decimal or float or double
+                && Convert.ToDouble(value, CultureInfo.InvariantCulture) == 0d;
+        }
+
         private static string FormatConfiguredTableCellValue(object? value, string? formatString)
         {
-            if (value == null || value == DBNull.Value)
+            if (value == null || value == DBNull.Value || IsNumericZero(value))
             {
                 return string.Empty;
             }
@@ -1625,6 +1638,15 @@ namespace API_AMNOTE_WEB.Reporting
             var maxCaptionLength = _columns.Count == 0 ? 0 : _columns.Max(column => column.Caption.Length);
             var factor = maxCaptionLength > 36 ? 4.2f : maxCaptionLength > 18 ? 3.3f : 2.6f;
             var height = Math.Max(34f, _layout.HeaderFontSize * factor);
+            var totalWeight = _columns.Sum(column => (double)column.Weight);
+            if (totalWeight > 0)
+            {
+                foreach (var column in _columns)
+                {
+                    var width = (float)(GetContentWidth() * column.Weight / totalWeight);
+                    height = Math.Max(height, MeasureConfiguredHeaderHeight(column.Caption, width));
+                }
+            }
             return _hasBalanceSheetPeriodCaptions
                 ? Math.Max(height, _layout.HeaderFontSize * 4.0f)
                 : height;
@@ -1633,9 +1655,30 @@ namespace API_AMNOTE_WEB.Reporting
         private float GetConfiguredTableHeaderRowHeight()
         {
             var height = Math.Max(22f, _layout.HeaderFontSize * 2.3f);
+            if (_tableLayout is { } layout)
+            {
+                var widths = ResolveTableColumnWidths(layout, GetContentWidth());
+                foreach (var cell in layout.HeaderCells)
+                {
+                    var colIndex = ClampTableIndex(cell.ColIndex, layout.ColumnCount);
+                    var colSpan = Math.Min(Math.Max(1, cell.ColSpan), layout.ColumnCount - colIndex);
+                    var rowIndex = ClampTableIndex(cell.RowIndex, layout.HeaderRowCount);
+                    var rowSpan = Math.Min(Math.Max(1, cell.RowSpan), layout.HeaderRowCount - rowIndex);
+                    var width = SumTableWidths(widths, colIndex, colSpan);
+                    height = Math.Max(height, MeasureConfiguredHeaderHeight(cell.Caption, width) / rowSpan);
+                }
+            }
             return _hasBalanceSheetPeriodCaptions
                 ? Math.Max(height, _layout.HeaderFontSize * 3.8f)
                 : height;
+        }
+
+        private float MeasureConfiguredHeaderHeight(string text, float width)
+        {
+            var font = CreateFont(_layout.FontFamily, _layout.HeaderFontSize, DXFontStyle.Bold);
+            // Measure after fitting columns to the page; reserve padding and border space.
+            var size = MeasureGdiTextSizeHundredths(text, font, Math.Max(1f, width - 6f), typographic: false);
+            return (float)Math.Ceiling(size.Height + 6f);
         }
 
         private (
@@ -2363,7 +2406,10 @@ namespace API_AMNOTE_WEB.Reporting
                 columnKey,
                 ReadText(row, "PARENT_KEY"),
                 fieldName,
-                ReportLanguageHelper.ResolveDisplayLabel(labelText, reportLanguage),
+                ReportLanguageHelper.LocalizeLabelOrFallback(
+                    labelText,
+                    ReadText(row, "CAPTION") ?? labelText ?? fieldName,
+                    reportLanguage),
                 ReadInt(row, "ROW_INDEX", 0),
                 ReadInt(row, "COL_INDEX", 0),
                 Math.Max(1, ReadInt(row, "COL_SPAN", 1)),

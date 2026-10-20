@@ -13,6 +13,8 @@ namespace API_AMNOTE_WEB.Reporting;
 /// <summary>Two-table appendix matching the supplied desktop export.</summary>
 public sealed class TaxReductionAppendixReport : XtraReport
 {
+    private static string FormatAmount(decimal value) => value == 0m ? string.Empty : value.ToString("N0");
+
     private readonly string _language;
 
     private string T(string key, string fallback) =>
@@ -75,7 +77,7 @@ public sealed class TaxReductionAppendixReport : XtraReport
         var footer = new ReportFooterBand { HeightF = 65 };
         var differenceLabel = T("Tax_reduction_appendix_difference", "III. Chênh lệch thuế GTGT của hàng hóa, dịch vụ bán ra và mua vào trong kỳ:");
         var currencySuffix = T("Tax_reduction_appendix_currency_suffix", "đồng");
-        footer.Controls.Add(Label($"{differenceLabel} {(reduction - buyTax):N0} {currencySuffix}", width, 0, 60, true));
+        footer.Controls.Add(Label($"{differenceLabel} {FormatAmount(reduction - buyTax)} {currencySuffix}", width, 0, 60, true));
         Bands.Add(footer);
         var pageFooter = new PageFooterBand { HeightF = 25 };
         //pageFooter.Controls.Add(new XRPageInfo { WidthF = width, HeightF = 25, TextAlignment = TextAlignment.MiddleRight,
@@ -112,14 +114,17 @@ public sealed class TaxReductionAppendixReport : XtraReport
         for (var i = 0; i < fields.Length; i++)
         {
             var cell = detailTable.Rows[0].Cells[i];
-            cell.ExpressionBindings.Add(new ExpressionBinding("BeforePrint", "Text", $"[{fields[i]}]"));
+            var expression = fields[i].EndsWith("AMOUNT")
+                ? $"Iif([{fields[i]}] = 0, Null, [{fields[i]}])"
+                : $"[{fields[i]}]";
+            cell.ExpressionBindings.Add(new ExpressionBinding("BeforePrint", "Text", expression));
             cell.TextFormatString = fields[i].EndsWith("AMOUNT") ? "{0:N0}" : "{0}";
             cell.TextAlignment = fields[i].EndsWith("AMOUNT") ? TextAlignment.MiddleRight : TextAlignment.MiddleLeft;
         }
         detail.Controls.Add(detailTable);
         var totals = new GroupFooterBand { HeightF = 28 };
         var values = fields.Select((field, i) => i == 1 ? T("Tax_reduction_appendix_total", "Tổng cộng") : field.EndsWith("AMOUNT")
-            ? table.AsEnumerable().Sum(r => r.Field<decimal>(field)).ToString("N0") : "").ToArray();
+            ? FormatAmount(table.AsEnumerable().Sum(r => r.Field<decimal>(field))) : "").ToArray();
         var totalTable = Row(values, weights, width, 0, 28, true);
         for (var i = 0; i < fields.Length; i++)
         {

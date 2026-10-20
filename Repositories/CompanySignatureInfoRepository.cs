@@ -67,7 +67,7 @@ namespace API_AMNOTE_WEB.Repositories
 
                 var oldData = existing == null ? string.Empty : JsonSerializer.Serialize(existing);
                 var targetId = await session.QueryFirstOrDefaultAsync<long?>(
-                    "CALL setCompanySignatureInfo(@p_ID, @p_COMPANY_CD, @p_SIGN_CODE, @p_DISPLAY_LABEL, @p_SIGN_NAME, @p_SIGN_TITLE, @p_SIGN_IMAGE_URL, @p_SORT_ORDER, @p_IS_ACTIVE, @p_ISDEL, @p_USERID)",
+                    "CALL setCompanySignatureInfo(@p_ID, @p_COMPANY_CD, @p_SIGN_CODE, @p_DISPLAY_LABEL, @p_SIGN_NAME, @p_SIGN_TITLE, @p_SIGN_IMAGE_URL, @p_SORT_ORDER, @p_IS_ACTIVE, @p_USERID)",
                     new
                     {
                         p_ID = normalizedRequest.ID ?? 0,
@@ -79,7 +79,6 @@ namespace API_AMNOTE_WEB.Repositories
                         p_SIGN_IMAGE_URL = normalizedRequest.SIGN_IMAGE_URL,
                         p_SORT_ORDER = normalizedRequest.SORT_ORDER ?? 0,
                         p_IS_ACTIVE = normalizedRequest.IS_ACTIVE,
-                        p_ISDEL = normalizedRequest.ISDEL,
                         p_USERID = userId
                     }) ?? 0L;
 
@@ -149,7 +148,7 @@ namespace API_AMNOTE_WEB.Repositories
                 foreach (var id in signatureIds.Distinct())
                 {
                     var existing = (await session.QueryAsync<CompanySignatureInfo>(
-                        GetCompanySignatureInfoQuery,
+                        "SELECT * FROM company_signature_info WHERE ID = @p_ID AND COMPANY_CD IN (@p_COMPANY_CD, '') FOR UPDATE",
                         new
                         {
                             p_COMPANY_CD = normalizedCompanyCd,
@@ -170,44 +169,10 @@ namespace API_AMNOTE_WEB.Repositories
 
                     if (!string.Equals(existing.COMPANY_CD, normalizedCompanyCd, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Deleting an inherited signature creates a disabled company override.
-                        // This hides it for this company without changing the shared default.
-                        var disabledId = await session.QueryFirstOrDefaultAsync<long?>(
-                            "CALL setCompanySignatureInfo(@p_ID, @p_COMPANY_CD, @p_SIGN_CODE, @p_DISPLAY_LABEL, @p_SIGN_NAME, @p_SIGN_TITLE, @p_SIGN_IMAGE_URL, @p_SORT_ORDER, @p_IS_ACTIVE, @p_ISDEL, @p_USERID)",
-                            new
-                            {
-                                p_ID = existing.ID,
-                                p_COMPANY_CD = normalizedCompanyCd,
-                                p_SIGN_CODE = existing.SIGN_CODE,
-                                p_DISPLAY_LABEL = existing.DISPLAY_LABEL,
-                                p_SIGN_NAME = existing.SIGN_NAME,
-                                p_SIGN_TITLE = existing.SIGN_TITLE,
-                                p_SIGN_IMAGE_URL = existing.SIGN_IMAGE_URL,
-                                p_SORT_ORDER = existing.SORT_ORDER ?? 0,
-                                p_IS_ACTIVE = "0",
-                                p_ISDEL = "0",
-                                p_USERID = userId
-                            }) ?? 0L;
-
-                        if (disabledId > 0)
-                        {
-                            affectedRows++;
-                            await _activityLogService.LogAsync(
-                                session.Connection,
-                                session.Transaction,
-                                normalizedCompanyCd,
-                                "INSERT",
-                                "CompanySignatureInfo",
-                                "company_signature_info",
-                                existing.SIGN_CODE,
-                                string.Empty,
-                                JsonSerializer.Serialize(new { ID = disabledId, existing.SIGN_CODE, IS_ACTIVE = "0" }),
-                                "Hide inherited company_signature_info");
-                        }
-                        continue;
+                        throw new InvalidOperationException("Inherited signatures cannot be deleted from a company");
                     }
 
-                    var result = await session.ExecuteAsync(deleteQuery, new
+                    var result = await session.QueryFirstOrDefaultAsync<int>(deleteQuery, new
                     {
                         p_COMPANY_CD = normalizedCompanyCd,
                         p_ID = id,
@@ -258,7 +223,6 @@ namespace API_AMNOTE_WEB.Repositories
                 SIGN_IMAGE_URL = Common.NormalizeNullableText(request.SIGN_IMAGE_URL),
                 SORT_ORDER = Common.NormalizeNullablePositiveInt(request.SORT_ORDER) ?? 0,
                 IS_ACTIVE = Common.NormalizeFlagString(request.IS_ACTIVE, "1"),
-                ISDEL = Common.NormalizeFlagString(request.ISDEL, "0")
             };
         }
     }

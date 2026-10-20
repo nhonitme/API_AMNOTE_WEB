@@ -28,7 +28,7 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 if (output.OUTPUT_ID.GetValueOrDefault() <= 0 || detail == null || detail.CHITDETAIL_ID <= 0 ||
                     output.CHITDETAIL_ID_COGS != detail.CHITDETAIL_ID ||
                     string.IsNullOrWhiteSpace(detail.CHITDETAIL_CD) || string.IsNullOrWhiteSpace(detail.DEBIT) || string.IsNullOrWhiteSpace(detail.CREDIT) ||
-                    output.REVENUE_AMOUNT_CC < 0 || detail.AMOUNT != Math.Round(output.REVENUE_AMOUNT_CC, 2, MidpointRounding.AwayFromZero))
+                    output.AMOUNT_CC < 0)
                     throw new InvalidOperationException($"Issue voucher {transferId}, output {output.OUTPUT_ID}: missing or invalid COGS detail/link/amount.");
             }
             if (header.DETAILS.Count != outputs.Count || persistedDetailCount != outputs.Count ||

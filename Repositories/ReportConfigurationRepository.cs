@@ -32,6 +32,7 @@ namespace API_AMNOTE_WEB.Repositories
             var data = await QueryAllReportConfigurationAsync(normalizedCompanyCd);
             var resolved = ResolveReportConfiguration(
                 data.Configurations,
+                normalizedCompanyCd,
                 normalizedReportCode,
                 normalizedMenuCode);
 
@@ -74,17 +75,18 @@ namespace API_AMNOTE_WEB.Repositories
 
         public async Task ClearCompanyReportConfigurationCacheAsync(string companyCd)
         {
-            var normalizedCompanyCd = NormalizeRequired(companyCd, nameof(companyCd));
-            await _cacheService.ClearAsync(CacheScope, normalizedCompanyCd);
+            var normalizedCompanyCd = Common.NormalizeRequiredText(companyCd);
+            await _cacheService.ClearAsync(CacheScope, normalizedCompanyCd.Length == 0 ? null : normalizedCompanyCd);
         }
 
         private async Task<ReportConfigurationCacheData> QueryAllReportConfigurationAsync(string companyCd)
         {
-            return await _cacheService.GetOrCreateAsync(
+            var data = await _cacheService.GetOrCreateAsync(
                 CacheScope,
                 companyCd,
                 CacheKey,
                 () => QueryAllReportConfigurationFromDatabaseAsync(companyCd));
+            return data;
         }
 
         private async Task<ReportConfigurationCacheData> QueryAllReportConfigurationFromDatabaseAsync(string companyCd)
@@ -162,6 +164,16 @@ namespace API_AMNOTE_WEB.Repositories
                     config.PAGE_ORIENTATION = Common.NormalizeNullableText(config.PAGE_ORIENTATION) ?? "AUTO";
                     config.PAPER_KIND = Common.NormalizeNullableText(config.PAPER_KIND) ?? "AUTO";
                     config.FONT_FAMILY = Common.NormalizeNullableText(config.FONT_FAMILY) ?? "Arial";
+                    config.FONT_SIZE ??= 8.50m;
+                    config.TITLE_FONT_SIZE ??= 16m;
+                    config.INFO_FONT_SIZE ??= 9m;
+                    config.HEADER_FONT_SIZE ??= 8.50m;
+                    config.DETAIL_FONT_SIZE ??= 8.50m;
+                    config.FOOTER_FONT_SIZE ??= 8m;
+                    config.MARGIN_LEFT ??= 40;
+                    config.MARGIN_RIGHT ??= 40;
+                    config.MARGIN_TOP ??= 25;
+                    config.MARGIN_BOTTOM ??= 25;
                     config.SIGNATURES = config.MAPPING_ID.HasValue && signaturesByMappingId.TryGetValue(config.MAPPING_ID.Value, out var mappedSignatures)
                         ? mappedSignatures.Select(CloneSignature).ToList()
                         : new List<CompanyReportSignatureInfo>();
@@ -222,18 +234,20 @@ namespace API_AMNOTE_WEB.Repositories
 
         private static ReportConfigurationInfo? ResolveReportConfiguration(
             IEnumerable<ReportConfigurationInfo> configurations,
+            string companyCd,
             string? reportCode,
             string? menuCode)
         {
             var mapped = configurations
-                .Where(item => item.MAPPING_ID.HasValue)
+                .Where(item => item.MAPPING_ID.HasValue && (SameText(item.COMPANY_CD, companyCd) || string.IsNullOrWhiteSpace(item.COMPANY_CD)))
                 .Select(item => new
                 {
                     Item = item,
                     Priority = GetReportConfigurationPriority(item, reportCode, menuCode)
                 })
                 .Where(item => item.Priority < 99)
-                .OrderBy(item => item.Priority)
+                .OrderBy(item => SameText(item.Item.COMPANY_CD, companyCd) ? 0 : 1)
+                .ThenBy(item => item.Priority)
                 .ThenBy(item => string.Equals(item.Item.IS_DEFAULT, "1", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                 .ThenByDescending(item => item.Item.MAPPING_ID ?? 0)
                 .Select(item => item.Item)
@@ -368,40 +382,23 @@ namespace API_AMNOTE_WEB.Repositories
 
         private static int GetReportConfigurationPriority(ReportConfigurationInfo config, string? reportCode, string? menuCode)
         {
-            // Prefer exact REPORT_CODE when the caller requests a specific report.
-            // Shared menu keys (e.g. GL_FS_PL) must not override a different report's store.
-            if (reportCode != null && SameText(config.REPORT_CODE, reportCode))
+            // Reject other reports before comparing keys shared by multiple reports.
+            if (reportCode != null && !SameText(config.REPORT_CODE, reportCode))
             {
-                if (menuCode != null && SameText(config.REPORT_KEY, menuCode))
-                {
-                    return 0;
-                }
-
-                if (SameText(config.REPORT_KEY, reportCode))
-                {
-                    return 1;
-                }
-
-                return 2;
+                return 99;
             }
 
             if (menuCode != null && SameText(config.REPORT_KEY, menuCode))
             {
-                // Menu match is only valid when no reportCode was given, or it matches.
-                if (reportCode == null || SameText(config.REPORT_CODE, reportCode))
-                {
-                    return 3;
-                }
+                return 0;
+            }
 
+            if (reportCode == null)
+            {
                 return 99;
             }
 
-            if (reportCode != null && SameText(config.REPORT_KEY, reportCode))
-            {
-                return 4;
-            }
-
-            return 99;
+            return SameText(config.REPORT_KEY, reportCode) ? 1 : 2;
         }
 
         private static int GetReportColumnLayoutPriority(ReportColumnLayoutCacheRecord layout, string companyCd, string? reportKey, string? reportCode)

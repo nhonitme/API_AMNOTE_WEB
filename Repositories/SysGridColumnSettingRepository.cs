@@ -355,6 +355,7 @@ namespace API_AMNOTE_WEB.Repositories
                 // Display resolve: translate(setting.LABEL_TEXT) → translate(column.LABEL_TEXT)
                 // → translate(FIELD_NAME) → column.CAPTION. Never use setting.CAPTION.
                 LABEL_TEXT = settingLabel ?? columnLabel,
+                COLUMN_LABEL_TEXT = columnLabel,
                 CAPTION = columnCaption ?? string.Empty,
                 IS_VISIBLE = setting?.IS_VISIBLE ?? column.IS_VISIBLE,
                 VISIBLE_INDEX = setting?.VISIBLE_INDEX ?? column.VISIBLE_INDEX,

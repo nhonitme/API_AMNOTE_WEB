@@ -6,6 +6,7 @@ namespace API_AMNOTE_WEB.Models
         public string GRID_ID { get; set; } = string.Empty;
         public string FIELD_NAME { get; set; } = string.Empty;
         public string? LABEL_TEXT { get; set; }
+        public string? COLUMN_LABEL_TEXT { get; set; }
         public string CAPTION { get; set; } = string.Empty;
         public string IS_VISIBLE { get; set; } = "1";
         public int? VISIBLE_INDEX { get; set; }

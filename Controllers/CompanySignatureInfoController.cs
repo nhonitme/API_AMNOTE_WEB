@@ -180,7 +180,6 @@ namespace API_AMNOTE_WEB.Controllers
                         SIGN_IMAGE_URL = publicPath,
                         SORT_ORDER = existing.SORT_ORDER,
                         IS_ACTIVE = existing.IS_ACTIVE,
-                        ISDEL = existing.ISDEL
                     });
 
                 var updated = await _service.SetCompanySignatureInfoAsync(companyCd, Common.GetUserId(), payload);
@@ -308,12 +307,16 @@ namespace API_AMNOTE_WEB.Controllers
             }
 
             var companyCd = Common.GetCompanyCode();
-            var result = await _service.DeleteCompanySignatureInfoAsync(
-                companyCd,
-                Common.GetUserId(),
-                request.SignatureIds.Distinct().ToList());
-
-            return Success(new { deleted = result }, "Deleted successfully");
+            try
+            {
+                var result = await _service.DeleteCompanySignatureInfoAsync(
+                    companyCd, Common.GetUserId(), request.SignatureIds.Distinct().ToList());
+                return Success(new { deleted = result }, result > 0 ? "Deleted successfully" : "No signatures deleted");
+            }
+            catch (InvalidOperationException ex)
+            {
+                return ValidationError(ex.Message);
+            }
         }
 
         private static CompanySignatureInfoDto MapDto(CompanySignatureInfo item)
@@ -329,7 +332,6 @@ namespace API_AMNOTE_WEB.Controllers
                 SIGN_IMAGE_URL = item.SIGN_IMAGE_URL,
                 SORT_ORDER = item.SORT_ORDER,
                 IS_ACTIVE = item.IS_ACTIVE,
-                ISDEL = item.ISDEL,
             };
         }
 
@@ -345,7 +347,6 @@ namespace API_AMNOTE_WEB.Controllers
                 SIGN_IMAGE_URL = Common.NormalizeNullableText(request.SIGN_IMAGE_URL),
                 SORT_ORDER = Common.NormalizeNullablePositiveInt(request.SORT_ORDER) ?? 0,
                 IS_ACTIVE = Common.NormalizeFlagString(request.IS_ACTIVE, "1"),
-                ISDEL = Common.NormalizeFlagString(request.ISDEL, "0")
             };
         }
 
@@ -361,7 +362,6 @@ namespace API_AMNOTE_WEB.Controllers
                 SIGN_IMAGE_URL = request.SIGN_IMAGE_URL == null ? existing.SIGN_IMAGE_URL : Common.NormalizeNullableText(request.SIGN_IMAGE_URL),
                 SORT_ORDER = request.SORT_ORDER ?? existing.SORT_ORDER ?? 0,
                 IS_ACTIVE = Common.NormalizeFlagString(request.IS_ACTIVE ?? existing.IS_ACTIVE, "1"),
-                ISDEL = Common.NormalizeFlagString(request.ISDEL ?? existing.ISDEL, "0")
             };
         }
     }

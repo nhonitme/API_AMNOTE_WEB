@@ -31,6 +31,8 @@ namespace API_AMNOTE_WEB.Controllers
             [FromQuery(Name = "PRODUCT_ID")] int? legacyProductId = null,
             [FromQuery(Name = "productCd")] string? productCd = null,
             [FromQuery(Name = "PRODUCT_CD")] string? legacyProductCd = null,
+            [FromQuery(Name = "division")] string? division = null,
+            [FromQuery(Name = "DIVISION")] string? legacyDivision = null,
             [FromQuery] string? lang = null)
         {
             await EnsurePermissionAsync(MenuCode, "VIEW");
@@ -39,8 +41,9 @@ namespace API_AMNOTE_WEB.Controllers
             var companyCd = Common.GetCompanyCode();
             var targetProductId = productId ?? legacyProductId;
             var targetProductCd = Common.NormalizeNullableText(productCd) ?? Common.NormalizeNullableText(legacyProductCd);
+            var targetDivisions = ParseDivisionFilters(division, legacyDivision);
             var rawData = await _service.GetListAsync(companyCd, targetProductId);
-            var data = FilterByProductCd(rawData, targetProductCd).ToList();
+            var data = FilterByDivision(FilterByProductCd(rawData, targetProductCd), targetDivisions).ToList();
 
             if ((targetProductId.HasValue && targetProductId.Value > 0) || !string.IsNullOrWhiteSpace(targetProductCd))
             {
@@ -130,6 +133,32 @@ namespace API_AMNOTE_WEB.Controllers
                 return data;
 
             return data.Where(x => string.Equals(x.PRODUCT_CD, productCd, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static List<string> ParseDivisionFilters(string? division, string? legacyDivision)
+        {
+            var raw = Common.NormalizeNullableText(division) ?? Common.NormalizeNullableText(legacyDivision);
+            if (string.IsNullOrWhiteSpace(raw))
+                return new List<string>();
+
+            return raw
+                .Split(new[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Match DIVISION by account prefix (LIKE 'parent%') so parent account filters include child accounts.
+        /// </summary>
+        private static IEnumerable<ProductInfoDto> FilterByDivision(IEnumerable<ProductInfoDto> data, IReadOnlyCollection<string> divisions)
+        {
+            if (divisions.Count == 0)
+                return data;
+
+            return data.Where(x =>
+                !string.IsNullOrWhiteSpace(x.DIVISION) &&
+                divisions.Any(prefix => x.DIVISION!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)));
         }
     }
 }

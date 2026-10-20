@@ -28,6 +28,13 @@ namespace API_AMNOTE_WEB.Repositories
 
         public async Task<ReportSignatureMappingInfo?> GetReportSignatureMappingAsync(string companyCd, string reportKey, string? reportCode = null)
         {
+            var loaded = await LoadReportSignatureMappingAsync(companyCd, reportKey, reportCode);
+            return loaded.Mapping;
+        }
+
+        private async Task<(ReportSignatureMappingInfo? Mapping, ReportConfigurationInfo? Configuration)> LoadReportSignatureMappingAsync(
+            string companyCd, string reportKey, string? reportCode)
+        {
             var normalizedCompanyCd = Common.NormalizeRequiredText(companyCd);
             var normalizedReportKey = Common.NormalizeRequiredText(reportKey);
             var normalizedReportCode = Common.NormalizeNullableText(reportCode) ?? normalizedReportKey;
@@ -49,7 +56,7 @@ namespace API_AMNOTE_WEB.Repositories
 
             if (config == null)
             {
-                return null;
+                return (null, null);
             }
 
             var signCodeOrder = ParseSignCodes(config.SIGN_IDS);
@@ -62,7 +69,6 @@ namespace API_AMNOTE_WEB.Repositories
                     null,
                     null,
                     null))
-                .Where(item => !string.Equals(item.ISDEL, "1", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(item => item.SORT_ORDER ?? int.MaxValue)
                 .ThenBy(item => item.SIGN_CODE, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(item => item.ID)
@@ -84,17 +90,18 @@ namespace API_AMNOTE_WEB.Repositories
                 })
                 .ToList();
 
-            return new ReportSignatureMappingInfo
+            return (new ReportSignatureMappingInfo
             {
                 MAPPING_ID = config.MAPPING_ID,
-                COMPANY_CD = config.COMPANY_CD,
+                CONFIG_SOURCE = !config.MAPPING_ID.HasValue ? "CATALOG" : string.IsNullOrWhiteSpace(config.COMPANY_CD) ? "SYSTEM" : "COMPANY",
+                COMPANY_CD = normalizedCompanyCd,
                 REPORT_KEY = Common.NormalizeNullableText(config.REPORT_KEY) ?? normalizedReportKey,
                 REPORT_CODE = Common.NormalizeNullableText(config.REPORT_CODE) ?? normalizedReportCode,
                 REPORT_NAME = ReportLanguageHelper.ResolveDisplayLabel(config.LABEL_TEXT, null),
                 REPORT_ID = config.REPORT_ID,
                 SIGN_IDS = NormalizeSignIds(signCodeOrder),
                 SIGNATURES = signatures
-            };
+            }, config);
         }
 
         public async Task<ReportSignatureMappingInfo> SaveReportSignatureMappingAsync(
@@ -104,7 +111,8 @@ namespace API_AMNOTE_WEB.Repositories
             IReadOnlyCollection<string> signCodes,
             string userId)
         {
-            var current = await GetReportSignatureMappingAsync(companyCd, reportKey, reportCode)
+            var loaded = await LoadReportSignatureMappingAsync(companyCd, reportKey, reportCode);
+            var current = loaded.Mapping
                 ?? throw new KeyNotFoundException("Report signature mapping not found.");
 
             if (current.REPORT_ID <= 0)
@@ -131,21 +139,26 @@ namespace API_AMNOTE_WEB.Repositories
             }
 
             var normalizedSignIds = NormalizeSignIds(normalizedSignCodes);
-            if (!current.MAPPING_ID.HasValue && normalizedSignIds == null)
-            {
-                current.SIGN_IDS = null;
-                current.SIGNATURES = ApplySelection(current.SIGNATURES, normalizedSignCodes);
-                return current;
-            }
+            var inherited = current.CONFIG_SOURCE == "COMPANY" ? null : loaded.Configuration;
 
             await using var session = await _db.CreateSessionAsync(Net_DB.Net_DB_Manager);
             try
             {
+                // Lock the destination key, including an override created since the cache was loaded.
+                // A shared menu must never repoint another report while saving signatures.
+                var existingReportId = await session.QueryFirstOrDefaultAsync<long?>(
+                    "SELECT REPORT_ID FROM company_report_mapping WHERE COMPANY_CD = @companyCd AND REPORT_KEY = @reportKey AND ISDEL = '0' LIMIT 1 FOR UPDATE",
+                    new { companyCd = current.COMPANY_CD, reportKey = current.REPORT_KEY });
+                if (existingReportId.HasValue && existingReportId.Value != current.REPORT_ID)
+                {
+                    throw new InvalidOperationException("The company report key belongs to another report. Refresh the report configuration before saving.");
+                }
+
                 await session.ExecuteAsync(
                     "CALL set_company_report_mapping(@p_ID, @p_COMPANY_CD, @p_REPORT_KEY, @p_REPORT_ID, @p_SIGN_IDS, @p_IS_DEFAULT, @p_IS_ACTIVE)",
                     new
                     {
-                        p_ID = current.MAPPING_ID ?? 0,
+                        p_ID = current.CONFIG_SOURCE == "COMPANY" ? current.MAPPING_ID ?? 0 : 0,
                         p_COMPANY_CD = current.COMPANY_CD,
                         p_REPORT_KEY = current.REPORT_KEY,
                         p_REPORT_ID = current.REPORT_ID,
@@ -154,11 +167,35 @@ namespace API_AMNOTE_WEB.Repositories
                         p_IS_ACTIVE = "1"
                     });
 
+                if (inherited != null && !existingReportId.HasValue)
+                {
+                    await session.ExecuteAsync(
+                        "CALL set_company_report_layout(@p_COMPANY_CD, @p_REPORT_KEY, @p_PAGE_ORIENTATION, @p_PAPER_KIND, @p_FONT_FAMILY, @p_FONT_SIZE, @p_TITLE_FONT_SIZE, @p_INFO_FONT_SIZE, @p_HEADER_FONT_SIZE, @p_DETAIL_FONT_SIZE, @p_FOOTER_FONT_SIZE, @p_MARGIN_LEFT, @p_MARGIN_RIGHT, @p_MARGIN_TOP, @p_MARGIN_BOTTOM)",
+                        new
+                        {
+                            p_COMPANY_CD = current.COMPANY_CD,
+                            p_REPORT_KEY = current.REPORT_KEY,
+                            p_PAGE_ORIENTATION = inherited.PAGE_ORIENTATION,
+                            p_PAPER_KIND = inherited.PAPER_KIND,
+                            p_FONT_FAMILY = inherited.FONT_FAMILY,
+                            p_FONT_SIZE = inherited.FONT_SIZE,
+                            p_TITLE_FONT_SIZE = inherited.TITLE_FONT_SIZE,
+                            p_INFO_FONT_SIZE = inherited.INFO_FONT_SIZE,
+                            p_HEADER_FONT_SIZE = inherited.HEADER_FONT_SIZE,
+                            p_DETAIL_FONT_SIZE = inherited.DETAIL_FONT_SIZE,
+                            p_FOOTER_FONT_SIZE = inherited.FOOTER_FONT_SIZE,
+                            p_MARGIN_LEFT = inherited.MARGIN_LEFT,
+                            p_MARGIN_RIGHT = inherited.MARGIN_RIGHT,
+                            p_MARGIN_TOP = inherited.MARGIN_TOP,
+                            p_MARGIN_BOTTOM = inherited.MARGIN_BOTTOM
+                        });
+                }
+
                 await _activityLogService.LogAsync(
                     session.Connection,
                     session.Transaction,
                     current.COMPANY_CD,
-                    current.MAPPING_ID.HasValue ? "UPDATE" : "INSERT",
+                    current.CONFIG_SOURCE == "COMPANY" ? "UPDATE" : "INSERT",
                     "ReportSignatureMapping",
                     "company_report_mapping",
                     current.REPORT_KEY,
@@ -177,34 +214,6 @@ namespace API_AMNOTE_WEB.Repositories
 
             return await GetReportSignatureMappingAsync(companyCd, reportKey, reportCode)
                 ?? throw new KeyNotFoundException("Report signature mapping not found after save.");
-        }
-
-        private static List<ReportSignatureMappingSignatureInfo> ApplySelection(
-            IEnumerable<ReportSignatureMappingSignatureInfo> signatures,
-            IReadOnlyList<string> signCodes)
-        {
-            var selectedLookup = signCodes
-                .Select((value, index) => new { Value = value, Order = index + 1 })
-                .ToDictionary(item => item.Value, item => item.Order, StringComparer.OrdinalIgnoreCase);
-
-            return signatures
-                .Select(item => new ReportSignatureMappingSignatureInfo
-                {
-                    ID = item.ID,
-                    COMPANY_CD = item.COMPANY_CD,
-                    SIGN_CODE = item.SIGN_CODE,
-                    DISPLAY_LABEL = item.DISPLAY_LABEL,
-                    SIGN_NAME = item.SIGN_NAME,
-                    SIGN_TITLE = item.SIGN_TITLE,
-                    SIGN_IMAGE_URL = item.SIGN_IMAGE_URL,
-                    SORT_ORDER = item.SORT_ORDER,
-                    IS_ACTIVE = item.IS_ACTIVE,
-                    IS_SELECTED = selectedLookup.ContainsKey(item.SIGN_CODE),
-                    SELECTED_ORDER = selectedLookup.TryGetValue(item.SIGN_CODE, out var selectedOrder)
-                        ? selectedOrder
-                        : null
-                })
-                .ToList();
         }
 
         private static List<string> ParseSignCodes(string? signIds)

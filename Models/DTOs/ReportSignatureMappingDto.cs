@@ -3,6 +3,7 @@ namespace API_AMNOTE_WEB.Models.DTOs
     public sealed class ReportSignatureMappingDto
     {
         public long? MAPPING_ID { get; set; }
+        public string CONFIG_SOURCE { get; set; } = "CATALOG";
         public string COMPANY_CD { get; set; } = string.Empty;
         public string REPORT_KEY { get; set; } = string.Empty;
         public string REPORT_CODE { get; set; } = string.Empty;

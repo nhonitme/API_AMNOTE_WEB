@@ -235,22 +235,6 @@ namespace API_AMNOTE_WEB.Repositories
                         throw new ArgumentException("Every issue output requires product, warehouse, unit and a positive quantity.");
                     if (activeOutputs.Any(x => x.AMOUNT_CC < 0 || x.UNIT_PRICE_CC < 0))
                         throw new ArgumentException("Issue amount and unit price cannot be negative.");
-                    if (isCogsEnabled)
-                    {
-                        foreach (var output in activeOutputs)
-                        {
-                            // Preserve the existing issue-price formula on first use while persisting it separately as cost.
-                            if (output.CHITDETAIL_ID_COGS == null)
-                            {
-                                if (output.REVENUE_UNIT_PRICE_CC == 0) output.REVENUE_UNIT_PRICE_CC = output.UNIT_PRICE_CC;
-                                if (output.REVENUE_AMOUNT_CC == 0) output.REVENUE_AMOUNT_CC = output.AMOUNT_CC;
-                                if (output.REVENUE_UNIT_PRICE_FC == 0) output.REVENUE_UNIT_PRICE_FC = output.UNIT_PRICE_FC;
-                                if (output.REVENUE_AMOUNT_FC == 0) output.REVENUE_AMOUNT_FC = output.AMOUNT_FC;
-                            }
-                            if (output.REVENUE_AMOUNT_CC < 0 || output.REVENUE_UNIT_PRICE_CC < 0)
-                                throw new ArgumentException("Issue cost amount and unit price cannot be negative.");
-                        }
-                    }
                     if (existingCogs != null)
                     {
                         if (existingCogs.DETAILS.Any(x => x.OUTPUT_ID > 0))
@@ -882,7 +866,7 @@ namespace API_AMNOTE_WEB.Repositories
             var sourceDetailCd = Common.NormalizeNullableText(output.CHITDETAIL_CD);
 
             return session.QuerySingleAsync<long>(
-                "CALL setChitInventoryOutput(@p_OUTPUT_ID, @p_OUTPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_REVENUE_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_REVENUE_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_REVENUE_AMOUNT_CC, @p_AMOUNT_FC, @p_REVENUE_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
+                "CALL setChitInventoryOutput(@p_OUTPUT_ID, @p_OUTPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_REVENUE_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_REVENUE_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_REVENUE_AMOUNT_CC, @p_AMOUNT_FC, @p_REVENUE_AMOUNT_FC, @p_REVENUE_AMOUNT_TOTAL, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
                 new
                 {
                     p_OUTPUT_ID = output.OUTPUT_ID > 0 ? output.OUTPUT_ID : (long?)null,
@@ -908,6 +892,7 @@ namespace API_AMNOTE_WEB.Repositories
                     p_REVENUE_AMOUNT_CC = output.REVENUE_AMOUNT_CC,
                     p_AMOUNT_FC = output.AMOUNT_FC,
                     p_REVENUE_AMOUNT_FC = output.REVENUE_AMOUNT_FC,
+                    p_REVENUE_AMOUNT_TOTAL = output.REVENUE_AMOUNT_TOTAL,
                     p_SUMMARY = output.SUMMARY,
                     p_INVENTORY_YMD = output.INVENTORY_YMD,
                     p_STATE = string.IsNullOrWhiteSpace(output.STATE) ? "1" : output.STATE,

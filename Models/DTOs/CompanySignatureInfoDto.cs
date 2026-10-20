@@ -13,6 +13,5 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public string? SIGN_IMAGE_URL { get; set; }
         public int? SORT_ORDER { get; set; }
         public string? IS_ACTIVE { get; set; }
-        public string? ISDEL { get; set; }
     }
 }

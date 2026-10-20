@@ -57,6 +57,7 @@ namespace API_AMNOTE_WEB.Controllers
             return new ReportSignatureMappingDto
             {
                 MAPPING_ID = source.MAPPING_ID,
+                CONFIG_SOURCE = source.CONFIG_SOURCE,
                 COMPANY_CD = source.COMPANY_CD,
                 REPORT_KEY = source.REPORT_KEY,
                 REPORT_CODE = source.REPORT_CODE,

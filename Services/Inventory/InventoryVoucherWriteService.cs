@@ -281,6 +281,7 @@ namespace API_AMNOTE_WEB.Services.Inventory
                     REVENUE_AMOUNT_CC = item.REVENUE_AMOUNT_CC,
                     AMOUNT_FC = item.AMOUNT_FC,
                     REVENUE_AMOUNT_FC = item.REVENUE_AMOUNT_FC,
+                    REVENUE_AMOUNT_TOTAL = item.REVENUE_AMOUNT_TOTAL,
                     SUMMARY = NormalizeNullableText(item.SUMMARY) ?? string.Empty,
                     INVENTORY_YMD = NormalizeNullableInventoryDateTimeText(item.INVENTORY_YMD, nameof(InventoryOutput.INVENTORY_YMD)) ?? headerDate,
                     STATE = NormalizeNullableText(item.STATE) ?? "1",
