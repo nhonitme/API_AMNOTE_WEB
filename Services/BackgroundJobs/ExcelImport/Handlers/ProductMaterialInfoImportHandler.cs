@@ -32,9 +32,10 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             List<ExcelImportResultRowDto> validateResults,
             CancellationToken cancellationToken)
         {
+            var i18n = await ProductMaterialI18n.LoadAsync(ExcelImportHandlerHelper.GetRequestLanguage(request));
             if (!TryGetProductId(request, out var productId))
             {
-                validateResults.Add(Error(0, "Thiếu hoặc sai productId của thành phẩm đang chọn."));
+                validateResults.Add(Error(0, i18n.T("PM_IMPORT_PARENT_REQUIRED")));
                 return;
             }
 
@@ -43,7 +44,7 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
 
             if (!productIds.Values.Contains(productId))
             {
-                validateResults.Add(Error(0, "Thành phẩm không tồn tại trong công ty hiện tại."));
+                validateResults.Add(Error(0, i18n.T("PM_IMPORT_PARENT_NOT_FOUND")));
                 return;
             }
 
@@ -64,27 +65,27 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
 
                 if (code == null || !productIds.TryGetValue(code, out var materialId))
                 {
-                    validateResults.Add(Error(rowNo, $"Mã NVL không tồn tại: {code ?? "(trống)"}"));
+                    validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_MATERIAL_UNKNOWN", code ?? i18n.T("PM_IMPORT_EMPTY_CODE"))));
                     continue;
                 }
 
                 if (materialId == productId)
                 {
-                    validateResults.Add(Error(rowNo, "Không thể chọn chính thành phẩm làm NVL."));
+                    validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_SELF_REFERENCE")));
                 }
                 if (!seen.Add(materialId))
                 {
-                    validateResults.Add(Error(rowNo, $"Mã NVL trùng trong file: {code}"));
+                    validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_DUPLICATE_MATERIAL", code)));
                 }
                 if (alreadyDeclared.Contains(materialId))
                 {
-                    validateResults.Add(Error(rowNo, $"NVL {code} đã khai báo cho thành phẩm."));
+                    validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_ALREADY_EXISTS_SINGLE", code)));
                 }
 
                 if (!TryGetQuantity(row, out var quantity) || quantity <= 0m ||
                     quantity > 999999999999.999999m || decimal.Round(quantity, 6) != quantity)
                 {
-                    validateResults.Add(Error(rowNo, "QUANTITY phải > 0, tối đa 6 chữ số thập phân."));
+                    validateResults.Add(Error(rowNo, i18n.T("PM_IMPORT_QUANTITY_INVALID")));
                 }
             }
         }
@@ -95,13 +96,14 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             IExcelImportJobProgressWriter progressWriter,
             CancellationToken cancellationToken)
         {
+            var i18n = await ProductMaterialI18n.LoadAsync(ExcelImportHandlerHelper.GetRequestLanguage(request));
             if (!TryGetProductId(request, out var productId))
-                throw new InvalidOperationException("Thiếu hoặc sai productId.");
+                throw new InvalidOperationException(i18n.T("PM_IMPORT_PARENT_INVALID"));
 
             var productIds = await _lookupRepository.GetProductIdsByCodeAsync(request.CompanyCd, request.DatabaseName);
             var userId = request.UserId ?? string.Empty;
 
-            await progressWriter.ReportPercentAsync(35, "Bắt đầu lưu danh sách nguyên vật liệu...", cancellationToken);
+            await progressWriter.ReportPercentAsync(35, i18n.T("PM_IMPORT_SAVE_SINGLE_START"), cancellationToken);
             await using var session = await _db.CreateSessionAsync(Net_DB.Net_DB_Company, request.DatabaseName);
 
             // One transaction: a failure rolls back all rows of this file.
@@ -112,11 +114,11 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                 var rowNo = ExcelImportHandlerHelper.GetExcelRowNo(row, i);
                 var code = Common.NormalizeRequiredText(Common.GetString(row, "MATERIAL_PRODUCT_CD"));
                 if (!productIds.TryGetValue(code, out var materialId))
-                    throw new InvalidOperationException($"Dòng {rowNo}: mã NVL không tồn tại.");
+                    throw new InvalidOperationException(i18n.T("PM_IMPORT_ROW_ERROR", rowNo, i18n.T("PM_IMPORT_ROW_MATERIAL_NOT_FOUND")));
 
                 if (!TryGetQuantity(row, out var quantity) || quantity <= 0m ||
                     quantity > 999999999999.999999m || decimal.Round(quantity, 6) != quantity)
-                    throw new InvalidOperationException($"Dòng {rowNo}: số lượng định mức không hợp lệ.");
+                    throw new InvalidOperationException(i18n.T("PM_IMPORT_ROW_ERROR", rowNo, i18n.T("PM_IMPORT_ROW_QUANTITY_INVALID")));
 
                 try
                 {
@@ -137,7 +139,7 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                 }
                 catch (Exception ex)
                 {
-                    throw new InvalidOperationException($"Dòng {rowNo}: {ex.Message}", ex);
+                    throw new InvalidOperationException(i18n.T("PM_IMPORT_ROW_ERROR", rowNo, i18n.TranslateStoredProcedureError(ex.Message)), ex);
                 }
 
                 if ((i + 1) % 20 == 0 || i == rows.Count - 1)
@@ -145,13 +147,13 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
                     await progressWriter.ReportAsync(
                         i + 1, rows.Count,
                         35 + (int)((i + 1) * 60m / rows.Count),
-                        $"Đang lưu {i + 1}/{rows.Count} dòng...", cancellationToken);
+                        i18n.T("PM_IMPORT_PROGRESS", i + 1, rows.Count), cancellationToken);
                 }
             }
 
             cancellationToken.ThrowIfCancellationRequested();
             session.Commit();
-            await progressWriter.ReportPercentAsync(100, $"Đã nhập {rows.Count} nguyên vật liệu.", cancellationToken);
+            await progressWriter.ReportPercentAsync(100, i18n.T("PM_IMPORT_SINGLE_DONE", rows.Count), cancellationToken);
         }
 
         private static bool TryGetQuantity(IReadOnlyDictionary<string, object> row, out decimal quantity)
