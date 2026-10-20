@@ -1,0 +1,1 @@
+import"./exceljs.min-DsNtyed4.js";import"./index-Dscevhcm.js";import{a as e}from"./accountingDateUtils-WFfwYTiY.js";const s=t=>{if(!(t instanceof Date)||Number.isNaN(t.getTime()))return null;const a=t.getFullYear(),o=`${t.getMonth()+1}`.padStart(2,"0"),r=`${t.getDate()}`.padStart(2,"0");return`${a}-${o}-${r}`},d=t=>e(t);export{d as b,s as f};
