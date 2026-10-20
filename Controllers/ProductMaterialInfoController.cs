@@ -23,7 +23,8 @@ namespace API_AMNOTE_WEB.Controllers
         public async Task<IActionResult> Get([FromQuery] long productId)
         {
             await EnsurePermissionAsync(MenuCode, "VIEW");
-            if (productId <= 0) return ValidationError("PRODUCT_ID phải lớn hơn 0.");
+            if (productId <= 0)
+                return ValidationError((await ProductMaterialI18n.LoadAsync()).T("PM_API_PRODUCT_ID_REQUIRED"));
             return Success(await _repository.GetListAsync(Common.GetCompanyCode(), productId));
         }
 
@@ -39,7 +40,8 @@ namespace API_AMNOTE_WEB.Controllers
         {
             await EnsurePermissionAsync(MenuCode, "ADD");
             var invalid = Validate(request);
-            if (invalid != null) return ValidationError(invalid);
+            if (invalid != null)
+                return ValidationError((await ProductMaterialI18n.LoadAsync()).T(invalid));
             try
             {
                 var id = await _repository.SaveAsync(Common.GetCompanyCode(), Common.GetUserId(), 0, request!);
@@ -47,7 +49,7 @@ namespace API_AMNOTE_WEB.Controllers
             }
             catch (MySqlException ex) when (ex.SqlState == "45000")
             {
-                return ValidationError(ex.Message);
+                return ValidationError((await ProductMaterialI18n.LoadAsync()).TranslateStoredProcedureError(ex.Message));
             }
         }
 
@@ -55,9 +57,11 @@ namespace API_AMNOTE_WEB.Controllers
         public async Task<IActionResult> Update(long materialId, [FromBody] ProductMaterialSaveRequest? request)
         {
             await EnsurePermissionAsync(MenuCode, "EDIT");
-            if (materialId <= 0) return ValidationError("MATERIAL_ID phải lớn hơn 0.");
+            if (materialId <= 0)
+                return ValidationError((await ProductMaterialI18n.LoadAsync()).T("PM_API_MATERIAL_ID_REQUIRED"));
             var invalid = Validate(request);
-            if (invalid != null) return ValidationError(invalid);
+            if (invalid != null)
+                return ValidationError((await ProductMaterialI18n.LoadAsync()).T(invalid));
             try
             {
                 var id = await _repository.SaveAsync(Common.GetCompanyCode(), Common.GetUserId(), materialId, request!);
@@ -65,7 +69,7 @@ namespace API_AMNOTE_WEB.Controllers
             }
             catch (MySqlException ex) when (ex.SqlState == "45000")
             {
-                return ValidationError(ex.Message);
+                return ValidationError((await ProductMaterialI18n.LoadAsync()).TranslateStoredProcedureError(ex.Message));
             }
         }
 
@@ -73,7 +77,8 @@ namespace API_AMNOTE_WEB.Controllers
         public async Task<IActionResult> Delete(long materialId)
         {
             await EnsurePermissionAsync(MenuCode, "DELETE");
-            if (materialId <= 0) return ValidationError("MATERIAL_ID phải lớn hơn 0.");
+            if (materialId <= 0)
+                return ValidationError((await ProductMaterialI18n.LoadAsync()).T("PM_API_MATERIAL_ID_REQUIRED"));
             try
             {
                 await _repository.DeleteAsync(Common.GetCompanyCode(), Common.GetUserId(), materialId);
@@ -81,19 +86,19 @@ namespace API_AMNOTE_WEB.Controllers
             }
             catch (MySqlException ex) when (ex.SqlState == "45000")
             {
-                return ValidationError(ex.Message);
+                return ValidationError((await ProductMaterialI18n.LoadAsync()).TranslateStoredProcedureError(ex.Message));
             }
         }
 
         private static string? Validate(ProductMaterialSaveRequest? request)
         {
-            if (request == null) return "Thiếu nội dung yêu cầu.";
-            if (request.PRODUCT_ID <= 0) return "PRODUCT_ID phải lớn hơn 0.";
-            if (request.MATERIAL_PRODUCT_ID <= 0) return "MATERIAL_PRODUCT_ID phải lớn hơn 0.";
+            if (request == null) return "PM_API_REQUEST_REQUIRED";
+            if (request.PRODUCT_ID <= 0) return "PM_API_PRODUCT_ID_REQUIRED";
+            if (request.MATERIAL_PRODUCT_ID <= 0) return "PM_API_MATERIAL_PRODUCT_ID_REQUIRED";
             if (request.PRODUCT_ID == request.MATERIAL_PRODUCT_ID)
-                return "Thành phẩm không thể là nguyên vật liệu của chính nó.";
+                return "PM_API_SELF_MATERIAL";
             if (request.QUANTITY <= 0 || request.QUANTITY > 999999999999.999999m)
-                return "QUANTITY phải lớn hơn 0 và không vượt giới hạn DECIMAL(18,6).";
+                return "PM_API_QUANTITY_INVALID";
             return null;
         }
     }
