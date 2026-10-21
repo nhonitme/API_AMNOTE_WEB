@@ -1,101 +1,101 @@
 -- =============================================================================
 -- DATABASE: am_manager
--- Tinh nang: Xem thong tin License tren AMnote Web (chi doc)
--- Tuong thich MySQL 5.6+; khong tu dong cap License mau.
+-- Tính năng: Xem thông tin License trên AMnote Web (chỉ đọc)
+-- Tương thích MySQL 5.6+; không tự động cấp License mẫu.
 --
 -- company_license:
---   Luu thong tin giay phep su dung hien tai cua tung cong ty.
---   Moi COMPANY_CD co toi da 1 ban ghi License (UNIQUE KEY).
+--   Lưu thông tin giấy phép sử dụng hiện tại của từng công ty.
+--   Mỗi COMPANY_CD có tối đa 1 bản ghi License (UNIQUE KEY).
 --
 -- company_license_renewal:
---   Luu nhat ky gia han License theo tung cong ty, moi lan gia han mot dong.
---   Du lieu lich su duoc hien thi tren tab "Lich su gia han".
+--   Lưu nhật ký gia hạn License theo từng công ty, mỗi lần gia hạn một dòng.
+--   Dữ liệu lịch sử được hiển thị trên tab "Lịch sử gia hạn".
 --
--- LUU Y:
---   1. Chi nhan vien quan tri AMNote duoc cap nhat du lieu License.
---   2. Ban hien tai CHI HIEN THI; chua chan su dung khi het han/qua gioi han.
---   3. CREATE TABLE IF NOT EXISTS khong bo sung COMMENT vao bang DA ton tai.
---      Neu da tao bang, can dung ALTER TABLE ... MODIFY COLUMN / COMMENT.
+-- LƯU Ý:
+--   1. Chỉ nhân viên quản trị AMNote được cập nhật dữ liệu License.
+--   2. Bản hiện tại CHỈ HIỂN THỊ; chưa chặn sử dụng khi hết hạn/quá giới hạn.
+--   3. CREATE TABLE IF NOT EXISTS không bổ sung COMMENT vào bảng ĐÃ tồn tại.
+--      Nếu đã tạo bảng, cần dùng ALTER TABLE ... MODIFY COLUMN / COMMENT.
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS `company_license` (
   `LICENSE_ID` BIGINT NOT NULL AUTO_INCREMENT
-    COMMENT 'ID duy nhat cua ban ghi License, khoa chinh tu tang',
+    COMMENT 'ID duy nhất của bản ghi License, khóa chính tự tăng',
 
   `COMPANY_CD` VARCHAR(20) NOT NULL
-    COMMENT 'Ma cong ty duoc cap License, duy nhat trong bang',
+    COMMENT 'Mã công ty được cấp License, duy nhất trong bảng',
 
   `LICENSE_KEY` VARCHAR(100) DEFAULT NULL
-    COMMENT 'Ma khoa License do AMNote cap; API chi tra ve gia tri da che',
+    COMMENT 'Mã khóa License do AMNote cấp; API chỉ trả về giá trị đã che',
 
   `PLAN_CODE` VARCHAR(50) NOT NULL DEFAULT 'STANDARD'
-    COMMENT 'Ma goi phan mem, vi du STANDARD hoac PROFESSIONAL',
+    COMMENT 'Mã gói phần mềm, ví dụ STANDARD hoặc PROFESSIONAL',
 
   `LICENSE_TYPE` VARCHAR(30) NOT NULL DEFAULT 'ANNUAL'
-    COMMENT 'Loai thoi han License, vi du ANNUAL, MONTHLY, PERPETUAL',
+    COMMENT 'Loại thời hạn License, ví dụ ANNUAL, MONTHLY, PERPETUAL',
 
   `START_DATE` DATE DEFAULT NULL
-    COMMENT 'Ngay bat dau hieu luc License; NULL neu chua thiet lap',
+    COMMENT 'Ngày bắt đầu hiệu lực License; NULL nếu chưa thiết lập',
 
   `END_DATE` DATE DEFAULT NULL
-    COMMENT 'Ngay het han License; NULL neu khong thiet lap gioi han thoi gian',
+    COMMENT 'Ngày hết hạn License; NULL nếu không thiết lập giới hạn thời gian',
 
   `MAX_USERS` INT DEFAULT NULL
-    COMMENT 'So tai khoan nguoi dung toi da duoc cap phep; NULL neu chua quy dinh',
+    COMMENT 'Số tài khoản người dùng tối đa được cấp phép; NULL nếu chưa quy định',
 
   `MAX_CONCURRENT_USERS` INT DEFAULT NULL
-    COMMENT 'So phien dang nhap dong thoi toi da duoc cap phep; NULL neu chua quy dinh',
+    COMMENT 'Số phiên đăng nhập đồng thời tối đa được cấp phép; NULL nếu chưa quy định',
 
   `LICENSE_STATUS` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
-    COMMENT 'Trang thai luu tru: ACTIVE hoac SUSPENDED; API tu tinh EXPIRING/EXPIRED theo END_DATE',
+    COMMENT 'Trạng thái lưu: ACTIVE hoặc SUSPENDED; API tự tính EXPIRING/EXPIRED theo END_DATE',
 
   `NOTE` VARCHAR(500) DEFAULT NULL
-    COMMENT 'Ghi chu noi bo ve License cua cong ty',
+    COMMENT 'Ghi chú nội bộ về License của công ty',
 
   `CREATED_AT` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    COMMENT 'Thoi diem tao ban ghi License',
+    COMMENT 'Thời điểm tạo bản ghi License',
 
   `UPDATED_AT` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    COMMENT 'Thoi diem cap nhat ban ghi License gan nhat',
+    COMMENT 'Thời điểm cập nhật bản ghi License gần nhất',
 
   PRIMARY KEY (`LICENSE_ID`),
   UNIQUE KEY `UK_COMPANY_LICENSE_COMPANY` (`COMPANY_CD`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
-  COMMENT='Thong tin License hien tai theo cong ty cua AMnote Web';
+  COMMENT='Thông tin License hiện tại theo công ty của AMnote Web';
 
 
 CREATE TABLE IF NOT EXISTS `company_license_renewal` (
   `ID` BIGINT NOT NULL AUTO_INCREMENT
-    COMMENT 'ID duy nhat cua lan gia han License, khoa chinh tu tang',
+    COMMENT 'ID duy nhất của lần gia hạn License, khóa chính tự tăng',
 
   `COMPANY_CD` VARCHAR(20) NOT NULL
-    COMMENT 'Ma cong ty co License duoc gia han, lien ket logic voi company_license.COMPANY_CD',
+    COMMENT 'Mã công ty có License được gia hạn, liên kết logic với company_license.COMPANY_CD',
 
   `RENEWED_AT` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-    COMMENT 'Ngay gio thuc hien gia han License',
+    COMMENT 'Ngày giờ thực hiện gia hạn License',
 
   `OLD_END_DATE` DATE DEFAULT NULL
-    COMMENT 'Ngay het han cua License truoc khi gia han',
+    COMMENT 'Ngày hết hạn của License trước khi gia hạn',
 
   `NEW_END_DATE` DATE DEFAULT NULL
-    COMMENT 'Ngay het han moi cua License sau khi gia han',
+    COMMENT 'Ngày hết hạn mới của License sau khi gia hạn',
 
   `NOTE` VARCHAR(500) DEFAULT NULL
-    COMMENT 'Noi dung hoac ghi chu ve lan gia han License',
+    COMMENT 'Nội dung hoặc ghi chú về lần gia hạn License',
 
   `CREATED_BY` VARCHAR(100) DEFAULT NULL
-    COMMENT 'Ma nguoi quan tri AMNote thuc hien ghi nhan lan gia han',
+    COMMENT 'Mã người quản trị AMNote thực hiện ghi nhận lần gia hạn',
 
   PRIMARY KEY (`ID`),
   KEY `IX_LICENSE_RENEWAL_COMPANY_DATE` (`COMPANY_CD`, `RENEWED_AT`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
-  COMMENT='Lich su cac lan gia han License theo cong ty';
+  COMMENT='Lịch sử các lần gia hạn License theo công ty';
 
 
--- Vi du cap License bang thao tac quan tri (can thay gia tri phu hop):
+-- Ví dụ cấp License bằng thao tác quản trị (cần thay giá trị phù hợp):
 -- INSERT INTO company_license (COMPANY_CD, PLAN_CODE, LICENSE_TYPE, START_DATE, END_DATE, MAX_USERS)
 -- VALUES ('<company_cd>', 'PROFESSIONAL', 'ANNUAL', '2026-01-01', '2026-12-31', 20);
 --
--- Khi gia han, cap nhat company_license.END_DATE va them 1 dong vao
--- company_license_renewal trong CUNG giao dich (transaction).
--- Tinh nang hien tai chi doc License, khong bao gom thao tac gia han.
+-- Khi gia hạn, cập nhật company_license.END_DATE và thêm 1 dòng vào
+-- company_license_renewal trong CÙNG giao dịch (transaction).
+-- Tính năng hiện tại chỉ đọc License, không bao gồm thao tác gia hạn.
