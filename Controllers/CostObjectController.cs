@@ -69,10 +69,15 @@ namespace API_AMNOTE_WEB.Controllers
                     PRODUCT_CD = code,
                     PRODUCT_NM_VIET = p.PRODUCT_NM_VIET,
                     PRODUCT_NM_ENG = p.PRODUCT_NM_ENG,
+                    PRODUCT_NM_KOR = p.PRODUCT_NM_KOR,
+                    PRODUCT_NM_CHINA = p.PRODUCT_NM_CHINA,
                     DIVISION = p.DIVISION,
                     DEPARTMENT_ID = department?.DEPARTMENT_ID,
                     DEPARTMENT_CD = department?.DEPARTMENT_CD,
                     DEP_NAME_VIET = department?.DEP_NAME_VIET,
+                    DEP_NAME_ENG = department?.DEP_NAME_ENG,
+                    DEP_NAME_KOR = department?.DEP_NAME_KOR,
+                    DEP_NAME_CHINA = department?.DEP_NAME_CHINA,
                     STATUS = department == null ? "MISSING" : "REGISTERED"
                 };
             }).ToList();

@@ -6,10 +6,15 @@ namespace API_AMNOTE_WEB.Models
         public string PRODUCT_CD { get; set; } = string.Empty;
         public string PRODUCT_NM_VIET { get; set; } = string.Empty;
         public string? PRODUCT_NM_ENG { get; set; }
+        public string? PRODUCT_NM_KOR { get; set; }
+        public string? PRODUCT_NM_CHINA { get; set; }
         public string? DIVISION { get; set; }
         public long? DEPARTMENT_ID { get; set; }
         public string? DEPARTMENT_CD { get; set; }
         public string? DEP_NAME_VIET { get; set; }
+        public string? DEP_NAME_ENG { get; set; }
+        public string? DEP_NAME_KOR { get; set; }
+        public string? DEP_NAME_CHINA { get; set; }
         public string STATUS { get; set; } = "MISSING";
     }
 
