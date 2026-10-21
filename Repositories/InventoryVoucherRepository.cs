@@ -19,6 +19,7 @@ namespace API_AMNOTE_WEB.Repositories
         {
             public long TRANSFER_ID { get; set; }
             public long? CHIT_ID_COGS { get; set; }
+            public long? CHITDETAIL_ID_COGS { get; set; }
             public string IS_COGS { get; set; } = "0";
             public string COMPANY_CD { get; set; } = string.Empty;
             public string TRANSFER_CD { get; set; } = string.Empty;
@@ -136,43 +137,33 @@ namespace API_AMNOTE_WEB.Repositories
             var vouchers = headers.Select(item => MapInventoryVoucher(item, inputLookup, outputLookup)).ToList();
             if (normalizedChitType == "IO" && vouchers.Count > 0)
             {
-                await using var session = await _db.CreateSessionAsync(Net_DB.Net_DB_Company);
-                foreach (var voucher in vouchers)
-                {
-                    voucher.COGS = await ReadInventoryCogsAsync(session, companyCd, voucher.CHIT_ID, voucher.OUTPUTS);
-                }
+                await PopulateInventoryCogsAsync(companyCd, vouchers);
             }
             return (vouchers, result.TotalRecords);
         }
 
-        public async Task<long?> GetInventoryIssueIdByCogsVoucherIdAsync(string companyCd, long cogsVoucherId)
+        public async Task<IReadOnlyList<InventoryCogsIssueLinkDto>> GetInventoryIssueLinksByCogsVoucherIdAsync(string companyCd, long cogsVoucherId)
+        {
+            var (links, _) = await _db.QueryMultipleAsync<InventoryCogsIssueLinkDto, InventoryCogsSourceRow>(
+                Net_DB.Net_DB_Company,
+                "CALL getInventoryIssueLinksByCogsVoucher(@companyCd, @cogsVoucherId, @cogsDetailId)",
+                new { companyCd, cogsVoucherId, cogsDetailId = (long?)null });
+            return links.ToList();
+        }
+
+        public async Task<long?> GetInventoryIssueIdByCogsVoucherIdAsync(string companyCd, long cogsVoucherId, long? cogsDetailId = null)
         {
             if (cogsVoucherId <= 0)
             {
                 return null;
             }
 
-            const string query = @"
-                SELECT transfer.INVENTORY_ID AS INVENTORY_CHIT_ID
-                FROM chit_inventory_info transfer
-                INNER JOIN chitinfo cogs
-                    ON cogs.COMPANY_CD=transfer.COMPANY_CD
-                    AND cogs.CHIT_ID=transfer.CHIT_ID_COGS
-                    AND cogs.CHIT_TYPE='OT'
-                    AND cogs.INPUT_TYPE='AR'
-                    AND cogs.ISDEL='0'
-                WHERE transfer.COMPANY_CD=@companyCd
-                    AND transfer.CHIT_TYPE='IO'
-                    AND transfer.INPUT_TYPE='AR'
-                    AND transfer.ISDEL='0'
-                    AND transfer.CHIT_ID_COGS=@cogsVoucherId
-                LIMIT 1";
-
-            var source = (await _db.QueryAsync<InventoryCogsSourceRow>(
+            var (_, candidates) = await _db.QueryMultipleAsync<InventoryCogsIssueLinkDto, InventoryCogsSourceRow>(
                 Net_DB.Net_DB_Company,
-                query,
-                new { companyCd, cogsVoucherId })).FirstOrDefault();
+                "CALL getInventoryIssueLinksByCogsVoucher(@companyCd, @cogsVoucherId, @cogsDetailId)",
+                new { companyCd, cogsVoucherId, cogsDetailId });
 
+            var source = candidates.SingleOrDefault();
             return source is { INVENTORY_CHIT_ID: > 0 } ? source.INVENTORY_CHIT_ID : null;
         }
 
@@ -198,6 +189,8 @@ namespace API_AMNOTE_WEB.Repositories
                 if (request.CHIT_ID.GetValueOrDefault() > 0 && existingHeader == null)
                     throw new InvalidOperationException($"Inventory voucher {request.CHIT_ID} does not exist.");
                 var isCogsEnabled = normalizedChitType == "IO" && request.IS_COGS == "1";
+                if (request.CHITDETAIL_ID_COGS is <= 0 || (!isCogsEnabled && request.CHITDETAIL_ID_COGS.HasValue))
+                    throw new ArgumentException("A COGS detail link requires a positive detail ID and an IO with COGS enabled.");
                 if (normalizedChitType == "IO")
                 {
                     if (existingHeader != null)
@@ -206,11 +199,12 @@ namespace API_AMNOTE_WEB.Repositories
                         if (existingHeader.CHIT_ID_COGS.HasValue)
                         {
                             await EnsureCogsPeriodOpenAsync(session, companyCd, existingHeader.TRANSFER_YMD);
-                            existingCogs = await ReadInventoryCogsAsync(session, companyCd, existingHeader.TRANSFER_ID,
-                                await ReadIssueOutputsAsync(session, companyCd, existingHeader.TRANSFER_ID));
+                            existingCogs = await ReadInventoryCogsAsync(session, companyCd, existingHeader.TRANSFER_ID);
                             if (existingCogs == null)
                                 throw new InvalidOperationException($"Issue voucher {existingHeader.TRANSFER_ID}: linked COGS voucher was not found.");
                             EnsureCogsUnlocked(existingCogs, existingHeader.TRANSFER_ID);
+                            if (!existingHeader.CHITDETAIL_ID_COGS.HasValue)
+                                throw new InvalidOperationException("Historical COGS link requires migration before editing.");
                             if (!isCogsEnabled && request.CLEAR_COGS_LINK != true)
                                 throw new InvalidOperationException("Confirm clearing the linked OT COGS voucher before turning off IS_COGS.");
                         }
@@ -319,9 +313,18 @@ namespace API_AMNOTE_WEB.Repositories
                 var voucherId = identity.TRANSFER_ID;
                 var savedVoucherCd = Common.NormalizeNullableText(identity.TRANSFER_CD) ?? voucherCd ?? string.Empty;
 
+                if (Common.UsesInventoryInput(normalizedChitType) || Common.UsesInventoryOutput(normalizedChitType))
+                {
+                    await EnsureUniqueInventorySourceLinesAsync(
+                        session,
+                        companyCd,
+                        voucherId,
+                        Common.UsesInventoryInput(normalizedChitType) ? activeInputs : Enumerable.Empty<InventoryInput>(),
+                        Common.UsesInventoryOutput(normalizedChitType) ? activeOutputs : Enumerable.Empty<InventoryOutput>());
+                }
+
                 if (Common.UsesInventoryInput(normalizedChitType))
                 {
-                    await EnsureUniqueInventoryInputSourceLinesAsync(session, companyCd, voucherId, activeInputs);
                     var existingInputIds = await GetInventoryInputIdsByChitIdAsync(session, companyCd, voucherId);
                     var currentInputIds = new HashSet<long>();
 
@@ -352,7 +355,6 @@ namespace API_AMNOTE_WEB.Repositories
 
                 if (Common.UsesInventoryOutput(normalizedChitType))
                 {
-                    await EnsureUniqueInventoryOutputSourceLinesAsync(session, companyCd, voucherId, activeOutputs);
                     var existingOutputIds = await GetInventoryOutputIdsByChitIdAsync(session, companyCd, voucherId);
                     var currentOutputIds = new HashSet<long>();
 
@@ -384,7 +386,7 @@ namespace API_AMNOTE_WEB.Repositories
                 }
 
                 var savedCogs = isCogsEnabled
-                    ? await SaveInventoryCogsAsync(session, companyCd, userId, voucherId, voucherNo!, request.CHIT_YMD!, activeOutputs, request.COGS_AMOUNT, existingCogs)
+                    ? await SaveInventoryCogsAsync(session, companyCd, userId, voucherId, voucherNo!, request.CHIT_YMD!, activeOutputs, request.COGS_AMOUNT, existingCogs, request.CHITDETAIL_ID_COGS)
                     : null;
                 if (!isCogsEnabled && existingCogs != null && request.CLEAR_COGS_LINK == true)
                     await UnlinkInventoryCogsAsync(session, companyCd, userId, voucherId, existingCogs.CHIT_ID);
@@ -456,12 +458,12 @@ namespace API_AMNOTE_WEB.Repositories
                     await LockInventoryIssueAsync(session, companyCd, chitId);
                     if (existingHeader?.CHIT_ID_COGS is > 0)
                     {
-                        var cogs = await ReadInventoryCogsAsync(session, companyCd, chitId, await ReadIssueOutputsAsync(session, companyCd, chitId));
+                        var cogs = await ReadInventoryCogsAsync(session, companyCd, chitId);
                         if (cogs == null)
                             throw new InvalidOperationException($"Issue voucher {chitId}: linked COGS voucher was not found.");
                         EnsureCogsUnlocked(cogs, chitId);
                         await EnsureCogsPeriodOpenAsync(session, companyCd, cogs.CHIT_YMD);
-                        await DeleteInventoryCogsAsync(session, companyCd, userId, cogs.CHIT_ID);
+                        await UnlinkInventoryCogsAsync(session, companyCd, userId, chitId, cogs.CHIT_ID);
                     }
                 }
                 const string query = "CALL delChitInventoryTransfer(@p_COMPANY_CD, @p_INPUT_TYPE, @p_TRANSFER_ID, @p_UPDATE_BY)";
@@ -642,6 +644,7 @@ namespace API_AMNOTE_WEB.Repositories
                 CHIT_YMD = item.TRANSFER_YMD,
                 CHIT_TYPE = Common.NormalizeInventoryChitType(item.CHIT_TYPE),
                 IS_COGS = item.IS_COGS,
+                CHITDETAIL_ID_COGS = item.CHITDETAIL_ID_COGS,
                 AMOUNT = item.AMOUNT,
                 TOTAL_QTY = item.TOTAL_QTY,
                 REMARK = item.REMARK,
@@ -903,91 +906,63 @@ namespace API_AMNOTE_WEB.Repositories
                 });
         }
 
-        private static async Task EnsureUniqueInventoryInputSourceLinesAsync(
+        private static async Task EnsureUniqueInventorySourceLinesAsync(
             DapperSession session,
             string companyCd,
             long currentInventoryChitId,
-            IEnumerable<InventoryInput> inputs)
+            IEnumerable<InventoryInput> inputs,
+            IEnumerable<InventoryOutput> outputs)
         {
-            var sourceDetailIds = inputs
+            var inputDetailIds = inputs
                 .Where(IsValidInventoryInput)
                 .Select(item => item.CHITDETAIL_ID.GetValueOrDefault())
                 .Where(id => id > 0)
                 .Distinct()
                 .ToList();
-
-            if (sourceDetailIds.Count == 0)
-            {
-                return;
-            }
-
-            var existingRows = await session.QueryAsync<InventoryInputVoucherRow>(
-                @"
-                SELECT INPUT_ID, INVENTORY_ID, CHITDETAIL_ID
-                FROM chit_inventory_input
-                WHERE COMPANY_CD = @p_COMPANY_CD
-                  AND IFNULL(ISDEL, '0') = '0'
-                  AND FIND_IN_SET(CAST(CHITDETAIL_ID AS CHAR), @p_CHITDETAIL_IDS) > 0",
-                new
-                {
-                    p_COMPANY_CD = companyCd,
-                    p_CHITDETAIL_IDS = string.Join(",", sourceDetailIds)
-                });
-
-            var conflictDetailIds = existingRows
-                .Where(item => item.INPUT_ID > 0 && item.CHITDETAIL_ID > 0 && item.INVENTORY_ID > 0 && item.INVENTORY_ID != currentInventoryChitId)
-                .Select(item => item.CHITDETAIL_ID)
-                .Distinct()
-                .OrderBy(id => id)
-                .ToList();
-
-            if (conflictDetailIds.Count > 0)
-            {
-                throw new InvalidOperationException($"Chi tiet nguon da duoc lien ket voi phieu nhap kho khac: {string.Join(", ", conflictDetailIds)}");
-            }
-        }
-
-        private static async Task EnsureUniqueInventoryOutputSourceLinesAsync(
-            DapperSession session,
-            string companyCd,
-            long currentInventoryChitId,
-            IEnumerable<InventoryOutput> outputs)
-        {
-            var sourceDetailIds = outputs
+            var outputDetailIds = outputs
                 .Where(IsValidInventoryOutput)
                 .Select(item => item.CHITDETAIL_ID.GetValueOrDefault())
                 .Where(id => id > 0)
                 .Distinct()
                 .ToList();
 
-            if (sourceDetailIds.Count == 0)
+            if (inputDetailIds.Count == 0 && outputDetailIds.Count == 0)
             {
                 return;
             }
 
-            var existingRows = await session.QueryAsync<InventoryOutputVoucherRow>(
-                @"
-                SELECT OUTPUT_ID, INVENTORY_ID, CHITDETAIL_ID
-                FROM chit_inventory_output
-                WHERE COMPANY_CD = @p_COMPANY_CD
-                  AND IFNULL(ISDEL, '0') = '0'
-                  AND FIND_IN_SET(CAST(CHITDETAIL_ID AS CHAR), @p_CHITDETAIL_IDS) > 0",
+            using var grid = await session.QueryMultipleAsync(
+                "CALL getInventorySourceConflicts(@p_COMPANY_CD, @p_INPUT_CHITDETAIL_IDS, @p_OUTPUT_CHITDETAIL_IDS)",
                 new
                 {
                     p_COMPANY_CD = companyCd,
-                    p_CHITDETAIL_IDS = string.Join(",", sourceDetailIds)
+                    p_INPUT_CHITDETAIL_IDS = string.Join(",", inputDetailIds),
+                    p_OUTPUT_CHITDETAIL_IDS = string.Join(",", outputDetailIds)
                 });
 
-            var conflictDetailIds = existingRows
+            var inputRows = (await grid.ReadAsync<InventoryInputVoucherRow>()).ToList();
+            var outputRows = (await grid.ReadAsync<InventoryOutputVoucherRow>()).ToList();
+
+            var inputConflicts = inputRows
+                .Where(item => item.INPUT_ID > 0 && item.CHITDETAIL_ID > 0 && item.INVENTORY_ID > 0 && item.INVENTORY_ID != currentInventoryChitId)
+                .Select(item => item.CHITDETAIL_ID)
+                .Distinct()
+                .OrderBy(id => id)
+                .ToList();
+            if (inputConflicts.Count > 0)
+            {
+                throw new InvalidOperationException($"Chi tiet nguon da duoc lien ket voi phieu nhap kho khac: {string.Join(", ", inputConflicts)}");
+            }
+
+            var outputConflicts = outputRows
                 .Where(item => item.OUTPUT_ID > 0 && item.CHITDETAIL_ID > 0 && item.INVENTORY_ID > 0 && item.INVENTORY_ID != currentInventoryChitId)
                 .Select(item => item.CHITDETAIL_ID)
                 .Distinct()
                 .OrderBy(id => id)
                 .ToList();
-
-            if (conflictDetailIds.Count > 0)
+            if (outputConflicts.Count > 0)
             {
-                throw new InvalidOperationException($"Chi tiet nguon da duoc lien ket voi phieu xuat kho khac: {string.Join(", ", conflictDetailIds)}");
+                throw new InvalidOperationException($"Chi tiet nguon da duoc lien ket voi phieu xuat kho khac: {string.Join(", ", outputConflicts)}");
             }
         }
     }

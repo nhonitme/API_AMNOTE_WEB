@@ -114,6 +114,9 @@ namespace API_AMNOTE_WEB.Controllers
             const string gridId = "bank-grid";
 
             var exportColumns = await Common.GetExcelExportColumnInfosAsync("BankInfo", screenCd, gridId);
+            if (exportColumns.Count == 0)
+                return BadRequest(await Common.GetMissingExcelExportColumnsMessageAsync(currentLang));
+
             var columnMapping = await Common.BuildExcelColumnMappingAsync(exportColumns, currentLang);
             var sysCodeDisplayMap = await Common.BuildExcelSysCodeDisplayMapAsync(exportColumns, companyCd, currentLang);
 

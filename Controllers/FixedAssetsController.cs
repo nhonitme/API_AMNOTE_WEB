@@ -130,6 +130,9 @@ namespace API_AMNOTE_WEB.Controllers
             const string screenCd = "FA_REGISTER";
             const string gridId = "fixed-asset-grid";
             var exportColumns = await Common.GetExcelExportColumnInfosAsync("FixedAssetInfo", screenCd, gridId);
+            if (exportColumns.Count == 0)
+                return BadRequest(await Common.GetMissingExcelExportColumnsMessageAsync(currentLang));
+
             await ApplyFaStatusDisplayTextAsync(data, companyCd, currentLang);
 
             var columnMapping = await Common.BuildExcelColumnMappingAsync(exportColumns, currentLang);

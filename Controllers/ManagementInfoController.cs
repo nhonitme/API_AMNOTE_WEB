@@ -117,6 +117,9 @@ namespace API_AMNOTE_WEB.Controllers
             const string screenCd = MenuCode;
             const string gridId = "management-info-grid";
             var exportColumns = await Common.GetExcelExportColumnInfosAsync("ManagementInfo", screenCd, gridId);
+            if (exportColumns.Count == 0)
+                return BadRequest(await Common.GetMissingExcelExportColumnsMessageAsync(currentLang));
+
             var columnMapping = await Common.BuildExcelColumnMappingAsync(exportColumns, currentLang);
             var sysCodeDisplayMap = await Common.BuildExcelSysCodeDisplayMapAsync(exportColumns, companyCd, currentLang);
             var stream = await ExcelHelper.ExportToExcelAsync(data, columnMapping, formatTypes: null, sysCodeDisplayMap: sysCodeDisplayMap);

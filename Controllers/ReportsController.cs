@@ -277,3 +277,4 @@ namespace API_AMNOTE_WEB.Controllers
         private sealed record ReportSelection(string? ReportCode, string? MenuCode);
     }
 }
+

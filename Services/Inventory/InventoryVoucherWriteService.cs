@@ -107,6 +107,7 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 CHIT_TYPE = chitType,
                 IS_COGS = request.IS_COGS == "1" ? "1" : "0",
                 COGS_AMOUNT = request.COGS_AMOUNT,
+                CHITDETAIL_ID_COGS = request.CHITDETAIL_ID_COGS,
                 CLEAR_COGS_LINK = request.CLEAR_COGS_LINK,
                 AMOUNT = request.AMOUNT,
                 TOTAL_QTY = request.TOTAL_QTY,
@@ -171,6 +172,7 @@ namespace API_AMNOTE_WEB.Services.Inventory
                     ? (existing.IS_COGS == "1" ? "1" : "0")
                     : (request.IS_COGS == "1" ? "1" : "0"),
                 COGS_AMOUNT = request.COGS_AMOUNT,
+                CHITDETAIL_ID_COGS = request.CHITDETAIL_ID_COGS,
                 CLEAR_COGS_LINK = request.CLEAR_COGS_LINK,
                 AMOUNT = request.AMOUNT,
                 TOTAL_QTY = request.TOTAL_QTY,

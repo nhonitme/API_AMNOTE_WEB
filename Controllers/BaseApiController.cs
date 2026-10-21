@@ -1,4 +1,4 @@
-﻿using API_AMNOTE_WEB.Helpers;
+using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Repositories;
@@ -193,3 +193,4 @@ namespace API_AMNOTE_WEB.Controllers
         #endregion check json
     }
 }
+

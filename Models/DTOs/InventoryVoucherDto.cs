@@ -5,6 +5,7 @@ namespace API_AMNOTE_WEB.Models.DTOs
     public class InventoryVoucherDto
     {
         public InventoryCogsDto? COGS { get; set; }
+        public long? CHITDETAIL_ID_COGS { get; set; }
         public long CHIT_ID { get; set; }
         public string COMPANY_CD { get; set; } = string.Empty;
         public string CHIT_CD { get; set; } = string.Empty;
@@ -38,6 +39,7 @@ namespace API_AMNOTE_WEB.Models.DTOs
 
     public class InventoryVoucherRequest
     {
+        public long? CHITDETAIL_ID_COGS { get; set; }
         public long? CHIT_ID { get; set; }
         public string? COMPANY_CD { get; set; }
         public string? INPUT_TYPE { get; set; }

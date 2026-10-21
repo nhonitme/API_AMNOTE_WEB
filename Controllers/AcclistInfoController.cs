@@ -61,8 +61,7 @@ namespace API_AMNOTE_WEB.Controllers
             return Updated(entity, "Cập nhật thành công");
         }
 
-        [HttpPost]
-        [Route("DeleteMany")]
+        [HttpPost("bulk-delete")]
         [Authorize]
         public async Task<IActionResult> DeleteMany([FromBody] DeleteAcclistInfoRequest request, [FromQuery] string? lang = null)
         {
@@ -95,9 +94,14 @@ namespace API_AMNOTE_WEB.Controllers
                 return NotFound((await Common.getLanguage("ACC_CD", currentLang)) + " " + (await Common.getLanguage("NO_DATA_TO_EXPORT", currentLang)));
             }
 
-            var templateColumns = await Common.GetExcelTemplateColumnInfosAsync("AcclistInfo");
-            var columnMapping = await Common.BuildExcelColumnMappingAsync(templateColumns, currentLang);
-            var sysCodeDisplayMap = await Common.BuildExcelSysCodeDisplayMapAsync(templateColumns, companyCd, currentLang);
+            const string screenCd = MenuCode;
+            const string gridId = "acclist-grid";
+            var exportColumns = await Common.GetExcelExportColumnInfosAsync("AcclistInfo", screenCd, gridId);
+            if (exportColumns.Count == 0)
+                return BadRequest(await Common.GetMissingExcelExportColumnsMessageAsync(currentLang));
+
+            var columnMapping = await Common.BuildExcelColumnMappingAsync(exportColumns, currentLang);
+            var sysCodeDisplayMap = await Common.BuildExcelSysCodeDisplayMapAsync(exportColumns, companyCd, currentLang);
             var stream = await ExcelHelper.ExportToExcelAsync(data, columnMapping, formatTypes: null, sysCodeDisplayMap: sysCodeDisplayMap);
             var fileName = $"acc_list_info{DateTime.Now:yyyyMMddHHmmss}.xlsx";
 

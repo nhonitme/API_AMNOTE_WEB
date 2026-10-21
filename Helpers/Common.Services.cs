@@ -246,31 +246,20 @@ namespace API_AMNOTE_WEB.Helpers
                 });
             }
 
-            return columns.Count > 0
-                ? columns
-                : await GetExcelTemplateColumnInfosAsync(moduleCd);
+            return columns;
         }
 
-        /// <summary>
-        /// Grid export columns: FIELD_NAME → CAPTION (fallback to template). Prefer
-        /// <see cref="GetExcelExportColumnInfosAsync"/> + <see cref="BuildExcelColumnMappingAsync(IEnumerable{ExcelTemplateColumnInfo}, string)"/>
-        /// so headers translate via LABEL_TEXT.
-        /// </summary>
-        public static async Task<Dictionary<string, string>> GetExcelExportKeysAsync(string moduleCd, string screenCd, string gridId)
+        public static async Task<string> GetMissingExcelExportColumnsMessageAsync(string? lang = null)
         {
-            var columns = await GetExcelExportColumnInfosAsync(moduleCd, screenCd, gridId);
-            var exportMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var column in columns)
+            var langCode = string.IsNullOrWhiteSpace(lang) ? GetCurrentLanguage() : lang.Trim();
+            var message = await getLanguage("NO_EXCEL_EXPORT_COLUMNS", langCode);
+            if (string.IsNullOrWhiteSpace(message)
+                || string.Equals(message, "NO_EXCEL_EXPORT_COLUMNS", StringComparison.OrdinalIgnoreCase))
             {
-                var name = NormalizeNullableText(column.FIELD_NAME);
-                if (name == null || exportMap.ContainsKey(name))
-                    continue;
-
-                exportMap[name] = NormalizeNullableText(column.CAPTION) ?? name;
+                return "No visible columns configured in sys grid for Excel export.";
             }
 
-            return exportMap;
+            return message;
         }
 
         /// <summary>

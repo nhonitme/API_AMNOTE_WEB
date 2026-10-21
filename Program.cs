@@ -190,6 +190,7 @@ builder.Services.AddScoped<IMasterInUseRepository, MasterInUseRepository>();
 builder.Services.AddScoped<IActivityLogService, ActivityLogService>();
 
 builder.Services.AddScoped<DapperExecutor>();
+builder.Services.AddScoped<IVatInOutRepository, VatInOutRepository>();
 builder.Services.AddScoped<ILoginRepository, LoginRepository>();
 
 builder.Services.AddScoped<IPeriodLockRepository, PeriodLockRepository>();
@@ -564,3 +565,4 @@ static bool IsFrontendOriginAllowed(string origin, ISet<string> allowedOrigins, 
             || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)
             || (bytes[0] == 192 && bytes[1] == 168));
 }
+

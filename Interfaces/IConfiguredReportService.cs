@@ -30,3 +30,4 @@ namespace API_AMNOTE_WEB.Interfaces
             CancellationToken cancellationToken = default);
     }
 }
+

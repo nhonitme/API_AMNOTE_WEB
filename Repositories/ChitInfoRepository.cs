@@ -335,6 +335,32 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
             return items.ToList();
         }
 
+        private static async Task EnsureCogsLinksPreservedAsync(DapperSession session, string companyCd, long chitId, ChitInfoRequest? request, string inputType = "AR")
+        {
+            // Keep the OT lock and both link result sets on the caller's transaction.
+            using var grid = await session.QueryMultipleAsync(
+                "CALL getInventoryCogsOtProtectionForUpdate(@companyCd, @chitId)", new { companyCd, chitId });
+            await grid.ReadAsync<long>();
+            var links = (await grid.ReadAsync<long?>()).ToList();
+            var dates = (await grid.ReadAsync<string>()).ToList();
+            if (links.Count == 0) return;
+            if (request == null || links.Any(id => !id.HasValue))
+                throw new InvalidOperationException("Unlink the inventory issue COGS details before deleting this OT voucher; historical links require migration.");
+            if (request.CHIT_TYPE != "OT" || inputType != "AR")
+                throw new InvalidOperationException("Cannot change the type or ledger of an OT linked to inventory COGS.");
+            if (request.AMOUNT != request.DETAILS.Where(d => d.ISDEL != "1").Sum(d => Math.Round(d.AMOUNT ?? 0, 2, MidpointRounding.AwayFromZero)))
+                throw new InvalidOperationException("The linked OT total must equal the sum of its active details.");
+            if (dates.Any(date => date != request.CHIT_YMD))
+                throw new InvalidOperationException("Cannot change the OT date while inventory issues are linked.");
+            foreach (var id in links)
+            {
+                var detail = request.DETAILS?.SingleOrDefault(d => d.CHITDETAIL_ID == id && d.ISDEL != "1");
+                if (detail == null || detail.DEBIT != "632" || detail.CREDIT != "156" || detail.AMOUNT is null or < 0 ||
+                    detail.FC_TYPE != "VND" || detail.CHIT_YMD != request.CHIT_YMD)
+                    throw new InvalidOperationException("A linked COGS detail must remain active with valid date, VND amount and accounts 632/156. Unlink from the inventory issue first.");
+            }
+        }
+
         public async Task<long> SaveChitInfoAsync(string companyCd, string inputType, string userId, ChitInfoRequest request, string? databaseName = null)
         {
             var existingHeader = request.CHIT_ID.HasValue && request.CHIT_ID.Value > 0
@@ -357,6 +383,9 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
                 // Fail fast on lock wait (FOR UPDATE in getSysCodeSequenceNext) instead of hanging forever.
                 await session.ExecuteAsync("SET SESSION innodb_lock_wait_timeout = 15", commandTimeout: 5);
                 const int cmdTimeoutSec = 60;
+
+                if (request.CHIT_ID is > 0)
+                    await EnsureCogsLinksPreservedAsync(session, companyCd, request.CHIT_ID.Value, request, inputType);
 
                 var existingDetailMap = existingDetails
                     .Where(detail => detail.CHITDETAIL_ID > 0)
@@ -760,6 +789,7 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
             await using var session = await _db.CreateSessionAsync(Net_DB.Net_DB_Company);
             try
             {
+                await EnsureCogsLinksPreservedAsync(session, companyCd, chitId, null);
                 if (SupportsInventoryInputLinks(existingHeader?.CHIT_TYPE))
                 {
                     await ClearInventoryInputLinksByLinkedChitIdAsync(session, companyCd, userId, chitId);

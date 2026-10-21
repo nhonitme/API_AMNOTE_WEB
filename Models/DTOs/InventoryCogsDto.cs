@@ -1,5 +1,11 @@
 namespace API_AMNOTE_WEB.Models.DTOs
 {
+    public sealed class InventoryCogsIssueLinkDto
+    {
+        public long CHITDETAIL_ID { get; set; }
+        public long INVENTORY_CHIT_ID { get; set; }
+    }
+
     public sealed class InventoryCogsDto
     {
         public long CHIT_ID { get; set; }

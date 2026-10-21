@@ -81,7 +81,6 @@ namespace API_AMNOTE_WEB.Controllers
             }
         }
 
-        [HttpPost("DeleteMany")]
         [HttpPost("bulk-delete")]
         public async Task<IActionResult> DeleteMany([FromBody] InventoryOpeningIdsRequest? request)
         {
@@ -108,6 +107,9 @@ namespace API_AMNOTE_WEB.Controllers
             const string screenCd = MenuCode;
             const string gridId = "inventory-opening-grid";
             var exportColumns = await Common.GetExcelExportColumnInfosAsync("InventoryOpening", screenCd, gridId);
+            if (exportColumns.Count == 0)
+                return BadRequest(await Common.GetMissingExcelExportColumnsMessageAsync(currentLang));
+
             var columnMapping = await Common.BuildExcelColumnMappingAsync(exportColumns, currentLang);
             var sysCodeDisplayMap = await Common.BuildExcelSysCodeDisplayMapAsync(exportColumns, Common.GetCompanyCode(), currentLang);
             var stream = await ExcelHelper.ExportToExcelAsync(data, columnMapping, formatTypes: null, sysCodeDisplayMap: sysCodeDisplayMap);

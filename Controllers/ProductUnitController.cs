@@ -81,7 +81,6 @@ namespace API_AMNOTE_WEB.Controllers
             return Updated(entity, await BuildMessageAsync("UNIT_CD", "UPDATE_SUCCESS", currentLang));
         }
 
-        [HttpPost("DeleteMany")]
         [HttpPost("bulk-delete")]
         public async Task<IActionResult> DeleteMany([FromBody] UnitIdsRequest? request, [FromQuery] string? lang = null)
         {
@@ -114,6 +113,9 @@ namespace API_AMNOTE_WEB.Controllers
             const string screenCd = MenuCode;
             const string gridId = "product-unit-grid";
             var exportColumns = await Common.GetExcelExportColumnInfosAsync("ProductUnit", screenCd, gridId);
+            if (exportColumns.Count == 0)
+                return BadRequest(await Common.GetMissingExcelExportColumnsMessageAsync(currentLang));
+
             var columnMapping = await Common.BuildExcelColumnMappingAsync(exportColumns, currentLang);
             var sysCodeDisplayMap = await Common.BuildExcelSysCodeDisplayMapAsync(exportColumns, companyCd, currentLang);
             var stream = await ExcelHelper.ExportToExcelAsync(data, columnMapping, formatTypes: null, sysCodeDisplayMap: sysCodeDisplayMap);

@@ -218,23 +218,7 @@ namespace API_AMNOTE_WEB.Repositories
                 return null;
             }
 
-            const string query = @"
-                SELECT
-                    header.CHIT_ID,
-                    header.CHIT_CD,
-                    header.CHIT_TYPE,
-                    detail.CHITDETAIL_ID,
-                    detail.CHITDETAIL_CD
-                FROM chitdetailinfo detail
-                INNER JOIN chitinfo header
-                    ON header.COMPANY_CD = detail.COMPANY_CD
-                   AND header.CHIT_ID = detail.CHIT_ID
-                WHERE detail.COMPANY_CD = @p_COMPANY_CD
-                  AND detail.CHITDETAIL_ID = @p_CHITDETAIL_ID
-                  AND IFNULL(detail.ISDEL, '0') = '0'
-                  AND IFNULL(header.ISDEL, '0') = '0'
-                  AND IFNULL(header.CHIT_TYPE, '') IN ('PO', 'PD', 'PR', 'SO', 'SD', 'SR', 'OT')
-                LIMIT 1";
+            const string query = "CALL getInventorySourceVoucherByDetail(@p_COMPANY_CD, @p_CHITDETAIL_ID)";
 
             var items = await _db.QueryAsync<ChitInventorySourceVoucherDto>(Net_DB.Net_DB_Company, query, new
             {

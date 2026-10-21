@@ -77,7 +77,8 @@ namespace API_AMNOTE_WEB.Services
             if (row.REVOKED_AT != null) return null;
             if (row.REPLACED_BY_HASH != null) return null;
             var deadline = new DateTimeOffset(DateTime.SpecifyKind((DateTime)row.EXPIRES_AT, DateTimeKind.Utc));
-            if (deadline <= DateTimeOffset.UtcNow || deadline > DailySession.NextMidnight(DateTimeOffset.UtcNow)) return null;
+            if (deadline <= DateTimeOffset.UtcNow) return null;
+            if (deadline > DailySession.NextMidnight(DateTimeOffset.UtcNow)) return null;
 
             var roles = Array.Empty<string>();
             try
@@ -141,7 +142,42 @@ namespace API_AMNOTE_WEB.Services
                     p_CREATE_AT = DateTime.UtcNow,
                     p_EXPIRES_AT = newExpiresUtc
                 });
-            return result.FirstOrDefault() == 1;
+            var results = result.ToArray();
+            var rotated = results.FirstOrDefault() == 1;
+            if (!rotated)
+            {
+                // Verify committed state when the deployed procedure returns no result row.
+                try
+                {
+                    var state = await _db.QueryAsync<dynamic>(
+                        Net_DB.Net_DB_Manager,
+                        @"SELECT UTC_TIMESTAMP() AS DB_NOW_UTC,
+                            EXPIRES_AT, (EXPIRES_AT = @deadline) AS DEADLINE_MATCHES,
+                            (EXPIRES_AT > UTC_TIMESTAMP()) AS DB_CONSIDERS_VALID,
+                            (REVOKED_AT IS NOT NULL) AS IS_REVOKED,
+                            (REPLACED_BY_HASH IS NOT NULL) AS IS_REPLACED,
+                            (REPLACED_BY_HASH = @newHash) AS REPLACED_BY_THIS_REQUEST,
+                            EXISTS(SELECT 1 FROM refresh_token_session n WHERE n.REFRESH_TOKEN_HASH = @newHash) AS NEW_TOKEN_EXISTS,
+                            EXISTS(SELECT 1 FROM refresh_token_session n
+                                WHERE n.REFRESH_TOKEN_HASH = @newHash
+                                  AND n.REVOKED_AT IS NULL AND n.REPLACED_BY_HASH IS NULL
+                                  AND n.EXPIRES_AT = @deadline AND n.EXPIRES_AT > UTC_TIMESTAMP()) AS NEW_TOKEN_VALID
+                          FROM refresh_token_session WHERE REFRESH_TOKEN_HASH = @oldHash LIMIT 1",
+                        new { deadline = newExpiresUtc, oldHash, newHash });
+                    var row = state.FirstOrDefault();
+                    // Some deployed procedures commit rotation without returning a result row.
+                    // Accept only an empty result whose committed state belongs to this exact request.
+                    rotated = results.Length == 0 && row != null
+                        && Convert.ToInt32(row.IS_REVOKED) == 0
+                        && Convert.ToInt32(row.DEADLINE_MATCHES) == 1
+                        && Convert.ToInt32(row.REPLACED_BY_THIS_REQUEST) == 1
+                        && Convert.ToInt32(row.NEW_TOKEN_VALID) == 1;
+                }
+                catch
+                {
+                }
+            }
+            return rotated;
         }
 
         public async Task RevokeAsync(string refreshRaw)

@@ -92,11 +92,20 @@ namespace API_AMNOTE_WEB.Controllers
             return PagedSuccess(result.Items, pageNumber, pageSize, result.TotalRecords);
         }
 
+        [HttpGet("GetIssueLinksByCogsVoucher")]
+        [Authorize]
+        public async Task<IActionResult> GetIssueLinksByCogsVoucher([FromQuery] long CHIT_ID)
+        {
+            if (CHIT_ID <= 0) return ValidationError("CHIT_ID is invalid");
+            await EnsureInventoryPermissionAsync("AR", "IO", "VIEW");
+            return Success(await _repository.GetInventoryIssueLinksByCogsVoucherIdAsync(Common.GetCompanyCode(), CHIT_ID));
+        }
+
         [HttpGet("GetIssueByCogsVoucher")]
         [Authorize]
-        public async Task<IActionResult> GetIssueByCogsVoucher([FromQuery] long CHIT_ID)
+        public async Task<IActionResult> GetIssueByCogsVoucher([FromQuery] long CHIT_ID, [FromQuery] long? CHITDETAIL_ID)
         {
-            if (CHIT_ID <= 0)
+            if (CHIT_ID <= 0 || CHITDETAIL_ID is <= 0)
             {
                 return ValidationError("CHIT_ID is invalid");
             }
@@ -105,7 +114,7 @@ namespace API_AMNOTE_WEB.Controllers
 
             var inventoryChitId = await _repository.GetInventoryIssueIdByCogsVoucherIdAsync(
                 Common.GetCompanyCode(),
-                CHIT_ID);
+                CHIT_ID, CHITDETAIL_ID);
 
             return Success(new { INVENTORY_CHIT_ID = inventoryChitId });
         }

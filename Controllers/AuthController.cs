@@ -144,7 +144,9 @@ namespace API_AMNOTE_WEB.Controllers
             var newRefresh = _tokenService.CreateRefreshToken();
 
             if (!await _store.RotateAsync(oldRefresh, newRefresh, deadline.UtcDateTime))
+            {
                 return await ExpiredSession();
+            }
 
             var principal = _tokenService.CreatePrincipal(session.UserPkId, session.UserId, session.Username, lang, session.Roles, deadline);
             await HttpContext.SignInAsync(BffSessionScheme, principal, BuildAuthProperties(deadline));
@@ -152,7 +154,8 @@ namespace API_AMNOTE_WEB.Controllers
             SetRefreshCookie(newRefresh, deadline);
             SetLanguageCookie(lang, deadline);
 
-            return Success(await BuildSessionDtoAsync(principal));
+            var dto = await BuildSessionDtoAsync(principal);
+            return Success(dto);
         }
 
         [HttpGet("session")]
