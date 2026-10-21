@@ -245,6 +245,7 @@ builder.Services.AddScoped<IStoreInfoRepository, StoreInfoRepository>();
 builder.Services.AddScoped<IStoreKindInfoRepository, StoreKindInfoRepository>();
 builder.Services.AddScoped<IDepartmentInfoRepository, DepartmentInfoRepository>();
 builder.Services.AddScoped<ICompanyInfoRepository, CompanyInfoRepository>();
+builder.Services.AddScoped<LicenseInfoRepository>();
 builder.Services.AddScoped<ICompanySignatureInfoRepository, CompanySignatureInfoRepository>();
 builder.Services.AddScoped<ICompanySignatureInfoService, CompanySignatureInfoService>();
 builder.Services.AddScoped<ILanguageRepository, LanguageRepository>();
