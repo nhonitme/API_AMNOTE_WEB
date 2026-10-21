@@ -138,6 +138,60 @@ VALUES {string.Join(",\n", values)}";
             return await session.ExecuteAsync(sql, parameters);
         }
 
+        public async Task<bool> LinkDepartmentAsync(
+            DapperSession session, string companyCd, int productId, string productCd,
+            long departmentId, string divisionPrefix, string userId)
+        {
+            // Never link products and cost objects from different companies or with
+            // different codes. Update only the foreign key and audit columns, not
+            // the rest of the product record.
+            const string updateSql = @"
+UPDATE product_info p
+INNER JOIN department_info d
+    ON d.COMPANY_CD = p.COMPANY_CD
+   AND d.DEPARTMENT_ID = @departmentId
+   AND TRIM(d.DEPARTMENT_CD) = TRIM(p.PRODUCT_CD)
+   AND COALESCE(d.ISDEL, '0') <> '1'
+SET p.DEPARTMENT_ID = d.DEPARTMENT_ID,
+    p.UPDATE_BY = @userId,
+    p.UPDATE_AT = NOW()
+WHERE p.COMPANY_CD = @companyCd
+  AND p.PRODUCT_ID = @productId
+  AND TRIM(p.PRODUCT_CD) = @productCd
+  AND COALESCE(p.ISDEL, '0') <> '1'
+  AND TRIM(COALESCE(p.DIVISION, '')) LIKE CONCAT(@divisionPrefix, '%')
+  AND (p.DEPARTMENT_ID IS NULL OR p.DEPARTMENT_ID <> d.DEPARTMENT_ID)";
+
+            var parameters = new
+            {
+                companyCd,
+                productId,
+                productCd,
+                departmentId,
+                divisionPrefix,
+                userId
+            };
+            await session.ExecuteAsync(updateSql, parameters);
+
+            // UPDATE may affect zero rows if the correct link was already present.
+            // Check the actual stored value instead of treating zero as an error.
+            const string verifySql = @"
+SELECT COUNT(*)
+FROM product_info p
+INNER JOIN department_info d
+    ON d.COMPANY_CD = p.COMPANY_CD
+   AND d.DEPARTMENT_ID = p.DEPARTMENT_ID
+   AND d.DEPARTMENT_ID = @departmentId
+   AND TRIM(d.DEPARTMENT_CD) = TRIM(p.PRODUCT_CD)
+   AND COALESCE(d.ISDEL, '0') <> '1'
+WHERE p.COMPANY_CD = @companyCd
+  AND p.PRODUCT_ID = @productId
+  AND TRIM(p.PRODUCT_CD) = @productCd
+  AND COALESCE(p.ISDEL, '0') <> '1'
+  AND TRIM(COALESCE(p.DIVISION, '')) LIKE CONCAT(@divisionPrefix, '%')";
+            return await session.QuerySingleAsync<int>(verifySql, parameters) == 1;
+        }
+
         public Task<int> DeleteProductInfoAsync(DapperSession session, string companyCd, int productId, string userId)
         {
             return session.ExecuteAsync(DeleteProductInfoQuery, new

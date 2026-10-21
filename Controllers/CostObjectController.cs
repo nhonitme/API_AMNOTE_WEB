@@ -135,22 +135,29 @@ namespace API_AMNOTE_WEB.Controllers
                 }
 
                 var code = product.PRODUCT_CD.Trim();
+                // If linking fails after creating a department, report FAILED.
+                // The next synchronization can safely attach that existing department.
+                var linkAttempted = false;
                 try
                 {
-                    // Tìm đối tượng theo COMPANY_CD và mã. Không gán tùy ý sang đối tượng khác.
+                    // Match within the current company; never attach an unrelated department.
                     var existing = (await _departments.GetListAsync(companyCd, departmentCd: code))
                         .FirstOrDefault(d => d.ISDEL != "1" &&
                             string.Equals(d.DEPARTMENT_CD?.Trim(), code, StringComparison.OrdinalIgnoreCase));
 
                     if (existing != null)
                     {
+                        linkAttempted = true;
+                        await _products.LinkDepartmentAsync(
+                            companyCd, userId, productId, code, existing.DEPARTMENT_ID, prefix);
+
                         result.EXISTS++;
                         result.ITEMS.Add(new CostObjectSyncItemDto
                         {
                             PRODUCT_ID = productId,
                             PRODUCT_CD = code,
                             STATUS = "EXISTS",
-                            MESSAGE = "Đối tượng cùng mã đã tồn tại, không ghi đè."
+                            MESSAGE = "Đã liên kết thành phẩm với đối tượng tập hợp chi phí có sẵn."
                         });
                         continue;
                     }
@@ -166,8 +173,13 @@ namespace API_AMNOTE_WEB.Controllers
                         ISDEL = "0"
                     });
 
-                    if (!string.Equals(created.DEPARTMENT_CD?.Trim(), code, StringComparison.OrdinalIgnoreCase))
-                        throw new InvalidOperationException("Mã đối tượng vừa tạo không khớp mã thành phẩm.");
+                    if (created.DEPARTMENT_ID <= 0 ||
+                        !string.Equals(created.DEPARTMENT_CD?.Trim(), code, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("Đối tượng mới tạo không hợp lệ hoặc sai mã thành phẩm.");
+
+                    linkAttempted = true;
+                    await _products.LinkDepartmentAsync(
+                        companyCd, userId, productId, code, created.DEPARTMENT_ID, prefix);
 
                     result.CREATED++;
                     result.ITEMS.Add(new CostObjectSyncItemDto
@@ -175,36 +187,55 @@ namespace API_AMNOTE_WEB.Controllers
                         PRODUCT_ID = productId,
                         PRODUCT_CD = code,
                         STATUS = "CREATED",
-                        MESSAGE = "Đã tạo đối tượng tập hợp chi phí."
+                        MESSAGE = "Đã tạo đối tượng và cập nhật DEPARTMENT_ID cho thành phẩm."
                     });
                 }
                 catch (Exception ex)
                 {
-                    // Khi chạy đồng thời, thao tác khác có thể đã tạo mã này.
-                    var existing = (await _departments.GetListAsync(companyCd, departmentCd: code))
-                        .Any(d => d.ISDEL != "1" &&
-                            string.Equals(d.DEPARTMENT_CD?.Trim(), code, StringComparison.OrdinalIgnoreCase));
-                    if (existing)
+                    // A concurrent sync might have created this code first.
+                    // Recover only from a creation failure; never hide a failed
+                    // product_info link behind a misleading EXISTS result.
+                    if (!linkAttempted)
                     {
-                        result.EXISTS++;
-                        result.ITEMS.Add(new CostObjectSyncItemDto
+                        try
                         {
-                            PRODUCT_ID = productId,
-                            PRODUCT_CD = code,
-                            STATUS = "EXISTS",
-                            MESSAGE = "Đối tượng cùng mã đã tồn tại."
-                        });
-                        continue;
+                            var concurrent = (await _departments.GetListAsync(companyCd, departmentCd: code))
+                                .FirstOrDefault(d => d.ISDEL != "1" &&
+                                    string.Equals(d.DEPARTMENT_CD?.Trim(), code, StringComparison.OrdinalIgnoreCase));
+
+                            if (concurrent != null && concurrent.DEPARTMENT_ID > 0)
+                            {
+                                linkAttempted = true;
+                                await _products.LinkDepartmentAsync(
+                                    companyCd, userId, productId, code, concurrent.DEPARTMENT_ID, prefix);
+
+                                result.EXISTS++;
+                                result.ITEMS.Add(new CostObjectSyncItemDto
+                                {
+                                    PRODUCT_ID = productId,
+                                    PRODUCT_CD = code,
+                                    STATUS = "EXISTS",
+                                    MESSAGE = "Đã liên kết thành phẩm với đối tượng cùng mã đã tồn tại."
+                                });
+                                continue;
+                            }
+                        }
+                        catch (Exception recoveryEx)
+                        {
+                            ex = recoveryEx;
+                        }
                     }
 
-                    _logger.LogError(ex, "Cost object sync failed. Company={Company} ProductId={ProductId}", companyCd, productId);
+                    _logger.LogError(ex,
+                        "Cost object sync/link failed. Company={Company} ProductId={ProductId} Code={Code}",
+                        companyCd, productId, code);
                     result.FAILED++;
                     result.ITEMS.Add(new CostObjectSyncItemDto
                     {
                         PRODUCT_ID = productId,
                         PRODUCT_CD = code,
                         STATUS = "FAILED",
-                        MESSAGE = "Không thể tạo đối tượng; kiểm tra mã và cấu hình danh mục."
+                        MESSAGE = "Không thể tạo hoặc liên kết đối tượng; kiểm tra danh mục và DEPARTMENT_ID."
                     });
                 }
             }

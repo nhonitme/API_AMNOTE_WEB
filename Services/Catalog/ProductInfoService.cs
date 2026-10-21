@@ -151,6 +151,31 @@ namespace API_AMNOTE_WEB.Services.Catalog
             return updated;
         }
 
+        public async Task LinkDepartmentAsync(
+            string companyCd, string userId, int productId, string productCd,
+            long departmentId, string divisionPrefix)
+        {
+            if (string.IsNullOrWhiteSpace(companyCd) || string.IsNullOrWhiteSpace(userId)
+                || string.IsNullOrWhiteSpace(productCd) || string.IsNullOrWhiteSpace(divisionPrefix)
+                || productId <= 0 || departmentId <= 0)
+                throw new ArgumentException("Invalid product-to-cost-object link");
+
+            var matched = await _writeSupport.ExecuteInTransactionAsync(session =>
+                _repository.LinkDepartmentAsync(
+                    session, companyCd, productId, productCd, departmentId, divisionPrefix, userId));
+
+            if (!matched)
+                throw new InvalidOperationException(
+                    "Không thể liên kết thành phẩm với đối tượng tập hợp chi phí cùng công ty và mã.");
+
+            // The catalog is cached by company. Invalidate after commit so other
+            // screens immediately see the new DEPARTMENT_ID.
+            await _cache.ClearAsync(CacheScope, companyCd);
+            _logger.LogInformation(
+                "Product cost object linked. Company={Company} ProductId={ProductId} DepartmentId={DepartmentId}",
+                companyCd, productId, departmentId);
+        }
+
         public async Task<int> DeleteAsync(string companyCd, string userId, List<int> productIds)
         {
             if (productIds == null || productIds.Count == 0)
