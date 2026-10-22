@@ -231,7 +231,7 @@ namespace API_AMNOTE_WEB.Services.Inventory
                     FC_TYPE = NormalizeNullableText(item.FC_TYPE) ?? "VND",
                     UNIT_PRICE_FC = item.UNIT_PRICE_FC,
                     EXCHANGE_RATES = item.EXCHANGE_RATES,
-                    AMOUNT_CC = item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC,
+                    AMOUNT_CC = item.AMOUNT_CC,
                     AMOUNT_TOTAL = item.AMOUNT_TOTAL != 0 ? item.AMOUNT_TOTAL : (item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC),
                     AMOUNT_FC = item.AMOUNT_FC,
                     SUMMARY = NormalizeNullableText(item.SUMMARY) ?? string.Empty,
@@ -280,7 +280,7 @@ namespace API_AMNOTE_WEB.Services.Inventory
                     UNIT_PRICE_FC = item.UNIT_PRICE_FC,
                     REVENUE_UNIT_PRICE_FC = item.REVENUE_UNIT_PRICE_FC,
                     EXCHANGE_RATES = item.EXCHANGE_RATES,
-                    AMOUNT_CC = chitType == "IO" ? item.AMOUNT_CC : (item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC),
+                    AMOUNT_CC = item.AMOUNT_CC,
                     AMOUNT_TOTAL = item.AMOUNT_TOTAL != 0
                         ? item.AMOUNT_TOTAL
                         : (chitType == "IO" ? item.AMOUNT_CC : (item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC)),
@@ -306,6 +306,16 @@ namespace API_AMNOTE_WEB.Services.Inventory
             IReadOnlyCollection<InventoryOutput> outputs,
             string? lang)
         {
+            var lines = inputs.Select((line, index) => (line.PRODUCT_ID, line.PRODUCT_CD, line.STORE_ID, line.STORE_CD, Row: index + 1))
+                .Concat(outputs.Select((line, index) => (line.PRODUCT_ID, line.PRODUCT_CD, line.STORE_ID, line.STORE_CD, Row: index + 1)));
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line.PRODUCT_CD) || line.PRODUCT_ID.GetValueOrDefault() <= 0)
+                    throw new ArgumentException($"Dòng {line.Row}: Mã hàng bắt buộc nhập và phải hợp lệ.");
+                if (string.IsNullOrWhiteSpace(line.STORE_CD) || line.STORE_ID.GetValueOrDefault() <= 0)
+                    throw new ArgumentException($"Dòng {line.Row}: Mã kho bắt buộc nhập và phải hợp lệ.");
+            }
+
             if (chitType == "IR" && inputs.Count == 0)
             {
                 throw new ArgumentException(lang == null

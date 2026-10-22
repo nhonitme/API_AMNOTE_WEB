@@ -30,18 +30,29 @@ namespace API_AMNOTE_WEB.Models
         public string? UNIT_NM_KOR { get; set; } = string.Empty;
         public string? UNIT_NM_CHINA { get; set; } = string.Empty;
 
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal QUANTITY { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal UNIT_PRICE_CC { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal REVENUE_UNIT_PRICE_CC { get; set; }
         public string? FC_TYPE { get; set; } = "VND";
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal UNIT_PRICE_FC { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal REVENUE_UNIT_PRICE_FC { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal EXCHANGE_RATES { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal AMOUNT_CC { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal AMOUNT_TOTAL { get; set; }
         public decimal REVENUE_AMOUNT_CC { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal AMOUNT_FC { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal REVENUE_AMOUNT_FC { get; set; }
+        [System.Text.Json.Serialization.JsonConverter(typeof(API_AMNOTE_WEB.Helpers.InventoryNumberJsonConverter))]
         public decimal REVENUE_AMOUNT_TOTAL { get; set; }
         public string SUMMARY { get; set; } = string.Empty;
         public string? INVENTORY_YMD { get; set; }

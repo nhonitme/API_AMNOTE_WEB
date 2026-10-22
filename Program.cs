@@ -44,6 +44,8 @@ Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.Configure<MobileDeviceOptions>(builder.Configuration.GetSection("MobileDevicePolicy"));
+
 
 
 EInvoiceFtpClient.Configure(builder.Configuration);
@@ -512,6 +514,8 @@ app.UseCors("frontend");
 app.UseRateLimiter();
 
 app.UseRequestTimeouts();
+
+app.UseMiddleware<MobileDeviceMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();

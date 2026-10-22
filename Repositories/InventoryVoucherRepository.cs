@@ -10,6 +10,12 @@ namespace API_AMNOTE_WEB.Repositories
 {
     public sealed partial class InventoryVoucherRepository : IInventoryVoucherRepository
     {
+        private sealed class InventoryReference
+        {
+            public long Id { get; set; }
+            public string Code { get; set; } = string.Empty;
+        }
+
         private sealed class TotalRecordResult
         {
             public int TOTAL_RECORDS { get; set; }
@@ -220,13 +226,42 @@ namespace API_AMNOTE_WEB.Repositories
                     ? (request.OUTPUTS ?? new List<InventoryOutput>()).Where(IsValidInventoryOutput).ToList()
                     : new List<InventoryOutput>();
 
+                var requestedInputs = Common.UsesInventoryInput(normalizedChitType)
+                    ? (request.INPUTS ?? new List<InventoryInput>()).Where(x => x.ISDEL != "1").ToList()
+                    : new List<InventoryInput>();
+                var allRequestedOutputs = Common.UsesInventoryOutput(normalizedChitType)
+                    ? (request.OUTPUTS ?? new List<InventoryOutput>()).Where(x => x.ISDEL != "1").ToList()
+                    : new List<InventoryOutput>();
+                if (requestedInputs.Count != activeInputs.Count || allRequestedOutputs.Count != activeOutputs.Count)
+                    throw new ArgumentException("Mỗi dòng phải có mã hàng và mã kho hợp lệ.");
+                var references = activeInputs.Select(x => (x.PRODUCT_ID, x.PRODUCT_CD, x.STORE_ID, x.STORE_CD))
+                    .Concat(activeOutputs.Select(x => (x.PRODUCT_ID, x.PRODUCT_CD, x.STORE_ID, x.STORE_CD))).ToList();
+                if (references.Count > 0)
+                {
+                    var productIds = references.Select(x => x.PRODUCT_ID).Distinct().ToArray();
+                    var storeIds = references.Select(x => x.STORE_ID).Distinct().ToArray();
+                    var products = (await session.QueryAsync<InventoryReference>(
+                        "SELECT PRODUCT_ID AS Id, PRODUCT_CD AS Code FROM product_info WHERE COMPANY_CD = @companyCd AND COALESCE(ISDEL, '0') = '0' AND PRODUCT_ID IN @productIds",
+                        new { companyCd, productIds })).ToDictionary(x => x.Id, x => x.Code);
+                    var stores = (await session.QueryAsync<InventoryReference>(
+                        "SELECT STORE_ID AS Id, STORE_CD AS Code FROM store_info WHERE COMPANY_CD = @companyCd AND COALESCE(ISDEL, '0') = '0' AND STORE_ID IN @storeIds",
+                        new { companyCd, storeIds })).ToDictionary(x => x.Id, x => x.Code);
+                    foreach (var line in references)
+                    {
+                        if (!products.TryGetValue(line.PRODUCT_ID!.Value, out var productCode) || !string.Equals(productCode.Trim(), line.PRODUCT_CD?.Trim(), StringComparison.OrdinalIgnoreCase))
+                            throw new ArgumentException("Mã hàng không hợp lệ hoặc không thuộc công ty hiện tại.");
+                        if (!stores.TryGetValue(line.STORE_ID!.Value, out var storeCode) || !string.Equals(storeCode.Trim(), line.STORE_CD?.Trim(), StringComparison.OrdinalIgnoreCase))
+                            throw new ArgumentException("Mã kho không hợp lệ hoặc không thuộc công ty hiện tại.");
+                    }
+                }
+
                 if (normalizedChitType == "IO")
                 {
                     if (request.OUTPUTS == null)
                         throw new ArgumentException("OUTPUTS is required for inventory COGS.");
                     var requestedOutputs = request.OUTPUTS.Where(x => x.ISDEL != "1").ToList();
                     if (requestedOutputs.Count == 0 || requestedOutputs.Count != activeOutputs.Count)
-                        throw new ArgumentException("Every issue output requires product, warehouse, unit and a positive quantity.");
+                        throw new ArgumentException("Every issue output requires product and warehouse.");
                     if (activeOutputs.Any(x => x.AMOUNT_CC < 0 || x.UNIT_PRICE_CC < 0))
                         throw new ArgumentException("Issue amount and unit price cannot be negative.");
                     if (existingCogs != null)
@@ -246,8 +281,8 @@ namespace API_AMNOTE_WEB.Repositories
                     ResetCopiedInventoryOutputLinesForCreate(activeOutputs);
                 }
 
-                var inputAmount = activeInputs.Sum(item => item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC);
-                var outputAmount = activeOutputs.Sum(item => item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC);
+                var inputAmount = activeInputs.Sum(item => item.AMOUNT_CC);
+                var outputAmount = activeOutputs.Sum(item => item.AMOUNT_CC);
                 var amount = normalizedChitType switch
                 {
                     "IR" => inputAmount,
@@ -677,9 +712,7 @@ namespace API_AMNOTE_WEB.Repositories
             }
 
             return (input.PRODUCT_ID ?? 0) > 0
-                && (input.STORE_ID ?? 0) > 0
-                && (input.UNIT_ID ?? 0) > 0
-                && input.QUANTITY > 0;
+                && (input.STORE_ID ?? 0) > 0;
         }
 
         private static bool IsValidInventoryOutput(InventoryOutput? output)
@@ -690,9 +723,7 @@ namespace API_AMNOTE_WEB.Repositories
             }
 
             return (output.PRODUCT_ID ?? 0) > 0
-                && (output.STORE_ID ?? 0) > 0
-                && (output.UNIT_ID ?? 0) > 0
-                && output.QUANTITY > 0;
+                && (output.STORE_ID ?? 0) > 0;
         }
 
         private static void ResetCopiedInventoryInputLinesForCreate(IEnumerable<InventoryInput> inputs)
