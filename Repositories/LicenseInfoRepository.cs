@@ -2,6 +2,7 @@ using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Models;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace API_AMNOTE_WEB.Repositories
 {
@@ -14,15 +15,63 @@ namespace API_AMNOTE_WEB.Repositories
         private readonly DapperExecutor _db;
         private readonly ICompanyInfoRepository _companyInfoRepository;
         private readonly IUserInfoRepository _userInfoRepository;
+        private readonly IMemoryCache _cache;
 
         public LicenseInfoRepository(
             DapperExecutor db,
             ICompanyInfoRepository companyInfoRepository,
-            IUserInfoRepository userInfoRepository)
+            IUserInfoRepository userInfoRepository,
+            IMemoryCache cache)
         {
             _db = db;
             _companyInfoRepository = companyInfoRepository;
             _userInfoRepository = userInfoRepository;
+            _cache = cache;
+        }
+
+        /// <summary>
+        /// Minimal license check, cached for 30 seconds per company on this API instance.
+        /// Direct SQL changes may take up to 30 seconds to reach this endpoint.
+        /// A dedicated license administration operation should evict this cache on writes.
+        /// </summary>
+        public Task<LicenseStatusInfo> GetStatusAsync(string companyCd)
+        {
+            var normalizedCompanyCd = companyCd.Trim().ToUpperInvariant();
+            var key = "company-license-status:" + normalizedCompanyCd;
+            return _cache.GetOrCreateAsync(key, async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30);
+                const string sql = @"
+                    SELECT END_DATE, LICENSE_STATUS
+                    FROM company_license
+                    WHERE COMPANY_CD = @COMPANY_CD
+                    LIMIT 1";
+                var row = (await _db.QueryAsync<LicenseStatusRow>(
+                    Net_DB.Net_DB_Manager, sql, new { COMPANY_CD = companyCd }))
+                    .FirstOrDefault();
+                return new LicenseStatusInfo
+                {
+                    COMPANY_CD = companyCd,
+                    END_DATE = row?.END_DATE,
+                    LICENSE_STATUS = row == null
+                        ? "UNCONFIGURED"
+                        : ResolveStatus(row.LICENSE_STATUS, row.END_DATE)
+                };
+            })!;
+        }
+
+        private static string ResolveStatus(string? storedStatus, DateTime? endDate)
+        {
+            var today = DateTime.UtcNow.AddHours(7).Date;
+            var daysRemaining = endDate.HasValue
+                ? (int?)(endDate.Value.Date - today).TotalDays
+                : null;
+            var stored = (storedStatus ?? "ACTIVE").Trim().ToUpperInvariant();
+            return stored != "ACTIVE"
+                ? stored
+                : daysRemaining < 0 ? "EXPIRED"
+                : daysRemaining <= 30 ? "EXPIRING"
+                : "ACTIVE";
         }
 
         public async Task<LicenseInfo?> GetCurrentAsync(string companyCd)
@@ -50,12 +99,7 @@ namespace API_AMNOTE_WEB.Repositories
                 ? (int?)(row.END_DATE.Value.Date - today).TotalDays
                 : null;
 
-            var storedStatus = (row.LICENSE_STATUS ?? "ACTIVE").Trim().ToUpperInvariant();
-            var status = storedStatus != "ACTIVE"
-                ? storedStatus
-                : daysRemaining < 0 ? "EXPIRED"
-                : daysRemaining <= 30 ? "EXPIRING"
-                : "ACTIVE";
+            var status = ResolveStatus(row.LICENSE_STATUS, row.END_DATE);
 
             int? activeUsers = null;
             if (row.MAX_USERS.HasValue)
@@ -109,6 +153,12 @@ namespace API_AMNOTE_WEB.Repositories
             return normalized.Length <= 4
                 ? "****"
                 : "****-****-" + normalized.Substring(normalized.Length - 4);
+        }
+
+        private sealed class LicenseStatusRow
+        {
+            public DateTime? END_DATE { get; set; }
+            public string? LICENSE_STATUS { get; set; }
         }
 
         private sealed class LicenseRow

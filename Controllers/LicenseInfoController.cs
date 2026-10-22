@@ -23,6 +23,27 @@ namespace API_AMNOTE_WEB.Controllers
         }
 
         /// <summary>
+        /// GET /api/license/status - lightweight per-company License state.
+        /// A 30-second server cache avoids querying MySQL for every poll.
+        /// </summary>
+        [HttpGet("status")]
+        public async Task<IActionResult> GetStatus()
+        {
+            var companyCd = Common.GetCompanyCode();
+            try
+            {
+                return Success(await _repository.GetStatusAsync(companyCd));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to check license status for company {CompanyCd}", companyCd);
+                var message = await ResolveMessageAsync(
+                    LicenseLanguageKeys.LoadFailed, "Không thể tải thông tin License.");
+                return ServerError(message);
+            }
+        }
+
+        /// <summary>
         /// GET /api/license/current - read-only license for the authenticated company.
         /// Returns Data = null with a localized Message if no license has been provisioned.
         /// Status codes remain language-independent; the frontend translates their labels.
