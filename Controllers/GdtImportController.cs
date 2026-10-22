@@ -101,7 +101,11 @@ namespace API_AMNOTE_WEB.Controllers
                 return ValidationError("Mã hóa đơn không hợp lệ.");
             }
 
-            var json = await _repository.ReadInvoiceJsonAsync(invoiceType, invoiceKey, cancellationToken);
+            var json = await _repository.ReadInvoiceJsonAsync(
+                Common.GetCompanyCode(),
+                invoiceType,
+                invoiceKey,
+                cancellationToken);
             if (string.IsNullOrWhiteSpace(json))
             {
                 return NotFound("Không tìm thấy JSON chi tiết của hóa đơn.");
@@ -169,7 +173,11 @@ namespace API_AMNOTE_WEB.Controllers
 
             try
             {
-                var results = await _repository.LinkInvoicesToVouchersAsync(invoiceType, request.Items, cancellationToken);
+                var results = await _repository.LinkInvoicesToVouchersAsync(
+                    Common.GetCompanyCode(),
+                    invoiceType,
+                    request.Items,
+                    cancellationToken);
                 return Success(results, "Đã xử lý liên kết hóa đơn với chứng từ.");
             }
             catch (OperationCanceledException)
@@ -292,6 +300,7 @@ namespace API_AMNOTE_WEB.Controllers
                             result.ChitCd = created.CHIT_CD;
                             result.ChitNo = created.CHIT_NO;
                             result.Links = (await _repository.LinkInvoicesToVouchersAsync(
+                                companyCd,
                                 invoiceType,
                                 invoiceKeys.Select(mhdon => new GdtInvoiceVoucherLinkItem
                                 {

@@ -5,11 +5,13 @@ namespace API_AMNOTE_WEB.Interfaces
     public interface IGdtImportRepository
     {
         Task<GdtExistingInvoice> ReadExistingAsync(
+            string companyCd,
             string invoiceType,
             string mhdon,
             CancellationToken cancellationToken = default);
 
         Task<string?> ReadInvoiceJsonAsync(
+            string companyCd,
             string invoiceType,
             string mhdon,
             CancellationToken cancellationToken = default);
@@ -20,12 +22,14 @@ namespace API_AMNOTE_WEB.Interfaces
             CancellationToken cancellationToken = default);
 
         Task InvalidateJsonAndUpdateStatusAsync(
+            string companyCd,
             string invoiceType,
             string mhdon,
             string status,
             CancellationToken cancellationToken = default);
 
         Task UpsertJsonAsync(
+            string companyCd,
             string invoiceType,
             string mhdon,
             string json,
@@ -49,6 +53,7 @@ namespace API_AMNOTE_WEB.Interfaces
             CancellationToken cancellationToken = default);
 
         Task<IReadOnlyList<GdtInvoiceVoucherLinkResult>> LinkInvoicesToVouchersAsync(
+            string companyCd,
             string invoiceType,
             IReadOnlyList<GdtInvoiceVoucherLinkItem> items,
             CancellationToken cancellationToken = default);

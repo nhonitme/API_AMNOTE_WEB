@@ -24,6 +24,7 @@ namespace API_AMNOTE_WEB.Repositories
         }
 
         public async Task<GdtExistingInvoice> ReadExistingAsync(
+            string companyCd,
             string invoiceType,
             string mhdon,
             CancellationToken cancellationToken = default)
@@ -32,15 +33,15 @@ namespace API_AMNOTE_WEB.Repositories
             var (headerTable, jsonTable) = Tables(invoiceType);
             const string sqlTemplate = @"
 SELECT
-    EXISTS(SELECT 1 FROM `{0}` A WHERE A.mhdon = @mhdon AND IFNULL(A.ISDEL,'') != '1' LIMIT 1) AS HasList,
-    EXISTS(SELECT 1 FROM `{1}` B WHERE B.mhdon = @mhdon AND IFNULL(B.ISDEL,'') != '1' LIMIT 1) AS HasJson,
-    IFNULL((SELECT A.tthai FROM `{0}` A WHERE A.mhdon = @mhdon AND IFNULL(A.ISDEL,'') != '1' LIMIT 1), '') AS Status";
+    EXISTS(SELECT 1 FROM `{0}` A WHERE A.COMPANY_CD = @companyCd AND A.mhdon = @mhdon AND IFNULL(A.ISDEL,'') != '1' LIMIT 1) AS HasList,
+    EXISTS(SELECT 1 FROM `{1}` B WHERE B.COMPANY_CD = @companyCd AND B.mhdon = @mhdon AND IFNULL(B.ISDEL,'') != '1' LIMIT 1) AS HasJson,
+    IFNULL((SELECT A.tthai FROM `{0}` A WHERE A.COMPANY_CD = @companyCd AND A.mhdon = @mhdon AND IFNULL(A.ISDEL,'') != '1' LIMIT 1), '') AS Status";
 
             var sql = string.Format(sqlTemplate, headerTable, jsonTable);
             var rows = await _db.QueryAsync<GdtExistingInvoiceRow>(
                 Net_DB.Net_DB_Company,
                 sql,
-                new { mhdon });
+                new { companyCd, mhdon });
             var row = rows.FirstOrDefault();
             if (row == null)
             {
@@ -56,6 +57,7 @@ SELECT
         }
 
         public async Task<string?> ReadInvoiceJsonAsync(
+            string companyCd,
             string invoiceType,
             string mhdon,
             CancellationToken cancellationToken = default)
@@ -66,10 +68,11 @@ SELECT
                 Net_DB.Net_DB_Company,
                 $@"SELECT json
 FROM `{jsonTable}`
-WHERE mhdon = @mhdon
+WHERE COMPANY_CD = @companyCd
+  AND mhdon = @mhdon
   AND IFNULL(ISDEL, '') != '1'
 LIMIT 1",
-                new { mhdon });
+                new { companyCd, mhdon });
             return rows.FirstOrDefault();
         }
 
@@ -89,12 +92,12 @@ LIMIT 1",
             var (headerTable, _) = Tables(invoiceType);
             var sql = $@"
 INSERT IGNORE INTO `{headerTable}` (
-    mhdon, tthai, khmshdon, khhdon, tdlap, nky, shdon, dvtte, mtdtchieu,
+    COMPANY_CD, mhdon, tthai, khmshdon, khhdon, tdlap, nky, shdon, dvtte, mtdtchieu,
     nbten, nbdchi, nbmst, nmten, nmdchi, nmmst,
     tgia, tgtcthue, tgtthue, tgtttbso, tgtphi, ttcktmai, GChu,
     AUTO_CHIT_CD, IS_ATTACH_FILE, ISDEL, USERID
 ) VALUES (
-    @mhdon, @tthai, @khmshdon, @khhdon, @tdlap, @nky, @shdon, @dvtte, @mtdtchieu,
+    @COMPANY_CD, @mhdon, @tthai, @khmshdon, @khhdon, @tdlap, @nky, @shdon, @dvtte, @mtdtchieu,
     @nbten, @nbdchi, @nbmst, @nmten, @nmdchi, @nmmst,
     @tgia, @tgtcthue, @tgtthue, @tgtttbso, @tgtphi, @ttcktmai, @GChu,
     @AUTO_CHIT_CD, @IS_ATTACH_FILE, @ISDEL, @USERID
@@ -103,6 +106,7 @@ INSERT IGNORE INTO `{headerTable}` (
         }
 
         public async Task InvalidateJsonAndUpdateStatusAsync(
+            string companyCd,
             string invoiceType,
             string mhdon,
             string status,
@@ -115,13 +119,14 @@ INSERT IGNORE INTO `{headerTable}` (
             try
             {
                 await session.ExecuteAsync(
-                    $"DELETE FROM `{jsonTable}` WHERE mhdon = @mhdon",
-                    new { mhdon });
+                    $"DELETE FROM `{jsonTable}` WHERE COMPANY_CD = @companyCd AND mhdon = @mhdon",
+                    new { companyCd, mhdon });
                 await session.ExecuteAsync(
                     $@"UPDATE `{headerTable}`
 SET tthai = @status, ISDEL = ''
-WHERE mhdon = @mhdon",
-                    new { mhdon, status });
+WHERE COMPANY_CD = @companyCd
+  AND mhdon = @mhdon",
+                    new { companyCd, mhdon, status });
                 session.Commit();
             }
             catch
@@ -132,6 +137,7 @@ WHERE mhdon = @mhdon",
         }
 
         public async Task UpsertJsonAsync(
+            string companyCd,
             string invoiceType,
             string mhdon,
             string json,
@@ -140,12 +146,13 @@ WHERE mhdon = @mhdon",
             cancellationToken.ThrowIfCancellationRequested();
             var (_, jsonTable) = Tables(invoiceType);
             var sql = $@"
-INSERT INTO `{jsonTable}` (mhdon, json, ISDEL)
-VALUES (@mhdon, @json, '0')
+INSERT INTO `{jsonTable}` (COMPANY_CD, mhdon, json, ISDEL)
+VALUES (@companyCd, @mhdon, @json, '0')
 ON DUPLICATE KEY UPDATE
+    COMPANY_CD = VALUES(COMPANY_CD),
     json = VALUES(json),
     ISDEL = '0'";
-            await _db.ExecuteAsync(Net_DB.Net_DB_Company, sql, new { mhdon, json });
+            await _db.ExecuteAsync(Net_DB.Net_DB_Company, sql, new { companyCd, mhdon, json });
         }
 
         public async Task<(int HeaderCount, int JsonCount)> UpsertAsync(
@@ -162,17 +169,18 @@ ON DUPLICATE KEY UPDATE
 
             var headerSql = $@"
 INSERT INTO `{headerTable}` (
-    mhdon, tthai, khmshdon, khhdon, tdlap, nky, shdon, dvtte, mtdtchieu,
+    COMPANY_CD, mhdon, tthai, khmshdon, khhdon, tdlap, nky, shdon, dvtte, mtdtchieu,
     nbten, nbdchi, nbmst, nmten, nmdchi, nmmst,
     tgia, tgtcthue, tgtthue, tgtttbso, tgtphi, ttcktmai, GChu,
     AUTO_CHIT_CD, IS_ATTACH_FILE, ISDEL, USERID
 ) VALUES (
-    @mhdon, @tthai, @khmshdon, @khhdon, @tdlap, @nky, @shdon, @dvtte, @mtdtchieu,
+    @COMPANY_CD, @mhdon, @tthai, @khmshdon, @khhdon, @tdlap, @nky, @shdon, @dvtte, @mtdtchieu,
     @nbten, @nbdchi, @nbmst, @nmten, @nmdchi, @nmmst,
     @tgia, @tgtcthue, @tgtthue, @tgtttbso, @tgtphi, @ttcktmai, @GChu,
     @AUTO_CHIT_CD, @IS_ATTACH_FILE, @ISDEL, @USERID
 )
 ON DUPLICATE KEY UPDATE
+    COMPANY_CD = VALUES(COMPANY_CD),
     tthai = VALUES(tthai),
     khmshdon = VALUES(khmshdon),
     khhdon = VALUES(khhdon),
@@ -200,9 +208,10 @@ ON DUPLICATE KEY UPDATE
     USERID = VALUES(USERID)";
 
             var jsonSql = $@"
-INSERT INTO `{jsonTable}` (mhdon, json, ISDEL)
-VALUES (@mhdon, @json, '0')
+INSERT INTO `{jsonTable}` (COMPANY_CD, mhdon, json, ISDEL)
+VALUES (@COMPANY_CD, @mhdon, @json, '0')
 ON DUPLICATE KEY UPDATE
+    COMPANY_CD = VALUES(COMPANY_CD),
     json = VALUES(json),
     ISDEL = '0'";
 
@@ -222,7 +231,8 @@ ON DUPLICATE KEY UPDATE
                     {
                         await session.ExecuteAsync(jsonSql, new
                         {
-                            mhdon = row.mhdon,
+                            row.COMPANY_CD,
+                            row.mhdon,
                             json = row.JsonPayload,
                         });
                         jsonCount += 1;
@@ -300,6 +310,7 @@ ON DUPLICATE KEY UPDATE
         }
 
         public async Task<IReadOnlyList<GdtInvoiceVoucherLinkResult>> LinkInvoicesToVouchersAsync(
+            string companyCd,
             string invoiceType,
             IReadOnlyList<GdtInvoiceVoucherLinkItem> items,
             CancellationToken cancellationToken = default)
@@ -332,11 +343,12 @@ ON DUPLICATE KEY UPDATE
                     var voucherExists = await session.QueryFirstOrDefaultAsync<long?>(
                         @"SELECT CHIT_ID
 FROM chitinfo
-WHERE CHIT_CD = @chitCd
+WHERE COMPANY_CD = @companyCd
+  AND CHIT_CD = @chitCd
   AND INPUT_TYPE = @expectedInputType
   AND IFNULL(ISDEL, '') != '1'
 LIMIT 1",
-                        new { chitCd, expectedInputType },
+                        new { companyCd, chitCd, expectedInputType },
                         commandTimeout: 15);
                     if (!voucherExists.HasValue)
                     {
@@ -347,8 +359,8 @@ LIMIT 1",
                     }
 
                     var currentChitCd = await session.QueryFirstOrDefaultAsync<string>(
-                        $"SELECT IFNULL(AUTO_CHIT_CD, '') FROM `{headerTable}` WHERE mhdon = @mhdon AND IFNULL(ISDEL, '') != '1' FOR UPDATE",
-                        new { mhdon },
+                        $"SELECT IFNULL(AUTO_CHIT_CD, '') FROM `{headerTable}` WHERE COMPANY_CD = @companyCd AND mhdon = @mhdon AND IFNULL(ISDEL, '') != '1' FOR UPDATE",
+                        new { companyCd, mhdon },
                         commandTimeout: 15);
                     if (currentChitCd == null)
                     {
@@ -367,8 +379,8 @@ LIMIT 1",
                     else
                     {
                         await session.ExecuteAsync(
-                            $"UPDATE `{headerTable}` SET AUTO_CHIT_CD = @chitCd WHERE mhdon = @mhdon AND IFNULL(AUTO_CHIT_CD, '') = '' AND IFNULL(ISDEL, '') != '1'",
-                            new { mhdon, chitCd },
+                            $"UPDATE `{headerTable}` SET AUTO_CHIT_CD = @chitCd WHERE COMPANY_CD = @companyCd AND mhdon = @mhdon AND IFNULL(AUTO_CHIT_CD, '') = '' AND IFNULL(ISDEL, '') != '1'",
+                            new { companyCd, mhdon, chitCd },
                             commandTimeout: 15);
                         result.Status = "LINKED";
                     }

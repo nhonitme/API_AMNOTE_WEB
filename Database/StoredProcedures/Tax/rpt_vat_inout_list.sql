@@ -1,28 +1,25 @@
 -- --------------------------------------------------------
--- Host:                         118.69.170.50
--- Server version:               5.6.11-log - Source distribution
--- Server OS:                    Linux
--- HeidiSQL Version:             8.3.0.4694
+-- Procedure: rpt_vat_inout_list
+-- Company DB. Filters by COMPANY_CD; returns paged rows + TOTAL_RECORDS.
 -- --------------------------------------------------------
 
-/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
-/*!40101 SET NAMES utf8 */;
-/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
-/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
-
--- Dumping structure for procedure am_web_001.rpt_vat_inout_list
 DROP PROCEDURE IF EXISTS `rpt_vat_inout_list`;
 DELIMITER //
-CREATE DEFINER=`amnc9it`@`115.78.232.22` PROCEDURE `rpt_vat_inout_list`(
+CREATE PROCEDURE `rpt_vat_inout_list`(
     IN p_COMPANY_CD VARCHAR(20) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
     IN p_FROM_YMD CHAR(8) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
     IN p_TO_YMD CHAR(8) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
     IN p_TYPE VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
     IN p_STATUS VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
     IN p_SEARCH_TEXT VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
-    IN p_LANGUAGE VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_unicode_ci
+    IN p_LANGUAGE VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
+    IN p_PAGE_NUMBER INT,
+    IN p_PAGE_SIZE INT
 )
 BEGIN
+    DECLARE v_page_number INT DEFAULT 1;
+    DECLARE v_page_size INT DEFAULT 20;
+    DECLARE v_offset BIGINT DEFAULT 0;
     DECLARE v_company_cd VARCHAR(20) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
     DECLARE v_type VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
     DECLARE v_from_ymd CHAR(8) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
@@ -30,6 +27,16 @@ BEGIN
     DECLARE v_status VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
     DECLARE v_search VARCHAR(200) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
     DECLARE v_language VARCHAR(10) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        DROP TEMPORARY TABLE IF EXISTS tmp_vat_inout_keys;
+        RESIGNAL;
+    END;
+
+    SET v_page_number = IFNULL(NULLIF(p_PAGE_NUMBER, 0), 1);
+    SET v_page_size = IFNULL(NULLIF(p_PAGE_SIZE, 0), 20);
+    SET v_offset = (v_page_number - 1) * v_page_size;
 
     SET v_company_cd = TRIM(IFNULL(p_COMPANY_CD, ''));
     SET v_type = UPPER(TRIM(IFNULL(p_TYPE, 'BUY')));
@@ -67,13 +74,16 @@ BEGIN
 
         LEFT JOIN buy_list_json AS JSON
             ON JSON.mhdon = A.mhdon
+            AND JSON.COMPANY_CD = A.COMPANY_CD
             AND IFNULL(JSON.ISDEL, '') != '1'
 
         LEFT JOIN chitinfo AS B
             ON A.AUTO_CHIT_CD = B.CHIT_CD
+            AND B.COMPANY_CD = A.COMPANY_CD
             AND IFNULL(B.ISDEL, '') != '1'
 
         WHERE IFNULL(A.ISDEL, '') != '1'
+            AND A.COMPANY_CD = v_company_cd
 
             AND (
                 v_from_ymd = ''
@@ -115,6 +125,7 @@ BEGIN
 
         /* Result set 1: invoice rows */
 		 	SELECT
+		          A.COMPANY_CD,
 		          A.mhdon,
 		
 		            CASE
@@ -124,21 +135,21 @@ BEGIN
 		
 					 	(
 					    SELECT
-					        CASE UPPER(p_LANGUAGE)
+					        CASE v_language
 					            WHEN 'ENG' THEN m.ENG
 					            WHEN 'KOR' THEN m.KOR
 					            ELSE m.VIET
 					        END
 					    FROM am_web_manager.t_message_info m
 					    WHERE m.`KEY` =
-					        CASE tthai
-							  		WHEN IFNULL(JSON.mhdon, '') = '' THEN 'eInvoice_AdjustType_NM_998'
-					            WHEN '1'   THEN 'eInvoice_AdjustType_NM_1'
-					            WHEN '2'   THEN 'eInvoice_AdjustType_NM_3'
-					            WHEN '3'   THEN 'eInvoice_AdjustType_NM_5'
-					            WHEN '4'   THEN 'eInvoice_AdjustType_NM_2'
-					            WHEN '5'   THEN 'eInvoice_AdjustType_NM_4'
-					            WHEN '6'   THEN 'eInvoice_AdjustType_NM_6'
+					        CASE
+                                WHEN IFNULL(JSON.mhdon, '') = '' THEN 'eInvoice_AdjustType_NM_998'
+					            WHEN A.tthai = '1' THEN 'eInvoice_AdjustType_NM_1'
+					            WHEN A.tthai = '2' THEN 'eInvoice_AdjustType_NM_3'
+					            WHEN A.tthai = '3' THEN 'eInvoice_AdjustType_NM_5'
+					            WHEN A.tthai = '4' THEN 'eInvoice_AdjustType_NM_2'
+					            WHEN A.tthai = '5' THEN 'eInvoice_AdjustType_NM_4'
+					            WHEN A.tthai = '6' THEN 'eInvoice_AdjustType_NM_6'
 					            ELSE ''
 					        END
 					    LIMIT 1
@@ -147,7 +158,7 @@ BEGIN
             A.khmshdon,
             (
 				    SELECT
-				        CASE UPPER(p_LANGUAGE)
+				        CASE v_language
 				            WHEN 'ENG' THEN m.ENG
 				            WHEN 'KOR' THEN m.KOR
 				            ELSE m.VIET
@@ -197,7 +208,9 @@ BEGIN
             A.AUTO_CHIT_CD,
 
             IFNULL(B.CHIT_YMD, '') AS CHIT_YMD,
-            IFNULL(B.CHIT_TYPE, 0) AS CHIT_TYPE
+            IFNULL(B.CHIT_TYPE, '') AS CHIT_TYPE,
+            IFNULL(B.CHIT_TYPE, '') AS __CHIT_TYPE,
+            IFNULL(B.CHIT_ID, 0) AS __CHIT_ID
 
         FROM buy_list_einvoice AS A
 
@@ -206,33 +219,26 @@ BEGIN
 
         LEFT JOIN chitinfo AS B
             ON A.AUTO_CHIT_CD = B.CHIT_CD
+            AND B.COMPANY_CD = A.COMPANY_CD
             AND IFNULL(B.ISDEL, '') != '1'
 
         LEFT JOIN buy_list_json AS JSON
             ON JSON.mhdon = A.mhdon
+            AND JSON.COMPANY_CD = A.COMPANY_CD
             AND IFNULL(JSON.ISDEL, '') != '1'
 
         GROUP BY A.mhdon
 
         ORDER BY
-            A.khmshdon,
             A.tdlap,
             CONVERT(A.shdon, UNSIGNED INTEGER),
+            A.khmshdon,
             A.khhdon,
-            A.mhdon;
+            A.mhdon
+        LIMIT v_offset, v_page_size;
 
-
-        /* Result set 2: JSON */
-        SELECT
-            JSON.mhdon,
-            IFNULL(JSON.json, '') AS json
-
-        FROM buy_list_json AS JSON
-
-        INNER JOIN tmp_vat_inout_keys AS K
-            ON K.mhdon = JSON.mhdon
-
-        WHERE IFNULL(JSON.ISDEL, '') != '1';
+        /* Result set 2: total invoice count, same paging contract as Chit/Inventory. */
+        SELECT COUNT(*) AS TOTAL_RECORDS FROM tmp_vat_inout_keys;
 
 
     /* ============================================================
@@ -246,13 +252,16 @@ BEGIN
 
         LEFT JOIN sell_list_json AS JSON
             ON JSON.mhdon = A.mhdon
+            AND JSON.COMPANY_CD = A.COMPANY_CD
             AND IFNULL(JSON.ISDEL, '') != '1'
 
         LEFT JOIN chitinfo AS B
             ON A.AUTO_CHIT_CD = B.CHIT_CD
+            AND B.COMPANY_CD = A.COMPANY_CD
             AND IFNULL(B.ISDEL, '') != '1'
 
         WHERE IFNULL(A.ISDEL, '') != '1'
+            AND A.COMPANY_CD = v_company_cd
 
             AND (
                 v_from_ymd = ''
@@ -294,6 +303,7 @@ BEGIN
 
         /* Result set 1: invoice rows */
         SELECT
+            A.COMPANY_CD,
             A.mhdon,
 
             CASE
@@ -303,21 +313,21 @@ BEGIN
 		
 					 (
 					    SELECT
-					        CASE UPPER(p_LANGUAGE)
+					        CASE v_language
 					            WHEN 'ENG' THEN m.ENG
 					            WHEN 'KOR' THEN m.KOR
 					            ELSE m.VIET
 					        END
 					    FROM am_web_manager.t_message_info m
 					    WHERE m.`KEY` =
-					        CASE tthai
-							  		WHEN IFNULL(JSON.mhdon, '') = '' THEN 'eInvoice_AdjustType_NM_998'
-					            WHEN '1'   THEN 'eInvoice_AdjustType_NM_1'
-					            WHEN '2'   THEN 'eInvoice_AdjustType_NM_3'
-					            WHEN '3'   THEN 'eInvoice_AdjustType_NM_5'
-					            WHEN '4'   THEN 'eInvoice_AdjustType_NM_2'
-					            WHEN '5'   THEN 'eInvoice_AdjustType_NM_4'
-					            WHEN '6'   THEN 'eInvoice_AdjustType_NM_6'
+					        CASE
+                                WHEN IFNULL(JSON.mhdon, '') = '' THEN 'eInvoice_AdjustType_NM_998'
+					            WHEN A.tthai = '1' THEN 'eInvoice_AdjustType_NM_1'
+					            WHEN A.tthai = '2' THEN 'eInvoice_AdjustType_NM_3'
+					            WHEN A.tthai = '3' THEN 'eInvoice_AdjustType_NM_5'
+					            WHEN A.tthai = '4' THEN 'eInvoice_AdjustType_NM_2'
+					            WHEN A.tthai = '5' THEN 'eInvoice_AdjustType_NM_4'
+					            WHEN A.tthai = '6' THEN 'eInvoice_AdjustType_NM_6'
 					            ELSE ''
 					        END
 					    LIMIT 1
@@ -326,7 +336,7 @@ BEGIN
             A.khmshdon,
             (
 				    SELECT
-				        CASE UPPER(p_LANGUAGE)
+				        CASE v_language
 				            WHEN 'ENG' THEN m.ENG
 				            WHEN 'KOR' THEN m.KOR
 				            ELSE m.VIET
@@ -376,7 +386,9 @@ BEGIN
             A.AUTO_CHIT_CD,
 
             IFNULL(B.CHIT_YMD, '') AS CHIT_YMD,
-            IFNULL(B.CHIT_TYPE, 0) AS CHIT_TYPE
+            IFNULL(B.CHIT_TYPE, '') AS CHIT_TYPE,
+            IFNULL(B.CHIT_TYPE, '') AS __CHIT_TYPE,
+            IFNULL(B.CHIT_ID, 0) AS __CHIT_ID
 
         FROM sell_list_einvoice AS A
 
@@ -385,33 +397,26 @@ BEGIN
 
         LEFT JOIN chitinfo AS B
             ON A.AUTO_CHIT_CD = B.CHIT_CD
+            AND B.COMPANY_CD = A.COMPANY_CD
             AND IFNULL(B.ISDEL, '') != '1'
 
         LEFT JOIN sell_list_json AS JSON
             ON JSON.mhdon = A.mhdon
+            AND JSON.COMPANY_CD = A.COMPANY_CD
             AND IFNULL(JSON.ISDEL, '') != '1'
 
         GROUP BY A.mhdon
 
         ORDER BY
-            A.khmshdon,
             A.tdlap,
             CONVERT(A.shdon, UNSIGNED INTEGER),
+            A.khmshdon,
             A.khhdon,
-            A.mhdon;
+            A.mhdon
+        LIMIT v_offset, v_page_size;
 
-
-        /* Result set 2: JSON */
-        SELECT
-            JSON.mhdon,
-            IFNULL(JSON.json, '') AS json
-
-        FROM sell_list_json AS JSON
-
-        INNER JOIN tmp_vat_inout_keys AS K
-            ON K.mhdon = JSON.mhdon
-
-        WHERE IFNULL(JSON.ISDEL, '') != '1';
+        /* Result set 2: total invoice count, same paging contract as Chit/Inventory. */
+        SELECT COUNT(*) AS TOTAL_RECORDS FROM tmp_vat_inout_keys;
 
     END IF;
 

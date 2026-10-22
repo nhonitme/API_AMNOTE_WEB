@@ -15,7 +15,7 @@ SET @v_screen_cd = 'TAX_VAT_INOUT_LIST';
 SET @v_grid_id = 'REPORT_PREVIEW';
 SET @v_template_id = 'DEFAULT';
 SET @v_actor = 'SYSTEM';
-SET @v_data_source_ref = 'CALL rpt_vat_inout_list(@p_COMPANY_CD, @p_FROM_DATE, @p_TO_DATE, @p_TYPE, @p_STATUS, @p_SEARCH_TEXT, @p_LANGUAGE)';
+SET @v_data_source_ref = 'company:CALL rpt_vat_inout_list(@p_COMPANY_CD,@p_FROM_YMD,@p_TO_YMD,@p_TYPE,@p_STATUS,@p_SEARCH_TEXT,@p_LANGUAGE,@p_PAGE_NUMBER,@p_PAGE_SIZE)';
 
 -- =============================================================================
 -- 1) sys_report_catalog (bảng dump) + sys_report (nếu môi trường dùng tên này)

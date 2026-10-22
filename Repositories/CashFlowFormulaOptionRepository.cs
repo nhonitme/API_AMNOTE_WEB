@@ -9,26 +9,18 @@ using Dapper;
 
 namespace API_AMNOTE_WEB.Repositories
 {
-    /// <summary>
-    /// Stores the editable DETAIL rows for the B03 cash-flow templates in the
-    /// company database. The report procedures resolve templates by company,
-    /// so this repository deliberately uses the same source priority.
-    /// </summary>
     public sealed class CashFlowFormulaOptionRepository : ICashFlowFormulaOptionRepository
     {
         private const string CashAccountPrefixesItemKey = "CASH_ACCOUNT_PREFIXES";
         private const string DefaultCashAccountPrefixes = "111,112,113";
         private const string BlankTemplateCompanyCd = "";
 
-        // Dapper list expansion drops empty strings, so blank template rows must be matched explicitly.
-        private const string TemplateCompanyMatchSql = "(template.COMPANY_CD IN @CandidateCompanyCds OR template.COMPANY_CD = '')";
-        private const string FallbackTemplateCompanyMatchSql = "(template.COMPANY_CD IN ('0001', '0000') OR template.COMPANY_CD = '')";
+        private const string TemplateCompanyMatchSql = "(template.COMPANY_CD = @CompanyCd OR template.COMPANY_CD = '')";
+        private const string SharedDefaultTemplateCompanyMatchSql = "template.COMPANY_CD = ''";
         private const string TemplateCompanyPriorityOrderSql = """
             ORDER BY CASE
                 WHEN template.COMPANY_CD = @CompanyCd THEN 0
-                WHEN template.COMPANY_CD = '0001' THEN 1
-                WHEN template.COMPANY_CD = '0000' THEN 2
-                ELSE 3
+                ELSE 1
             END,
             template.ID
             """;
@@ -127,8 +119,6 @@ namespace API_AMNOTE_WEB.Repositories
             var normalizedRows = NormalizeRows(request.ROWS, definition);
             if (normalizedRows.Count == 0)
             {
-                // An active CONFIG row by itself wins the report procedure's source-company
-                // selection. Do not let an empty draft create that incomplete template state.
                 throw new ArgumentException("ROWS must contain at least one DETAIL row.", nameof(request));
             }
 
@@ -343,8 +333,7 @@ namespace API_AMNOTE_WEB.Repositories
                 {
                     ReportCode = definition.ReportCode,
                     ReportVersion = reportVersion,
-                    CompanyCd = companyCd,
-                    CandidateCompanyCds = BuildCandidateCompanyCds(companyCd)
+                    CompanyCd = companyCd
                 },
                 cancellationToken: cancellationToken);
 
@@ -401,7 +390,6 @@ namespace API_AMNOTE_WEB.Repositories
                 rows = new List<CashFlowFormulaOptionRowDto>();
             }
 
-            // Company may have a CONFIG override but no DETAIL yet; still show the shared default rows.
             if (rows.Count == 0 && !IsSharedDefaultTemplateCompany(companyCd))
             {
                 var sharedSourceCompanyCd = await ResolveSharedTemplateCompanyCdAsync(
@@ -491,7 +479,6 @@ namespace API_AMNOTE_WEB.Repositories
                 new
                 {
                     CompanyCd = companyCd,
-                    CandidateCompanyCds = BuildCandidateCompanyCds(companyCd),
                     ReportCode = definition.ReportCode,
                     ReportVersion = reportVersion
                 },
@@ -515,15 +502,10 @@ namespace API_AMNOTE_WEB.Repositories
                 FROM `{definition.TableName}` template
                 WHERE template.REPORT_CODE = @ReportCode
                   AND template.REPORT_VERSION = @ReportVersion
-                  AND {FallbackTemplateCompanyMatchSql}
+                  AND {SharedDefaultTemplateCompanyMatchSql}
                   AND UPPER(IFNULL(template.SECTION_TYPE, '')) = 'DETAIL'
                   AND IFNULL(template.ISDEL, '0') = '0'
-                ORDER BY CASE
-                    WHEN template.COMPANY_CD = '0001' THEN 1
-                    WHEN template.COMPANY_CD = '0000' THEN 2
-                    ELSE 3
-                END,
-                template.ID
+                ORDER BY template.ID
                 LIMIT 1{forUpdateSql}
                 """;
 
@@ -583,9 +565,6 @@ namespace API_AMNOTE_WEB.Repositories
             string reportVersion,
             CancellationToken cancellationToken)
         {
-            // Do not hard-filter COLUMN_KEY here. B01/B02 layout templates often store
-            // one DETAIL line with COLUMN_KEY other than '' / ITEM_NAME (e.g. END_YEAR).
-            // Prefer line/label columns when deduping below.
             var sql = definition.HasDirectRules
                 ? $"""
                 SELECT
@@ -701,9 +680,7 @@ namespace API_AMNOTE_WEB.Repositories
             IEnumerable<CashFlowFormulaOptionRowDto> rows,
             bool hasDualFormulas)
         {
-            // Unique key includes COLUMN_KEY, so one ITEM_KEY can appear more than once.
-            // The editor is line-based: keep a single row per ITEM_KEY.
-            // GTGT reuses display ITEM_CODE (1, 2, ...) across sections — never collapse by ITEM_CODE.
+            // Editor is line-based (one row per ITEM_KEY). GTGT reuses ITEM_CODE across sections — never collapse by ITEM_CODE.
             var byItemKey = rows
                 .GroupBy(row => row.ITEM_KEY, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.OrderBy(PreferFormulaEditorColumnRank).ThenBy(row => row.ID).First());
@@ -739,7 +716,6 @@ namespace API_AMNOTE_WEB.Repositories
                 _ => 3
             };
 
-            // Prefer the cell that actually carries formula/account data when COLUMN_KEY varies.
             var hasRule = !string.IsNullOrWhiteSpace(row.ACCOUNT_RULE)
                 || !string.IsNullOrWhiteSpace(row.FORMULA_EXPR)
                 || !string.IsNullOrWhiteSpace(row.FORMULA_NO1)
@@ -784,7 +760,7 @@ namespace API_AMNOTE_WEB.Repositories
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var candidate in new[] { companyCd, detailSourceCompanyCd, "0001", "0000", BlankTemplateCompanyCd })
+            foreach (var candidate in new[] { companyCd, detailSourceCompanyCd, BlankTemplateCompanyCd })
             {
                 if (candidate == null || !seen.Add(candidate))
                 {
@@ -793,17 +769,6 @@ namespace API_AMNOTE_WEB.Repositories
 
                 yield return candidate;
             }
-        }
-
-        private static string[] BuildCandidateCompanyCds(string companyCd)
-        {
-            var candidates = new[] { companyCd, "0001", "0000" };
-            return candidates
-                .Select(candidate => Common.NormalizeNullableText(candidate))
-                .Where(candidate => candidate != null)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Select(candidate => candidate!)
-                .ToArray();
         }
 
         private static async Task<string?> GetCashAccountPrefixesAsync(
@@ -840,8 +805,7 @@ namespace API_AMNOTE_WEB.Repositories
                 cancellationToken: cancellationToken);
 
             var prefixes = await connection.QueryFirstOrDefaultAsync<string?>(command);
-            // Existing company templates may predate the editor limits. Reading them must
-            // remain permissive; validation is applied only to a new PUT value.
+            // Read permissive; validate only on PUT.
             return Common.NormalizeNullableText(prefixes);
         }
 
@@ -898,8 +862,6 @@ namespace API_AMNOTE_WEB.Repositories
             string userId,
             CancellationToken cancellationToken)
         {
-            // B01/B02 templates do not have DIRECT_RULE* columns. Copy only columns that exist.
-            // GTGT templates use CODE_NO* / FORMULA_NO* / CALC_METHOD_NO* instead of a single FORMULA_EXPR.
             var sql = definition.HasDirectRules
                 ? $"""
                 INSERT INTO `{definition.TableName}`
@@ -1447,7 +1409,6 @@ namespace API_AMNOTE_WEB.Repositories
             string userId,
             CancellationToken cancellationToken)
         {
-            // Soft-delete every company override (DETAIL + CONFIG). Shared default COMPANY_CD='' is untouched.
             var sql = $"""
                 UPDATE `{definition.TableName}`
                 SET
@@ -1542,8 +1503,7 @@ namespace API_AMNOTE_WEB.Repositories
 
                 var elementType = NormalizeRequired(source.ELEMENT_TYPE, $"ROWS[{index - 1}].ELEMENT_TYPE", 50);
 
-                // GTGT reuses display ITEM_CODE across sections; ITEM_KEY is the stable identity.
-                // B03 section headers may omit ITEM_CODE in the shared template.
+                // GTGT: ITEM_KEY is identity (ITEM_CODE reused). Structural rows may omit ITEM_CODE.
                 var itemCode = definition.HasDualFormulas
                     ? NormalizeOptional(source.ITEM_CODE, $"ROWS[{index - 1}].ITEM_CODE", 50) ?? string.Empty
                     : IsStructuralElementType(elementType)
@@ -1811,9 +1771,7 @@ namespace API_AMNOTE_WEB.Repositories
                     expression = expression[(equalsIndex + 1)..].Trim();
                 }
 
-                // The report procedure supports +/-/; item-code expressions. Only validate
-                // this unambiguous subset, so existing expressions using legacy syntax are
-                // preserved instead of being rejected by the editor API.
+                // Only validate the unambiguous +/-/; subset; leave legacy syntax alone.
                 if (expression.Length == 0 || expression.Contains('=') || !BasicFormulaCharacters.IsMatch(expression))
                 {
                     continue;
@@ -2059,7 +2017,7 @@ namespace API_AMNOTE_WEB.Repositories
 
         private static string? ReadResolvedTemplateCompanyCd(string? value)
         {
-            // Blank COMPANY_CD is the shared default template key. Do not use NormalizeNullableText here.
+            // Keep blank COMPANY_CD (shared default); do not use NormalizeNullableText.
             return value == null ? null : value.Trim();
         }
 

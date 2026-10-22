@@ -26,7 +26,10 @@ namespace API_AMNOTE_WEB.Services.Tax
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
-            _ = companyCd;
+            if (string.IsNullOrWhiteSpace(companyCd))
+            {
+                throw new InvalidOperationException("COMPANY_CD is required.");
+            }
 
             var type = NormalizeType(request.Type);
             var items = request.Items ?? new List<JsonElement>();
@@ -48,6 +51,7 @@ namespace API_AMNOTE_WEB.Services.Tax
                 try
                 {
                     var row = MapItem(items[index], userId, preferSummary: true);
+                    row.COMPANY_CD = companyCd;
                     state.mhdon = row.mhdon;
                     if (string.IsNullOrWhiteSpace(row.mhdon))
                     {
@@ -58,7 +62,7 @@ namespace API_AMNOTE_WEB.Services.Tax
                         continue;
                     }
 
-                    var existing = await _repository.ReadExistingAsync(type, row.mhdon, cancellationToken);
+                    var existing = await _repository.ReadExistingAsync(companyCd, type, row.mhdon, cancellationToken);
                     var statusChanged =
                         existing.HasList &&
                         !string.Equals(
@@ -78,6 +82,7 @@ namespace API_AMNOTE_WEB.Services.Tax
                     else if (statusChanged)
                     {
                         await _repository.InvalidateJsonAndUpdateStatusAsync(
+                            companyCd,
                             type,
                             row.mhdon,
                             row.tthai ?? "",
@@ -126,7 +131,10 @@ namespace API_AMNOTE_WEB.Services.Tax
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
-            _ = companyCd;
+            if (string.IsNullOrWhiteSpace(companyCd))
+            {
+                throw new InvalidOperationException("COMPANY_CD is required.");
+            }
             _ = userId;
 
             var type = NormalizeType(request.Type);
@@ -148,6 +156,7 @@ namespace API_AMNOTE_WEB.Services.Tax
                 try
                 {
                     var row = MapItem(items[index], userId, preferSummary: false);
+                    row.COMPANY_CD = companyCd;
                     if (string.IsNullOrWhiteSpace(row.mhdon))
                     {
                         result.Skipped += 1;
@@ -162,7 +171,7 @@ namespace API_AMNOTE_WEB.Services.Tax
                         continue;
                     }
 
-                    await _repository.UpsertJsonAsync(type, row.mhdon, row.JsonPayload, cancellationToken);
+                    await _repository.UpsertJsonAsync(companyCd, type, row.mhdon, row.JsonPayload, cancellationToken);
                     result.JsonSaved += 1;
                     result.Upserted += 1;
                 }
@@ -183,7 +192,10 @@ namespace API_AMNOTE_WEB.Services.Tax
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
-            _ = companyCd;
+            if (string.IsNullOrWhiteSpace(companyCd))
+            {
+                throw new InvalidOperationException("COMPANY_CD is required.");
+            }
 
             var type = NormalizeType(request.Type);
             var items = request.Items ?? new List<JsonElement>();
@@ -210,6 +222,7 @@ namespace API_AMNOTE_WEB.Services.Tax
                 try
                 {
                     var row = MapItem(items[index], userId);
+                    row.COMPANY_CD = companyCd;
                     if (string.IsNullOrWhiteSpace(row.mhdon))
                     {
                         result.Skipped += 1;

@@ -13,6 +13,7 @@
 -- Dumping structure for table am_web_001.buy_list_einvoice
 DROP TABLE IF EXISTS `buy_list_einvoice`;
 CREATE TABLE IF NOT EXISTS `buy_list_einvoice` (
+  `COMPANY_CD` varchar(20) COLLATE utf8_unicode_ci NOT NULL DEFAULT '' COMMENT 'Mã công ty',
   `mhdon` varchar(50) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
   `tthai` char(2) COLLATE utf8_unicode_ci DEFAULT '',
   `khmshdon` varchar(1) COLLATE utf8_unicode_ci DEFAULT '',
@@ -40,7 +41,8 @@ CREATE TABLE IF NOT EXISTS `buy_list_einvoice` (
   `LATEST_YMD` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `ISDEL` char(1) COLLATE utf8_unicode_ci DEFAULT '',
   `USERID` varchar(20) COLLATE utf8_unicode_ci DEFAULT '',
-  PRIMARY KEY (`mhdon`)
+  PRIMARY KEY (`mhdon`),
+  KEY `IDX_COMPANY_CD` (`COMPANY_CD`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 -- Data exporting was unselected.
@@ -61,10 +63,12 @@ CREATE TABLE IF NOT EXISTS `buy_list_einvoice` (
 
 -- Dumping structure for table am_web_001.buy_list_json
 CREATE TABLE IF NOT EXISTS `buy_list_json` (
+  `COMPANY_CD` varchar(20) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
   `mhdon` varchar(50) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
   `json` mediumtext COLLATE utf8_unicode_ci,
   `ISDEL` char(1) COLLATE utf8_unicode_ci DEFAULT '0',
-  PRIMARY KEY (`mhdon`)
+  PRIMARY KEY (`mhdon`),
+  KEY `IDX_COMPANY_CD` (`COMPANY_CD`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 -- Data exporting was unselected.
@@ -85,6 +89,7 @@ CREATE TABLE IF NOT EXISTS `buy_list_json` (
 
 -- Dumping structure for table am_web_001.sell_list_einvoice
 CREATE TABLE IF NOT EXISTS `sell_list_einvoice` (
+  `COMPANY_CD` varchar(20) COLLATE utf8_unicode_ci NOT NULL DEFAULT '' COMMENT 'Mã công ty',
   `mhdon` varchar(50) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
   `tthai` char(2) COLLATE utf8_unicode_ci DEFAULT '',
   `khmshdon` varchar(1) COLLATE utf8_unicode_ci DEFAULT '',
@@ -112,7 +117,8 @@ CREATE TABLE IF NOT EXISTS `sell_list_einvoice` (
   `LATEST_YMD` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `ISDEL` char(1) COLLATE utf8_unicode_ci DEFAULT '',
   `USERID` varchar(20) COLLATE utf8_unicode_ci DEFAULT '',
-  PRIMARY KEY (`mhdon`)
+  PRIMARY KEY (`mhdon`),
+  KEY `IDX_COMPANY_CD` (`COMPANY_CD`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 -- Data exporting was unselected.
@@ -133,10 +139,12 @@ CREATE TABLE IF NOT EXISTS `sell_list_einvoice` (
 
 -- Dumping structure for table am_web_001.sell_list_json
 CREATE TABLE IF NOT EXISTS `sell_list_json` (
+  `COMPANY_CD` varchar(20) COLLATE utf8_unicode_ci NOT NULL DEFAULT '' COMMENT 'Mã công ty',
   `mhdon` varchar(50) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
   `json` mediumtext COLLATE utf8_unicode_ci,
   `ISDEL` char(1) COLLATE utf8_unicode_ci DEFAULT '0',
-  PRIMARY KEY (`mhdon`)
+  PRIMARY KEY (`mhdon`),
+  KEY `IDX_COMPANY_CD` (`COMPANY_CD`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
 -- Data exporting was unselected.

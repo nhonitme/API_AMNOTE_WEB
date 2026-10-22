@@ -39,6 +39,7 @@ namespace API_AMNOTE_WEB.Models.DTOs
 
     public class GdtImportInvoiceRow
     {
+        public string COMPANY_CD { get; set; } = "";
         public string mhdon { get; set; } = "";
         public string tthai { get; set; } = "";
         public string khmshdon { get; set; } = "";

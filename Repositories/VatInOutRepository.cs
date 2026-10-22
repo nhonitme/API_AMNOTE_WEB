@@ -40,6 +40,13 @@ public sealed class VatInOutRepository : IVatInOutRepository
         using var results = await connection.QueryMultipleAsync(new CommandDefinition(
             sql, parameters, commandTimeout: 60, cancellationToken: cancellationToken));
         var items = (await results.ReadAsync<VatInOutInvoice>()).ToList();
+        foreach (var item in items)
+        {
+            if (string.IsNullOrWhiteSpace(item.COMPANY_CD))
+            {
+                item.COMPANY_CD = companyCd;
+            }
+        }
         var totals = (await results.ReadAsync<TotalRecordResult>()).Single();
         return (items, totals.TOTAL_RECORDS);
     }

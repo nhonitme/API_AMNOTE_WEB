@@ -13,6 +13,7 @@ public sealed class VatInOutQuery
 // Property names intentionally match SQL aliases and the existing VAT popup fields.
 public sealed class VatInOutInvoice
 {
+    public string COMPANY_CD { get; set; } = string.Empty;
     public string mhdon { get; set; } = string.Empty;
     public string? tthai { get; set; }
     public string? tthai_ten { get; set; }
