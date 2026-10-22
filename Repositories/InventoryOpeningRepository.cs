@@ -473,7 +473,7 @@ namespace API_AMNOTE_WEB.Repositories
             var inventoryYmd = DateTime.Today;
 
             return await session.QuerySingleAsync<long>(
-                "CALL setChitInventoryInput(@p_INPUT_ID, @p_INPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
+                "CALL setChitInventoryInput(@p_INPUT_ID, @p_INPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_TOTAL, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
                 new
                 {
                     p_INPUT_ID = inputId > 0 ? inputId : (long?)null,
@@ -494,6 +494,7 @@ namespace API_AMNOTE_WEB.Repositories
                     p_UNIT_PRICE_FC = normalized.UnitPriceCc,
                     p_EXCHANGE_RATES = 1d,
                     p_AMOUNT_CC = normalized.AmountCc,
+                    p_AMOUNT_TOTAL = normalized.AmountCc,
                     p_AMOUNT_FC = normalized.AmountCc,
                     p_SUMMARY = normalized.Summary,
                     p_INVENTORY_YMD = inventoryYmd,

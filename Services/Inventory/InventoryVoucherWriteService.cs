@@ -232,6 +232,7 @@ namespace API_AMNOTE_WEB.Services.Inventory
                     UNIT_PRICE_FC = item.UNIT_PRICE_FC,
                     EXCHANGE_RATES = item.EXCHANGE_RATES,
                     AMOUNT_CC = item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC,
+                    AMOUNT_TOTAL = item.AMOUNT_TOTAL != 0 ? item.AMOUNT_TOTAL : (item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC),
                     AMOUNT_FC = item.AMOUNT_FC,
                     SUMMARY = NormalizeNullableText(item.SUMMARY) ?? string.Empty,
                     INVENTORY_YMD = NormalizeNullableInventoryDateTimeText(item.INVENTORY_YMD, nameof(InventoryInput.INVENTORY_YMD)) ?? headerDate,
@@ -280,6 +281,9 @@ namespace API_AMNOTE_WEB.Services.Inventory
                     REVENUE_UNIT_PRICE_FC = item.REVENUE_UNIT_PRICE_FC,
                     EXCHANGE_RATES = item.EXCHANGE_RATES,
                     AMOUNT_CC = chitType == "IO" ? item.AMOUNT_CC : (item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC),
+                    AMOUNT_TOTAL = item.AMOUNT_TOTAL != 0
+                        ? item.AMOUNT_TOTAL
+                        : (chitType == "IO" ? item.AMOUNT_CC : (item.AMOUNT_CC != 0 ? item.AMOUNT_CC : item.QUANTITY * item.UNIT_PRICE_CC)),
                     REVENUE_AMOUNT_CC = item.REVENUE_AMOUNT_CC,
                     AMOUNT_FC = item.AMOUNT_FC,
                     REVENUE_AMOUNT_FC = item.REVENUE_AMOUNT_FC,

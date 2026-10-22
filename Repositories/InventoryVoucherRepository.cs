@@ -820,7 +820,7 @@ namespace API_AMNOTE_WEB.Repositories
             var sourceDetailCd = Common.NormalizeNullableText(input.CHITDETAIL_CD);
 
             return session.QuerySingleAsync<long>(
-                "CALL setChitInventoryInput(@p_INPUT_ID, @p_INPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
+                "CALL setChitInventoryInput(@p_INPUT_ID, @p_INPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_TOTAL, @p_AMOUNT_FC, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
                 new
                 {
                     p_INPUT_ID = input.INPUT_ID > 0 ? input.INPUT_ID : (long?)null,
@@ -841,6 +841,7 @@ namespace API_AMNOTE_WEB.Repositories
                     p_UNIT_PRICE_FC = input.UNIT_PRICE_FC,
                     p_EXCHANGE_RATES = input.EXCHANGE_RATES,
                     p_AMOUNT_CC = input.AMOUNT_CC,
+                    p_AMOUNT_TOTAL = input.AMOUNT_TOTAL != 0 ? input.AMOUNT_TOTAL : input.AMOUNT_CC,
                     p_AMOUNT_FC = input.AMOUNT_FC,
                     p_SUMMARY = input.SUMMARY,
                     p_INVENTORY_YMD = input.INVENTORY_YMD,
@@ -869,7 +870,7 @@ namespace API_AMNOTE_WEB.Repositories
             var sourceDetailCd = Common.NormalizeNullableText(output.CHITDETAIL_CD);
 
             return session.QuerySingleAsync<long>(
-                "CALL setChitInventoryOutput(@p_OUTPUT_ID, @p_OUTPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_REVENUE_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_REVENUE_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_REVENUE_AMOUNT_CC, @p_AMOUNT_FC, @p_REVENUE_AMOUNT_FC, @p_REVENUE_AMOUNT_TOTAL, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
+                "CALL setChitInventoryOutput(@p_OUTPUT_ID, @p_OUTPUT_CD, @p_INVENTORY_ID, @p_INVENTORY_CD, @p_CHIT_TYPE, @p_COMPANY_CD, @p_PRODUCT_ID, @p_PRODUCT_CD, @p_STORE_ID, @p_STORE_CD, @p_UNIT_ID, @p_UNIT_CD, @p_QUANTITY, @p_UNIT_PRICE_CC, @p_REVENUE_UNIT_PRICE_CC, @p_FC_TYPE, @p_UNIT_PRICE_FC, @p_REVENUE_UNIT_PRICE_FC, @p_EXCHANGE_RATES, @p_AMOUNT_CC, @p_AMOUNT_TOTAL, @p_REVENUE_AMOUNT_CC, @p_AMOUNT_FC, @p_REVENUE_AMOUNT_FC, @p_REVENUE_AMOUNT_TOTAL, @p_SUMMARY, @p_INVENTORY_YMD, @p_STATE, @p_CHITDETAIL_ID, @p_CHITDETAIL_CD, @p_SORT, @p_USER)",
                 new
                 {
                     p_OUTPUT_ID = output.OUTPUT_ID > 0 ? output.OUTPUT_ID : (long?)null,
@@ -892,6 +893,7 @@ namespace API_AMNOTE_WEB.Repositories
                     p_REVENUE_UNIT_PRICE_FC = output.REVENUE_UNIT_PRICE_FC,
                     p_EXCHANGE_RATES = output.EXCHANGE_RATES,
                     p_AMOUNT_CC = output.AMOUNT_CC,
+                    p_AMOUNT_TOTAL = output.AMOUNT_TOTAL != 0 ? output.AMOUNT_TOTAL : output.AMOUNT_CC,
                     p_REVENUE_AMOUNT_CC = output.REVENUE_AMOUNT_CC,
                     p_AMOUNT_FC = output.AMOUNT_FC,
                     p_REVENUE_AMOUNT_FC = output.REVENUE_AMOUNT_FC,

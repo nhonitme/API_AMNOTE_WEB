@@ -38,6 +38,7 @@ namespace API_AMNOTE_WEB.Models
         public decimal REVENUE_UNIT_PRICE_FC { get; set; }
         public decimal EXCHANGE_RATES { get; set; }
         public decimal AMOUNT_CC { get; set; }
+        public decimal AMOUNT_TOTAL { get; set; }
         public decimal REVENUE_AMOUNT_CC { get; set; }
         public decimal AMOUNT_FC { get; set; }
         public decimal REVENUE_AMOUNT_FC { get; set; }

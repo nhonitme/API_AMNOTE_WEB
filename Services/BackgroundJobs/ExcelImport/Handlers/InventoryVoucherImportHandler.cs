@@ -299,6 +299,10 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             {
                 input.AMOUNT_CC = input.QUANTITY * input.UNIT_PRICE_CC;
             }
+            if (input.AMOUNT_TOTAL == 0)
+            {
+                input.AMOUNT_TOTAL = input.AMOUNT_CC;
+            }
 
             return input;
         }
@@ -325,6 +329,10 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.ExcelImport.Handlers
             if (output.AMOUNT_CC == 0 && output.QUANTITY != 0 && output.UNIT_PRICE_CC != 0)
             {
                 output.AMOUNT_CC = output.QUANTITY * output.UNIT_PRICE_CC;
+            }
+            if (output.AMOUNT_TOTAL == 0)
+            {
+                output.AMOUNT_TOTAL = output.AMOUNT_CC;
             }
 
             return output;

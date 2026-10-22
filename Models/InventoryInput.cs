@@ -32,6 +32,7 @@ namespace API_AMNOTE_WEB.Models
         public decimal UNIT_PRICE_FC { get; set; }
         public decimal EXCHANGE_RATES { get; set; }
         public decimal AMOUNT_CC { get; set; }
+        public decimal AMOUNT_TOTAL { get; set; }
         public decimal AMOUNT_FC { get; set; }
         public string? SUMMARY { get; set; } = string.Empty;
         public string? INVENTORY_YMD { get; set; }
