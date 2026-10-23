@@ -282,7 +282,12 @@ namespace API_AMNOTE_WEB.Repositories
                 }
 
                 var inputAmount = activeInputs.Sum(item => item.AMOUNT_CC);
-                var outputAmount = activeOutputs.Sum(item => item.AMOUNT_CC);
+                // IO header uses the Xuất kho tab totals. IS_COGS only switches
+                // which monetary family is shown there; COGS journal calculation
+                // continues to use AMOUNT_CC independently.
+                var outputAmount = isCogsEnabled
+                    ? activeOutputs.Sum(item => item.REVENUE_AMOUNT_TOTAL)
+                    : activeOutputs.Sum(item => item.AMOUNT_TOTAL);
                 var amount = normalizedChitType switch
                 {
                     "IR" => inputAmount,
@@ -337,7 +342,7 @@ namespace API_AMNOTE_WEB.Repositories
                     p_CHIT_TYPE = normalizedChitType,
                     p_INPUT_TYPE = inputType,
                     p_IS_COGS = string.Equals(request.IS_COGS, "1", StringComparison.Ordinal) ? "1" : "0",
-                    p_AMOUNT = normalizedChitType == "IO" ? activeOutputs.Sum(x => Math.Round(x.AMOUNT_CC, 2, MidpointRounding.AwayFromZero)) : request.AMOUNT ?? amount,
+                    p_AMOUNT = normalizedChitType == "IO" ? outputAmount : request.AMOUNT ?? amount,
                     p_TOTAL_QTY = totalQty,
                     p_REMARK = remark,
                     p_CUSTOMER_ID = request.CUSTOMER_ID,
