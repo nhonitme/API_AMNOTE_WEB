@@ -13,6 +13,8 @@ using System.Reflection;
 using System.Security.Claims;
 using System.Dynamic;
 using System.Net.Mail;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -1428,5 +1430,30 @@ namespace API_AMNOTE_WEB.Helpers
     {
         Net_DB_Company,
         Net_DB_Manager
+    }
+}
+
+namespace API_AMNOTE_WEB.Helpers
+{
+    // Inventory detail numbers accept an empty editor value as zero.
+    public sealed class InventoryNumberJsonConverter : JsonConverter<decimal>
+    {
+        public override bool HandleNull => true;
+
+        public override decimal Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null) return 0;
+            if (reader.TokenType == JsonTokenType.Number && reader.TryGetDecimal(out var number)) return number;
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                var text = reader.GetString()?.Trim();
+                if (string.IsNullOrEmpty(text)) return 0;
+                if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out number)) return number;
+            }
+            throw new JsonException("Giá trị số chi tiết kho không hợp lệ.");
+        }
+
+        public override void Write(Utf8JsonWriter writer, decimal value, JsonSerializerOptions options)
+            => writer.WriteNumberValue(value);
     }
 }
