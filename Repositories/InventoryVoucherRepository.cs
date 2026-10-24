@@ -283,12 +283,10 @@ namespace API_AMNOTE_WEB.Repositories
                 }
 
                 var inputAmount = activeInputs.Sum(item => item.AMOUNT_CC);
-                // IO header uses the Xuất kho tab totals. IS_COGS only switches
-                // which monetary family is shown there; COGS journal calculation
-                // continues to use AMOUNT_CC independently.
-                var outputAmount = isCogsEnabled
-                    ? activeOutputs.Sum(item => item.REVENUE_AMOUNT_TOTAL)
-                    : activeOutputs.Sum(item => item.AMOUNT_TOTAL);
+                // IO header AMOUNT always sums issue AMOUNT_TOTAL (independent of
+                // IS_COGS); REVENUE_AMOUNT separately sums REVENUE_AMOUNT_TOTAL.
+                // COGS accounting entries continue to use AMOUNT_CC.
+                var outputAmount = activeOutputs.Sum(item => item.AMOUNT_TOTAL);
                 var amount = normalizedChitType switch
                 {
                     "IR" => inputAmount,
