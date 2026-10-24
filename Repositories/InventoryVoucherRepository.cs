@@ -34,6 +34,7 @@ namespace API_AMNOTE_WEB.Repositories
             public string CHIT_TYPE { get; set; } = string.Empty;
             public string INPUT_TYPE { get; set; } = string.Empty;
             public decimal AMOUNT { get; set; }
+            public decimal? REVENUE_AMOUNT { get; set; }
             public decimal TOTAL_QTY { get; set; }
             public string? REMARK { get; set; }
             public long? CUSTOMER_ID { get; set; }
@@ -425,6 +426,16 @@ namespace API_AMNOTE_WEB.Repositories
                     await SoftDeleteInventoryOutputAsync(session, companyCd, userId, chitId: voucherId);
                 }
 
+                // The shared Header procedure runs before OUTPUTS are written.
+                // Update IO revenue only after all output inserts, updates and
+                // soft deletes have completed, in the same transaction.
+                if (normalizedChitType == "IO")
+                {
+                    await session.ExecuteAsync(
+                        "CALL syncChitInventoryRevenueAmount(@p_COMPANY_CD, @p_INVENTORY_ID)",
+                        new { p_COMPANY_CD = companyCd, p_INVENTORY_ID = voucherId });
+                }
+
                 var savedCogs = isCogsEnabled
                     ? await SaveInventoryCogsAsync(session, companyCd, userId, voucherId, voucherNo!, request.CHIT_YMD!, activeOutputs, request.COGS_AMOUNT, existingCogs, request.CHITDETAIL_ID_COGS)
                     : null;
@@ -686,6 +697,7 @@ namespace API_AMNOTE_WEB.Repositories
                 IS_COGS = item.IS_COGS,
                 CHITDETAIL_ID_COGS = item.CHITDETAIL_ID_COGS,
                 AMOUNT = item.AMOUNT,
+                REVENUE_AMOUNT = item.REVENUE_AMOUNT,
                 TOTAL_QTY = item.TOTAL_QTY,
                 REMARK = item.REMARK,
                 CUSTOMER_ID = item.CUSTOMER_ID,
