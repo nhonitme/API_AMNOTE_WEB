@@ -325,6 +325,7 @@ namespace API_AMNOTE_WEB.Repositories
                     @p_INPUT_TYPE,
                     @p_IS_COGS,
                     @p_AMOUNT,
+                    @p_REVENUE_AMOUNT,
                     @p_TOTAL_QTY,
                     @p_REMARK,
                     @p_CUSTOMER_ID,
@@ -344,6 +345,9 @@ namespace API_AMNOTE_WEB.Repositories
                     p_INPUT_TYPE = inputType,
                     p_IS_COGS = string.Equals(request.IS_COGS, "1", StringComparison.Ordinal) ? "1" : "0",
                     p_AMOUNT = normalizedChitType == "IO" ? outputAmount : request.AMOUNT ?? amount,
+                    p_REVENUE_AMOUNT = normalizedChitType == "IO"
+                        ? activeOutputs.Sum(x => x.REVENUE_AMOUNT_TOTAL)
+                        : 0m,
                     p_TOTAL_QTY = totalQty,
                     p_REMARK = remark,
                     p_CUSTOMER_ID = request.CUSTOMER_ID,
@@ -424,16 +428,6 @@ namespace API_AMNOTE_WEB.Repositories
                 else
                 {
                     await SoftDeleteInventoryOutputAsync(session, companyCd, userId, chitId: voucherId);
-                }
-
-                // The shared Header procedure runs before OUTPUTS are written.
-                // Update IO revenue only after all output inserts, updates and
-                // soft deletes have completed, in the same transaction.
-                if (normalizedChitType == "IO")
-                {
-                    await session.ExecuteAsync(
-                        "CALL syncChitInventoryRevenueAmount(@p_COMPANY_CD, @p_INVENTORY_ID)",
-                        new { p_COMPANY_CD = companyCd, p_INVENTORY_ID = voucherId });
                 }
 
                 var savedCogs = isCogsEnabled
