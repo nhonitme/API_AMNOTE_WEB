@@ -36,6 +36,7 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public string? DESCRIPTION_KOR { get; set; }
         public List<InventoryInput> INPUTS { get; set; } = new();
         public List<InventoryOutput> OUTPUTS { get; set; } = new();
+        public InventoryBomSnapshotDto? BOM { get; set; }
     }
 
     public class InventoryVoucherRequest
@@ -74,5 +75,6 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public string? DESCRIPTION_KOR { get; set; }
         public List<InventoryInput> INPUTS { get; set; } = new();
         public List<InventoryOutput> OUTPUTS { get; set; } = new();
+        public InventoryBomSnapshotDto? BOM { get; set; }
     }
 }
