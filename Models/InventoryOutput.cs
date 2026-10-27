@@ -3,6 +3,8 @@ namespace API_AMNOTE_WEB.Models
     public class InventoryOutput
     {
         public long? OUTPUT_ID { get; set; }
+        // Client correlation only: not a column of chit_inventory_output.
+        public string? CLIENT_ROW_KEY { get; set; }
         public long? CHITDETAIL_ID_COGS { get; set; }
         public string? OUTPUT_CD { get; set; } = string.Empty;
         public long? INVENTORY_ID { get; set; }
