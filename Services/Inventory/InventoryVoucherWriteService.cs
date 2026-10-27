@@ -129,7 +129,8 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 DESCRIPTION_ENG = NormalizeNullableText(request.DESCRIPTION_ENG),
                 DESCRIPTION_KOR = NormalizeNullableText(request.DESCRIPTION_KOR),
                 INPUTS = inputs,
-                OUTPUTS = outputs
+                OUTPUTS = outputs,
+                BOM = chitType == "IO" ? request.BOM : null
             };
         }
 
@@ -194,7 +195,8 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 DESCRIPTION_ENG = request.DESCRIPTION_ENG == null ? NormalizeNullableText(existing.DESCRIPTION_ENG) : NormalizeNullableText(request.DESCRIPTION_ENG),
                 DESCRIPTION_KOR = request.DESCRIPTION_KOR == null ? NormalizeNullableText(existing.DESCRIPTION_KOR) : NormalizeNullableText(request.DESCRIPTION_KOR),
                 INPUTS = inputs,
-                OUTPUTS = outputs
+                OUTPUTS = outputs,
+                BOM = chitType == "IO" ? request.BOM : null
             };
         }
 
@@ -262,6 +264,7 @@ namespace API_AMNOTE_WEB.Services.Inventory
                 .Select((item, index) => new InventoryOutput
                 {
                     OUTPUT_ID = Common.NormalizeNullablePositiveLong(item.OUTPUT_ID),
+                    CLIENT_ROW_KEY = NormalizeNullableText(item.CLIENT_ROW_KEY),
                     OUTPUT_CD = NormalizeNullableText(item.OUTPUT_CD) ?? string.Empty,
                     INVENTORY_ID = Common.NormalizeNullablePositiveLong(item.INVENTORY_ID),
                     INVENTORY_CD = NormalizeNullableText(item.INVENTORY_CD),
