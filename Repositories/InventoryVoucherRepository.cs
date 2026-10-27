@@ -525,6 +525,19 @@ namespace API_AMNOTE_WEB.Repositories
 
                 await SoftDeleteInventoryInputAsync(session, companyCd, userId, chitId: chitId);
                 await SoftDeleteInventoryOutputAsync(session, companyCd, userId, chitId: chitId);
+                if (normalizedChitType == "IO")
+                {
+                    // Keep historical BOM allocation audit rows, but hide them with the deleted voucher.
+                    // Install Database/Inventory/05_inventory_bom_snapshot.sql before deploying this change.
+                    await session.ExecuteAsync(
+                        @"UPDATE chit_inventory_bom_material SET ISDEL = '1', UPDATE_BY = @userId
+                          WHERE COMPANY_CD = @companyCd AND INVENTORY_ID = @chitId AND ISDEL = '0'",
+                        new { companyCd, chitId, userId });
+                    await session.ExecuteAsync(
+                        @"UPDATE chit_inventory_bom_finished SET ISDEL = '1', UPDATE_BY = @userId
+                          WHERE COMPANY_CD = @companyCd AND INVENTORY_ID = @chitId AND ISDEL = '0'",
+                        new { companyCd, chitId, userId });
+                }
 
                 if (result >= 0)
                 {
