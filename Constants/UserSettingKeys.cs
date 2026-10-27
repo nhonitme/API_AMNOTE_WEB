@@ -12,5 +12,12 @@ namespace API_AMNOTE_WEB.Constants
 
         /// <summary>Bước 3 PROFIT_LOSS_REPORT - cách tính báo cáo lãi lỗ.</summary>
         public const string PeriodLockPlBalanceMethod = "PERIOD_LOCK_PL_BALANCE_METHOD";
+
+        /// <summary>
+        /// Xuất NVL (/cost/issue-material) - cặp TK Nợ/Có được phép.
+        /// VALUE: token cách nhau dấu phẩy; dạng NO/CO | NO/ | /CO (prefix).
+        /// </summary>
+        public const string MaterialIssueAccountPairs = "MATERIAL_ISSUE_ACCOUNT_PAIRS";
     }
 }
+

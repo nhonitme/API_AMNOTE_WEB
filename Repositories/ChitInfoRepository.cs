@@ -105,7 +105,8 @@ namespace API_AMNOTE_WEB.Repositories
             string? searchText = null,
             string? fromYmd = null,
             string? toYmd = null,
-            string? databaseName = null)
+            string? databaseName = null,
+            IReadOnlyList<AccountPairToken>? accountPairs = null)
         {
             var result = await GetChitInfosPagedAsync(
                 companyCd,
@@ -117,7 +118,8 @@ namespace API_AMNOTE_WEB.Repositories
                 toYmd,
                 1,
                 int.MaxValue,
-                databaseName);
+                databaseName,
+                accountPairs);
 
             return result.Items;
         }
@@ -132,8 +134,25 @@ namespace API_AMNOTE_WEB.Repositories
             string? toYmd = null,
             int pageNumber = 1,
             int pageSize = 20,
-            string? databaseName = null)
+            string? databaseName = null,
+            IReadOnlyList<AccountPairToken>? accountPairs = null)
         {
+            if (accountPairs != null)
+            {
+                return await GetChitInfosPagedByInputTypesAsync(
+                    companyCd,
+                    new[] { inputType },
+                    chitType,
+                    chitId,
+                    searchText,
+                    fromYmd,
+                    toYmd,
+                    pageNumber,
+                    pageSize,
+                    databaseName,
+                    accountPairs);
+            }
+
             const string query = "CALL getchitinfo(@p_COMPANY_CD, @p_INPUT_TYPE, @p_CHIT_TYPE, @p_CHIT_ID, @p_SEARCH_TEXT, @p_FROM_YMD, @p_TO_YMD, @p_PAGE_NUMBER, @p_PAGE_SIZE)";
 
             var (items, totals) = await _db.QueryMultipleAsync<ChitInfo, TotalRecordResult>(
@@ -168,7 +187,8 @@ namespace API_AMNOTE_WEB.Repositories
             string? toYmd = null,
             int pageNumber = 1,
             int pageSize = 20,
-            string? databaseName = null)
+            string? databaseName = null,
+            IReadOnlyList<AccountPairToken>? accountPairs = null)
         {
             var normalizedInputTypes = (inputTypes ?? Array.Empty<string>())
                 .Where(item => !string.IsNullOrWhiteSpace(item))
@@ -181,7 +201,7 @@ namespace API_AMNOTE_WEB.Repositories
                 return (Array.Empty<ChitInfo>(), 0);
             }
 
-            if (normalizedInputTypes.Count == 1)
+            if (normalizedInputTypes.Count == 1 && accountPairs == null)
             {
                 return await GetChitInfosPagedAsync(
                     companyCd,
@@ -202,6 +222,19 @@ namespace API_AMNOTE_WEB.Repositories
             var hasSearchText = !string.IsNullOrWhiteSpace(normalizedSearchText);
             var searchPattern = hasSearchText ? $"%{normalizedSearchText.Replace("%", "\\%").Replace("_", "\\_")}%" : null;
 
+            var param = new DynamicParameters();
+            param.Add("p_COMPANY_CD", companyCd);
+            param.Add("p_CHIT_TYPE", chitType);
+            param.Add("p_CHIT_ID", chitId);
+            param.Add("p_FROM_YMD", fromYmd);
+            param.Add("p_TO_YMD", toYmd);
+            param.Add("p_HAS_SEARCH_TEXT", hasSearchText ? 1 : 0);
+            param.Add("p_SEARCH_TEXT", searchPattern);
+            param.Add("p_OFFSET", offset);
+            param.Add("p_PAGE_SIZE", pageSize);
+
+            var accountPairExistsClause = BuildAccountPairExistsClause(accountPairs, param);
+
             var whereClause = $@"
 WHERE h.COMPANY_CD = @p_COMPANY_CD
   AND IFNULL(h.ISDEL, '0') = '0'
@@ -215,7 +248,7 @@ WHERE h.COMPANY_CD = @p_COMPANY_CD
         OR h.CHIT_NO LIKE @p_SEARCH_TEXT
         OR h.CHIT_CD LIKE @p_SEARCH_TEXT
         OR IFNULL(dv.DESCRIPTION, '') LIKE @p_SEARCH_TEXT
-      )";
+      ){accountPairExistsClause}";
 
             var countQuery = $@"
 SELECT COUNT(*) AS TOTAL_RECORDS
@@ -274,19 +307,6 @@ LEFT JOIN chitdescriptioninfo dk
 ORDER BY h.CHIT_YMD DESC, h.CHIT_ID DESC
 LIMIT @p_OFFSET, @p_PAGE_SIZE;";
 
-            var param = new
-            {
-                p_COMPANY_CD = companyCd,
-                p_CHIT_TYPE = chitType,
-                p_CHIT_ID = chitId,
-                p_FROM_YMD = fromYmd,
-                p_TO_YMD = toYmd,
-                p_HAS_SEARCH_TEXT = hasSearchText ? 1 : 0,
-                p_SEARCH_TEXT = searchPattern,
-                p_OFFSET = offset,
-                p_PAGE_SIZE = pageSize
-            };
-
             var totalRecords = await _db.QuerySingleAsync<int>(
                 Net_DB.Net_DB_Company,
                 countQuery,
@@ -309,6 +329,66 @@ LIMIT @p_OFFSET, @p_PAGE_SIZE;";
             }
 
             return (items, totalRecords);
+        }
+
+        /// <summary>
+        /// null = không lọc; empty = không khớp gì; có token = EXISTS detail theo prefix Nợ/Có.
+        /// </summary>
+        private static string BuildAccountPairExistsClause(
+            IReadOnlyList<AccountPairToken>? accountPairs,
+            DynamicParameters param)
+        {
+            if (accountPairs == null)
+            {
+                return string.Empty;
+            }
+
+            if (accountPairs.Count == 0)
+            {
+                return "\n  AND 1 = 0";
+            }
+
+            var orParts = new List<string>(accountPairs.Count);
+
+            for (var i = 0; i < accountPairs.Count; i++)
+            {
+                var token = accountPairs[i];
+                var conditions = new List<string>(2);
+
+                if (!string.IsNullOrWhiteSpace(token.DebitPrefix))
+                {
+                    var name = $"p_PAIR_D_{i}";
+                    param.Add(name, token.DebitPrefix.Trim() + "%");
+                    conditions.Add($"IFNULL(cd.DEBIT, '') LIKE @{name}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(token.CreditPrefix))
+                {
+                    var name = $"p_PAIR_C_{i}";
+                    param.Add(name, token.CreditPrefix.Trim() + "%");
+                    conditions.Add($"IFNULL(cd.CREDIT, '') LIKE @{name}");
+                }
+
+                if (conditions.Count > 0)
+                {
+                    orParts.Add("(" + string.Join(" AND ", conditions) + ")");
+                }
+            }
+
+            if (orParts.Count == 0)
+            {
+                return "\n  AND 1 = 0";
+            }
+
+            return $@"
+  AND EXISTS (
+    SELECT 1
+    FROM chitdetailinfo cd
+    WHERE cd.CHIT_ID = h.CHIT_ID
+      AND cd.COMPANY_CD = h.COMPANY_CD
+      AND IFNULL(cd.ISDEL, '0') = '0'
+      AND ({string.Join(" OR ", orParts)})
+  )";
         }
 
         public async Task<IReadOnlyList<ChitDetail>> GetChitDetailsByChitIdsAsync(string companyCd, string inputType, IEnumerable<long> chitIds, string? databaseName = null)

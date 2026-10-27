@@ -34,6 +34,14 @@ VALUES
         'BALANCE_ACCOUNT_TWO_SIDE',
         'Khóa sổ - Bước 3 (PROFIT_LOSS_REPORT): cách tính báo cáo lãi lỗ. VALUE: BALANCE_ACCOUNT | BALANCE_ACCOUNT_TWO_SIDE',
         NOW()
+    ),
+    (
+        '',
+        '',
+        'MATERIAL_ISSUE_ACCOUNT_PAIRS',
+        '621/152,627/152,623/152,641/152,642/152,241/152',
+        'Xuất nguyên vật liệu - Danh sách cặp tài khoản Nợ/Có được phép sử dụng. VALUE: các cặp cách nhau bằng dấu phẩy; dạng NO/CO | NO/ | /CO (so khớp prefix).',
+        NOW()
     )
 ON DUPLICATE KEY UPDATE
     NOTE = VALUES(NOTE),

@@ -1,3 +1,4 @@
+using API_AMNOTE_WEB.Constants;
 using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Models;
@@ -38,7 +39,17 @@ namespace API_AMNOTE_WEB.Controllers
         [HttpGet]
         [Route("Get")]
         [Authorize]
-        public async Task<IActionResult> Get([FromQuery] string? CHIT_TYPE = null, [FromQuery] long? CHIT_ID = null, [FromQuery] string? SEARCH_TEXT = null, [FromQuery] string? FROM_YMD = null, [FromQuery] string? TO_YMD = null, [FromQuery] bool INCLUDE_DETAILS = false, [FromQuery] int PAGE_NUMBER = 1, [FromQuery] int PAGE_SIZE = 20)
+        public async Task<IActionResult> Get(
+            [FromQuery] string? CHIT_TYPE = null,
+            [FromQuery] long? CHIT_ID = null,
+            [FromQuery] string? SEARCH_TEXT = null,
+            [FromQuery] string? FROM_YMD = null,
+            [FromQuery] string? TO_YMD = null,
+            [FromQuery] bool INCLUDE_DETAILS = false,
+            [FromQuery] int PAGE_NUMBER = 1,
+            [FromQuery] int PAGE_SIZE = 20,
+            [FromQuery] string? ACCOUNT_PAIR_FILTER = null,
+            [FromServices] IUserSettingService? userSettingService = null)
         {
             await EnsurePermissionAsync(PermissionMenuCode, "VIEW");
 
@@ -66,6 +77,19 @@ namespace API_AMNOTE_WEB.Controllers
                 return ValidationError("PAGE_SIZE must be greater than 0");
             }
 
+            IReadOnlyList<AccountPairToken>? accountPairs;
+            try
+            {
+                // Single-voucher fetch by id skips pair filter so open/edit still works.
+                accountPairs = CHIT_ID.HasValue
+                    ? null
+                    : await ResolveAccountPairFilterAsync(ACCOUNT_PAIR_FILTER, userSettingService);
+            }
+            catch (ArgumentException ex)
+            {
+                return ValidationError(ex.Message);
+            }
+
             var companyCd = Common.GetCompanyCode();
             var (pageNumber, pageSize) = Common.ResolvePaging(CHIT_ID, PAGE_NUMBER, PAGE_SIZE);
             var pageResult = await QueryPagedHeadersAsync(
@@ -76,7 +100,8 @@ namespace API_AMNOTE_WEB.Controllers
                 fromYmd,
                 toYmd,
                 pageNumber,
-                pageSize);
+                pageSize,
+                accountPairs);
             var headers = pageResult.Items.ToList();
 
             if (CHIT_ID.HasValue && headers.Count == 0)
@@ -208,7 +233,12 @@ namespace API_AMNOTE_WEB.Controllers
 
         [HttpGet("ExportExcel")]
         [Authorize]
-        public async Task<IActionResult> ExportExcel([FromQuery] long? CHIT_ID = null, [FromQuery] string? FROM_YMD = null, [FromQuery] string? TO_YMD = null)
+        public async Task<IActionResult> ExportExcel(
+            [FromQuery] long? CHIT_ID = null,
+            [FromQuery] string? FROM_YMD = null,
+            [FromQuery] string? TO_YMD = null,
+            [FromQuery] string? ACCOUNT_PAIR_FILTER = null,
+            [FromServices] IUserSettingService? userSettingService = null)
         {
             await EnsurePermissionAsync(PermissionMenuCode, "EXPORT");
             if (!SupportsExcelIntegration || string.IsNullOrWhiteSpace(ExcelModuleCd))
@@ -225,6 +255,16 @@ namespace API_AMNOTE_WEB.Controllers
             var toYmd = NormalizeNullableYmdText(TO_YMD, nameof(TO_YMD));
             Common.ValidateYmdRange(fromYmd, toYmd);
 
+            IReadOnlyList<AccountPairToken>? accountPairs;
+            try
+            {
+                accountPairs = await ResolveAccountPairFilterAsync(ACCOUNT_PAIR_FILTER, userSettingService);
+            }
+            catch (ArgumentException ex)
+            {
+                return ValidationError(ex.Message);
+            }
+
             var companyCd = Common.GetCompanyCode();
             var lang = GetCurrentLanguage();
             var templateKeys = await Common.GetExcelTemplateKeysAsync(ExcelModuleCd);
@@ -233,7 +273,26 @@ namespace API_AMNOTE_WEB.Controllers
                 return ServerError("Excel template is not configured");
             }
 
-            var headers = (await _repository.GetChitInfosAsync(companyCd, InputType, SupportedType, CHIT_ID, null, fromYmd, toYmd)).ToList();
+            List<ChitInfo> headers;
+            if (accountPairs != null)
+            {
+                var pageResult = await QueryPagedHeadersAsync(
+                    companyCd,
+                    SupportedType,
+                    CHIT_ID,
+                    null,
+                    fromYmd,
+                    toYmd,
+                    1,
+                    int.MaxValue,
+                    accountPairs);
+                headers = pageResult.Items.ToList();
+            }
+            else
+            {
+                headers = (await _repository.GetChitInfosAsync(companyCd, InputType, SupportedType, CHIT_ID, null, fromYmd, toYmd)).ToList();
+            }
+
             if (headers.Count == 0)
             {
                 return NotFound((await getLanguage("CHIT_CD", lang)) + " " + (await getLanguage("NO_DATA_TO_EXPORT", lang)));
@@ -274,7 +333,8 @@ namespace API_AMNOTE_WEB.Controllers
             string? fromYmd,
             string? toYmd,
             int pageNumber,
-            int pageSize)
+            int pageSize,
+            IReadOnlyList<AccountPairToken>? accountPairs = null)
         {
             var inputTypes = GetListQueryInputTypes();
 
@@ -289,7 +349,8 @@ namespace API_AMNOTE_WEB.Controllers
                     fromYmd,
                     toYmd,
                     pageNumber,
-                    pageSize);
+                    pageSize,
+                    accountPairs: accountPairs);
             }
 
             return await _repository.GetChitInfosPagedByInputTypesAsync(
@@ -301,7 +362,39 @@ namespace API_AMNOTE_WEB.Controllers
                 fromYmd,
                 toYmd,
                 pageNumber,
-                pageSize);
+                pageSize,
+                accountPairs: accountPairs);
+        }
+
+        /// <summary>
+        /// null = không lọc; empty list = không khớp token nào (list rỗng).
+        /// </summary>
+        private static async Task<IReadOnlyList<AccountPairToken>?> ResolveAccountPairFilterAsync(
+            string? filterCode,
+            IUserSettingService? userSettingService)
+        {
+            var normalized = NormalizeNullableText(filterCode)?.ToUpperInvariant();
+            if (normalized == null)
+            {
+                return null;
+            }
+
+            if (!string.Equals(normalized, AccountPairFilterParser.MaterialIssueFilterCode, StringComparison.Ordinal))
+            {
+                throw new ArgumentException("ACCOUNT_PAIR_FILTER is invalid");
+            }
+
+            if (userSettingService == null)
+            {
+                throw new ArgumentException("User setting service is unavailable");
+            }
+
+            var setting = await userSettingService.GetSettingAsync(
+                Common.GetCompanyCode(),
+                Common.GetUserId(),
+                UserSettingKeys.MaterialIssueAccountPairs);
+
+            return AccountPairFilterParser.Parse(setting?.VALUE);
         }
 
         private async Task<Dictionary<long, List<ChitDetailDto>>> LoadDetailLookupAsync(
