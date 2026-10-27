@@ -428,6 +428,11 @@ namespace API_AMNOTE_WEB.Repositories
                     await SoftDeleteInventoryOutputAsync(session, companyCd, userId, chitId: voucherId);
                 }
 
+                // Persist the snapshot only when explicitly supplied; omitted BOM preserves prior snapshot.
+                // CLIENT_ROW_KEY follows each output through UpsertInventoryOutputAsync (no output schema change).
+                if (normalizedChitType == "IO" && request.BOM != null)
+                    await SaveBomSnapshotAsync(session, companyCd, userId, voucherId, request.BOM, activeOutputs);
+
                 var savedCogs = isCogsEnabled
                     ? await SaveInventoryCogsAsync(session, companyCd, userId, voucherId, voucherNo!, request.CHIT_YMD!, activeOutputs, request.COGS_AMOUNT, existingCogs, request.CHITDETAIL_ID_COGS)
                     : null;
