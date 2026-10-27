@@ -17,8 +17,6 @@ namespace API_AMNOTE_WEB.Repositories
                 @"SELECT f.FINISHED_LINE_ID, f.FINISHED_PRODUCT_ID, f.FINISHED_QUANTITY, f.SORT,
                          p.PRODUCT_CD, p.PRODUCT_NM_VIET, u.UNIT_CD
                   FROM chit_inventory_bom_finished f
-                  INNER JOIN chit_inventory_info v ON v.TRANSFER_ID = f.INVENTORY_ID
-                    AND v.COMPANY_CD = f.COMPANY_CD AND v.CHIT_TYPE = 'IO'
                   LEFT JOIN product_info p ON p.PRODUCT_ID = f.FINISHED_PRODUCT_ID
                     AND p.COMPANY_CD = f.COMPANY_CD
                   LEFT JOIN product_unit u ON u.UNIT_ID = p.UNIT_ID AND u.COMPANY_CD = f.COMPANY_CD
