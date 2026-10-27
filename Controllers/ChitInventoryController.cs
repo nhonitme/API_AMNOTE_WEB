@@ -92,6 +92,18 @@ namespace API_AMNOTE_WEB.Controllers
             return PagedSuccess(result.Items, pageNumber, pageSize, result.TotalRecords);
         }
 
+        [HttpGet("GetBomSnapshot")]
+        [Authorize]
+        public async Task<IActionResult> GetBomSnapshot([FromQuery] long CHIT_ID)
+        {
+            if (CHIT_ID <= 0) return ValidationError("CHIT_ID is invalid");
+            await EnsureInventoryPermissionAsync("AR", "IO", "VIEW");
+            var companyCd = Common.GetCompanyCode();
+            var voucher = await _repository.GetInventoryVouchersPagedAsync(companyCd, "AR", "IO", CHIT_ID);
+            if (voucher.Items.Count == 0) return NotFound("Inventory voucher not found");
+            return Success(await _repository.GetInventoryBomSnapshotAsync(companyCd, CHIT_ID));
+        }
+
         [HttpGet("GetIssueLinksByCogsVoucher")]
         [Authorize]
         public async Task<IActionResult> GetIssueLinksByCogsVoucher([FromQuery] long CHIT_ID)
