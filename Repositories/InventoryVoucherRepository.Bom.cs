@@ -51,6 +51,55 @@ namespace API_AMNOTE_WEB.Repositories
             return new InventoryBomSnapshotDto { FINISHED = finished, MATERIALS = materials };
         }
 
+        public async Task<IReadOnlyList<InventoryLatestInputStoreDto>> GetLatestInputStoresByProductIdsAsync(
+            string companyCd, IEnumerable<long> productIds)
+        {
+            var ids = productIds
+                .Where(id => id > 0)
+                .Distinct()
+                .ToArray();
+            if (ids.Length == 0)
+                return Array.Empty<InventoryLatestInputStoreDto>();
+
+            // One query for all products: latest receipt store by INVENTORY_YMD (then INPUT_ID).
+            return (await _db.QueryAsync<InventoryLatestInputStoreDto>(
+                Net_DB.Net_DB_Company,
+                @"SELECT i.PRODUCT_ID, i.STORE_ID, s.STORE_CD, s.STORE_NM_VIET
+                  FROM chit_inventory_input i
+                  INNER JOIN (
+                    SELECT PRODUCT_ID, MAX(INVENTORY_YMD) AS MAX_YMD
+                    FROM chit_inventory_input
+                    WHERE COMPANY_CD = @companyCd
+                      AND IFNULL(ISDEL, '0') <> '1'
+                      AND PRODUCT_ID IN @productIds
+                      AND IFNULL(STORE_ID, 0) > 0
+                    GROUP BY PRODUCT_ID
+                  ) latest_ymd
+                    ON latest_ymd.PRODUCT_ID = i.PRODUCT_ID
+                   AND latest_ymd.MAX_YMD = i.INVENTORY_YMD
+                  INNER JOIN (
+                    SELECT PRODUCT_ID, INVENTORY_YMD, MAX(INPUT_ID) AS MAX_INPUT_ID
+                    FROM chit_inventory_input
+                    WHERE COMPANY_CD = @companyCd
+                      AND IFNULL(ISDEL, '0') <> '1'
+                      AND PRODUCT_ID IN @productIds
+                      AND IFNULL(STORE_ID, 0) > 0
+                    GROUP BY PRODUCT_ID, INVENTORY_YMD
+                  ) latest_row
+                    ON latest_row.PRODUCT_ID = i.PRODUCT_ID
+                   AND latest_row.INVENTORY_YMD = i.INVENTORY_YMD
+                   AND latest_row.MAX_INPUT_ID = i.INPUT_ID
+                  LEFT JOIN store_info s
+                    ON s.COMPANY_CD = i.COMPANY_CD
+                   AND s.STORE_ID = i.STORE_ID
+                   AND IFNULL(s.ISDEL, '0') = '0'
+                  WHERE i.COMPANY_CD = @companyCd
+                    AND IFNULL(i.ISDEL, '0') <> '1'
+                    AND i.PRODUCT_ID IN @productIds
+                    AND IFNULL(i.STORE_ID, 0) > 0",
+                new { companyCd, productIds = ids })).ToList();
+        }
+
         private async Task SaveBomSnapshotAsync(
             DapperSession session, string companyCd, string userId, long inventoryId,
             InventoryBomSnapshotDto snapshot, IReadOnlyList<InventoryOutput> outputs)

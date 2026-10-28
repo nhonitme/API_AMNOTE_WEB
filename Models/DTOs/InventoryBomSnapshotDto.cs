@@ -40,4 +40,15 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public List<InventoryBomFinishedDto> FINISHED { get; set; } = new();
         public List<InventoryBomMaterialDto> MATERIALS { get; set; } = new();
     }
+
+    /// <summary>
+    /// Latest inbound store per product from chit_inventory_input (one row per PRODUCT_ID).
+    /// </summary>
+    public sealed class InventoryLatestInputStoreDto
+    {
+        public long PRODUCT_ID { get; set; }
+        public long STORE_ID { get; set; }
+        public string? STORE_CD { get; set; }
+        public string? STORE_NM_VIET { get; set; }
+    }
 }

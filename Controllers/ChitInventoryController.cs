@@ -104,6 +104,19 @@ namespace API_AMNOTE_WEB.Controllers
             return Success(await _repository.GetInventoryBomSnapshotAsync(companyCd, CHIT_ID));
         }
 
+        [HttpGet("GetLatestInputStoresByProductIds")]
+        [Authorize]
+        public async Task<IActionResult> GetLatestInputStoresByProductIds([FromQuery] string? PRODUCT_IDS)
+        {
+            var productIds = Common.ParsePositiveIds(PRODUCT_IDS);
+            if (productIds.Count == 0)
+                return Success(Array.Empty<object>());
+
+            await EnsureInventoryPermissionAsync("AR", "IO", "VIEW");
+            var items = await _repository.GetLatestInputStoresByProductIdsAsync(Common.GetCompanyCode(), productIds);
+            return Success(items);
+        }
+
         [HttpGet("GetIssueLinksByCogsVoucher")]
         [Authorize]
         public async Task<IActionResult> GetIssueLinksByCogsVoucher([FromQuery] long CHIT_ID)
