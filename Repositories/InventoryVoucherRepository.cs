@@ -528,15 +528,10 @@ namespace API_AMNOTE_WEB.Repositories
                 if (normalizedChitType == "IO")
                 {
                     // Keep historical BOM allocation audit rows, but hide them with the deleted voucher.
-                    // Install Database/Inventory/05_inventory_bom_snapshot.sql before deploying this change.
+                    // Install 05_inventory_bom_snapshot.sql + 07_sp_inventory_bom.sql before deploying.
                     await session.ExecuteAsync(
-                        @"UPDATE chit_inventory_bom_material SET ISDEL = '1', UPDATE_BY = @userId
-                          WHERE COMPANY_CD = @companyCd AND INVENTORY_ID = @chitId AND ISDEL = '0'",
-                        new { companyCd, chitId, userId });
-                    await session.ExecuteAsync(
-                        @"UPDATE chit_inventory_bom_finished SET ISDEL = '1', UPDATE_BY = @userId
-                          WHERE COMPANY_CD = @companyCd AND INVENTORY_ID = @chitId AND ISDEL = '0'",
-                        new { companyCd, chitId, userId });
+                        "CALL sp_inventory_bom_soft_delete(@p_COMPANY_CD, @p_INVENTORY_ID, @p_UPDATE_BY)",
+                        new { p_COMPANY_CD = companyCd, p_INVENTORY_ID = chitId, p_UPDATE_BY = userId });
                 }
 
                 if (result >= 0)

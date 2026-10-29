@@ -42,7 +42,7 @@ namespace API_AMNOTE_WEB.Models.DTOs
     }
 
     /// <summary>
-    /// Latest inbound store per product from chit_inventory_input (one row per PRODUCT_ID).
+    /// Store per product: latest inbound from chit_inventory_input, else product_info.STORE_ID.
     /// </summary>
     public sealed class InventoryLatestInputStoreDto
     {

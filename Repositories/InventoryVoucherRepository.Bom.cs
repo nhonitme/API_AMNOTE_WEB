@@ -9,39 +9,23 @@ namespace API_AMNOTE_WEB.Repositories
     {
         private sealed class BomInsertIdentity { public long ID { get; set; } }
 
+        private static string JoinProductIds(IEnumerable<long> productIds)
+            => string.Join(",", productIds);
+
         public async Task<InventoryBomSnapshotDto> GetInventoryBomSnapshotAsync(string companyCd, long inventoryId)
         {
             // Only IO vouchers of this company may have this snapshot.
             var finished = (await _db.QueryAsync<InventoryBomFinishedDto>(
                 Net_DB.Net_DB_Company,
-                @"SELECT f.FINISHED_LINE_ID, f.FINISHED_PRODUCT_ID, f.FINISHED_QUANTITY, f.SORT,
-                         p.PRODUCT_CD, p.PRODUCT_NM_VIET, u.UNIT_CD
-                  FROM chit_inventory_bom_finished f
-                  LEFT JOIN product_info p ON p.PRODUCT_ID = f.FINISHED_PRODUCT_ID
-                    AND p.COMPANY_CD = f.COMPANY_CD
-                  LEFT JOIN product_unit u ON u.UNIT_ID = p.UNIT_ID AND u.COMPANY_CD = f.COMPANY_CD
-                  WHERE f.COMPANY_CD = @companyCd AND f.INVENTORY_ID = @inventoryId AND f.ISDEL = '0'
-                  ORDER BY f.SORT, f.FINISHED_LINE_ID",
-                new { companyCd, inventoryId })).ToList();
+                "CALL sp_inventory_bom_finished_get(@p_COMPANY_CD, @p_INVENTORY_ID)",
+                new { p_COMPANY_CD = companyCd, p_INVENTORY_ID = inventoryId })).ToList();
             foreach (var row in finished)
                 row.CLIENT_KEY = "FIN-" + row.FINISHED_LINE_ID;
 
             var materials = (await _db.QueryAsync<InventoryBomMaterialDto>(
                 Net_DB.Net_DB_Company,
-                @"SELECT m.BOM_MATERIAL_ID, m.FINISHED_LINE_ID, m.MATERIAL_PRODUCT_ID,
-                         m.STORE_ID, m.BOM_QUANTITY, m.CALCULATED_QUANTITY, m.CONFIRMED_QUANTITY,
-                         m.OUTPUT_ID, m.SORT,
-                         p.PRODUCT_CD AS MATERIAL_PRODUCT_CD,
-                         p.PRODUCT_NM_VIET AS MATERIAL_PRODUCT_NM, u.UNIT_CD
-                  FROM chit_inventory_bom_material m
-                  INNER JOIN chit_inventory_bom_finished f ON f.FINISHED_LINE_ID = m.FINISHED_LINE_ID
-                    AND f.COMPANY_CD = m.COMPANY_CD AND f.INVENTORY_ID = m.INVENTORY_ID AND f.ISDEL = '0'
-                  LEFT JOIN product_info p ON p.PRODUCT_ID = m.MATERIAL_PRODUCT_ID
-                    AND p.COMPANY_CD = m.COMPANY_CD
-                  LEFT JOIN product_unit u ON u.UNIT_ID = p.UNIT_ID AND u.COMPANY_CD = m.COMPANY_CD
-                  WHERE m.COMPANY_CD = @companyCd AND m.INVENTORY_ID = @inventoryId AND m.ISDEL = '0'
-                  ORDER BY m.SORT, m.BOM_MATERIAL_ID",
-                new { companyCd, inventoryId })).ToList();
+                "CALL sp_inventory_bom_material_get(@p_COMPANY_CD, @p_INVENTORY_ID)",
+                new { p_COMPANY_CD = companyCd, p_INVENTORY_ID = inventoryId })).ToList();
 
             foreach (var row in materials)
             {
@@ -61,43 +45,11 @@ namespace API_AMNOTE_WEB.Repositories
             if (ids.Length == 0)
                 return Array.Empty<InventoryLatestInputStoreDto>();
 
-            // One query for all products: latest receipt store by INVENTORY_YMD (then INPUT_ID).
+            // One query: latest receipt store, else product_info.STORE_ID.
             return (await _db.QueryAsync<InventoryLatestInputStoreDto>(
                 Net_DB.Net_DB_Company,
-                @"SELECT i.PRODUCT_ID, i.STORE_ID, s.STORE_CD, s.STORE_NM_VIET
-                  FROM chit_inventory_input i
-                  INNER JOIN (
-                    SELECT PRODUCT_ID, MAX(INVENTORY_YMD) AS MAX_YMD
-                    FROM chit_inventory_input
-                    WHERE COMPANY_CD = @companyCd
-                      AND IFNULL(ISDEL, '0') <> '1'
-                      AND PRODUCT_ID IN @productIds
-                      AND IFNULL(STORE_ID, 0) > 0
-                    GROUP BY PRODUCT_ID
-                  ) latest_ymd
-                    ON latest_ymd.PRODUCT_ID = i.PRODUCT_ID
-                   AND latest_ymd.MAX_YMD = i.INVENTORY_YMD
-                  INNER JOIN (
-                    SELECT PRODUCT_ID, INVENTORY_YMD, MAX(INPUT_ID) AS MAX_INPUT_ID
-                    FROM chit_inventory_input
-                    WHERE COMPANY_CD = @companyCd
-                      AND IFNULL(ISDEL, '0') <> '1'
-                      AND PRODUCT_ID IN @productIds
-                      AND IFNULL(STORE_ID, 0) > 0
-                    GROUP BY PRODUCT_ID, INVENTORY_YMD
-                  ) latest_row
-                    ON latest_row.PRODUCT_ID = i.PRODUCT_ID
-                   AND latest_row.INVENTORY_YMD = i.INVENTORY_YMD
-                   AND latest_row.MAX_INPUT_ID = i.INPUT_ID
-                  LEFT JOIN store_info s
-                    ON s.COMPANY_CD = i.COMPANY_CD
-                   AND s.STORE_ID = i.STORE_ID
-                   AND IFNULL(s.ISDEL, '0') = '0'
-                  WHERE i.COMPANY_CD = @companyCd
-                    AND IFNULL(i.ISDEL, '0') <> '1'
-                    AND i.PRODUCT_ID IN @productIds
-                    AND IFNULL(i.STORE_ID, 0) > 0",
-                new { companyCd, productIds = ids })).ToList();
+                "CALL sp_inventory_bom_latest_input_stores_get(@p_COMPANY_CD, @p_PRODUCT_IDS)",
+                new { p_COMPANY_CD = companyCd, p_PRODUCT_IDS = JoinProductIds(ids) })).ToList();
         }
 
         private async Task SaveBomSnapshotAsync(
@@ -155,32 +107,32 @@ namespace API_AMNOTE_WEB.Repositories
             if (productIds.Length > 0)
             {
                 var validIds = (await session.QueryAsync<long>(
-                    @"SELECT PRODUCT_ID FROM product_info
-                      WHERE COMPANY_CD = @companyCd AND IFNULL(ISDEL, '0') = '0' AND PRODUCT_ID IN @productIds",
-                    new { companyCd, productIds })).ToHashSet();
+                    "CALL sp_inventory_bom_products_validate(@p_COMPANY_CD, @p_PRODUCT_IDS)",
+                    new { p_COMPANY_CD = companyCd, p_PRODUCT_IDS = JoinProductIds(productIds) })).ToHashSet();
                 if (productIds.Any(id => !validIds.Contains(id)))
                     throw new ArgumentException("BOM product does not belong to the current company.");
             }
 
             await session.ExecuteAsync(
-                @"UPDATE chit_inventory_bom_material SET ISDEL = '1', UPDATE_BY = @userId
-                  WHERE COMPANY_CD = @companyCd AND INVENTORY_ID = @inventoryId AND ISDEL = '0'",
-                new { companyCd, inventoryId, userId });
-            await session.ExecuteAsync(
-                @"UPDATE chit_inventory_bom_finished SET ISDEL = '1', UPDATE_BY = @userId
-                  WHERE COMPANY_CD = @companyCd AND INVENTORY_ID = @inventoryId AND ISDEL = '0'",
-                new { companyCd, inventoryId, userId });
+                "CALL sp_inventory_bom_soft_delete(@p_COMPANY_CD, @p_INVENTORY_ID, @p_UPDATE_BY)",
+                new { p_COMPANY_CD = companyCd, p_INVENTORY_ID = inventoryId, p_UPDATE_BY = userId });
 
             var savedFinishedIds = new Dictionary<string, long>(StringComparer.Ordinal);
             foreach (var row in snapshot.FINISHED)
             {
-                await session.ExecuteAsync(
-                    @"INSERT INTO chit_inventory_bom_finished
-                      (COMPANY_CD, INVENTORY_ID, FINISHED_PRODUCT_ID, FINISHED_QUANTITY, SORT, CREATE_BY, UPDATE_BY)
-                      VALUES (@companyCd, @inventoryId, @productId, @quantity, @sort, @userId, @userId)",
-                    new { companyCd, inventoryId, productId = row.FINISHED_PRODUCT_ID,
-                          quantity = row.FINISHED_QUANTITY, sort = row.SORT, userId });
-                var id = await session.QuerySingleAsync<BomInsertIdentity>("SELECT LAST_INSERT_ID() AS ID");
+                var id = await session.QuerySingleAsync<BomInsertIdentity>(
+                    @"CALL sp_inventory_bom_finished_insert(
+                        @p_COMPANY_CD, @p_INVENTORY_ID, @p_FINISHED_PRODUCT_ID,
+                        @p_FINISHED_QUANTITY, @p_SORT, @p_USER_ID)",
+                    new
+                    {
+                        p_COMPANY_CD = companyCd,
+                        p_INVENTORY_ID = inventoryId,
+                        p_FINISHED_PRODUCT_ID = row.FINISHED_PRODUCT_ID,
+                        p_FINISHED_QUANTITY = row.FINISHED_QUANTITY,
+                        p_SORT = row.SORT,
+                        p_USER_ID = userId
+                    });
                 savedFinishedIds.Add(row.CLIENT_KEY, id.ID);
             }
             foreach (var row in snapshot.MATERIALS)
@@ -191,22 +143,22 @@ namespace API_AMNOTE_WEB.Repositories
                 if (output == null && row.OUTPUT_ID > 0)
                     outputById.TryGetValue(row.OUTPUT_ID.Value, out output);
                 await session.ExecuteAsync(
-                    @"INSERT INTO chit_inventory_bom_material
-                      (COMPANY_CD, INVENTORY_ID, FINISHED_LINE_ID, MATERIAL_PRODUCT_ID, STORE_ID,
-                       BOM_QUANTITY, CALCULATED_QUANTITY, CONFIRMED_QUANTITY, OUTPUT_ID, SORT, CREATE_BY, UPDATE_BY)
-                      VALUES (@companyCd, @inventoryId, @finishedId, @materialId, @storeId,
-                              @bomQuantity, @calculatedQuantity, @confirmedQuantity, @outputId, @sort, @userId, @userId)",
-                    new {
-                        companyCd, inventoryId,
-                        finishedId = savedFinishedIds[row.FINISHED_CLIENT_KEY],
-                        materialId = row.MATERIAL_PRODUCT_ID,
-                        storeId = output?.STORE_ID ?? row.STORE_ID,
-                        bomQuantity = row.BOM_QUANTITY,
-                        calculatedQuantity = row.CALCULATED_QUANTITY,
-                        confirmedQuantity = row.CONFIRMED_QUANTITY,
-                        outputId = output?.OUTPUT_ID,
-                        sort = row.SORT,
-                        userId
+                    @"CALL sp_inventory_bom_material_insert(
+                        @p_COMPANY_CD, @p_INVENTORY_ID, @p_FINISHED_LINE_ID, @p_MATERIAL_PRODUCT_ID, @p_STORE_ID,
+                        @p_BOM_QUANTITY, @p_CALCULATED_QUANTITY, @p_CONFIRMED_QUANTITY, @p_OUTPUT_ID, @p_SORT, @p_USER_ID)",
+                    new
+                    {
+                        p_COMPANY_CD = companyCd,
+                        p_INVENTORY_ID = inventoryId,
+                        p_FINISHED_LINE_ID = savedFinishedIds[row.FINISHED_CLIENT_KEY],
+                        p_MATERIAL_PRODUCT_ID = row.MATERIAL_PRODUCT_ID,
+                        p_STORE_ID = output?.STORE_ID ?? row.STORE_ID,
+                        p_BOM_QUANTITY = row.BOM_QUANTITY,
+                        p_CALCULATED_QUANTITY = row.CALCULATED_QUANTITY,
+                        p_CONFIRMED_QUANTITY = row.CONFIRMED_QUANTITY,
+                        p_OUTPUT_ID = output?.OUTPUT_ID,
+                        p_SORT = row.SORT,
+                        p_USER_ID = userId
                     });
             }
         }

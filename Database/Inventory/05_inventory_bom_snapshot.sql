@@ -1,6 +1,7 @@
 -- AMnote IO material allocation snapshot. Run in each COMPANY database (MySQL 5.6+).
 -- Deliberately no UNIT_ID: display unit is joined from product_info.
 -- A snapshot is written in the same transaction as chit_inventory_output.
+-- Stored procedures: 07_sp_inventory_bom.sql
 CREATE TABLE IF NOT EXISTS chit_inventory_bom_finished (
   FINISHED_LINE_ID BIGINT NOT NULL AUTO_INCREMENT,
   COMPANY_CD VARCHAR(20) COLLATE utf8_unicode_ci NOT NULL DEFAULT '',
