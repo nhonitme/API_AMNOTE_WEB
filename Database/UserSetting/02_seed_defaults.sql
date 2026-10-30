@@ -1,7 +1,7 @@
 -- Seed mặc định hệ thống (COMPANY_CD='', USER_ID='') trong DB công ty.
 -- Chạy trên từng database công ty khi triển khai.
 
-INSERT INTO user_setting_info (COMPANY_CD, USER_ID, KEY_NAME, VALUE, NOTE, UPDATE_DT)
+INSERT INTO user_setting_info (COMPANY_CD, USER_ID, KEY_NAME, VALUE, NOTE, UPDATE_AT)
 VALUES
     (
         '',
@@ -41,6 +41,30 @@ VALUES
         'MATERIAL_ISSUE_ACCOUNT_PAIRS',
         '621/152,627/152,623/152,641/152,642/152,241/152',
         'Xuất nguyên vật liệu - Danh sách cặp tài khoản Nợ/Có được phép sử dụng. VALUE: các cặp cách nhau bằng dấu phẩy; dạng NO/CO | NO/ | /CO (so khớp prefix).',
+        NOW()
+    ),
+    (
+        '',
+        '',
+        'FINISH_GOODS_IN_ACCOUNT_PAIRS',
+        '155/154',
+        'Nhập thành phẩm - Danh sách cặp tài khoản Nợ/Có được phép sử dụng. VALUE: các cặp cách nhau bằng dấu phẩy; dạng NO/CO | NO/ | /CO (so khớp prefix).',
+        NOW()
+    ),
+    (
+        '',
+        '',
+        'OT_INVENTORY_RECEIPT_ACCOUNT_PAIRS',
+        '152/,155/,156/',
+        'Phiếu OT - Cặp TK xác định popup nhập kho (IR). VALUE: các cặp cách nhau bằng dấu phẩy; dạng NO/CO | NO/ | /CO (so khớp prefix).',
+        NOW()
+    ),
+    (
+        '',
+        '',
+        'OT_INVENTORY_ISSUE_ACCOUNT_PAIRS',
+        '621/152,627/152,623/152,641/152,642/152,241/152,632/156',
+        'Phiếu OT - Cặp TK xác định popup xuất kho (IO). VALUE: các cặp cách nhau bằng dấu phẩy; dạng NO/CO | NO/ | /CO (so khớp prefix).',
         NOW()
     )
 ON DUPLICATE KEY UPDATE

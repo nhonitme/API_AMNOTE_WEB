@@ -379,10 +379,12 @@ namespace API_AMNOTE_WEB.Controllers
                 return null;
             }
 
-            if (!string.Equals(normalized, AccountPairFilterParser.MaterialIssueFilterCode, StringComparison.Ordinal))
+            var settingKey = normalized switch
             {
-                throw new ArgumentException("ACCOUNT_PAIR_FILTER is invalid");
-            }
+                AccountPairFilterParser.MaterialIssueFilterCode => UserSettingKeys.MaterialIssueAccountPairs,
+                AccountPairFilterParser.FinishGoodsInFilterCode => UserSettingKeys.FinishGoodsInAccountPairs,
+                _ => throw new ArgumentException("ACCOUNT_PAIR_FILTER is invalid"),
+            };
 
             if (userSettingService == null)
             {
@@ -392,7 +394,7 @@ namespace API_AMNOTE_WEB.Controllers
             var setting = await userSettingService.GetSettingAsync(
                 Common.GetCompanyCode(),
                 Common.GetUserId(),
-                UserSettingKeys.MaterialIssueAccountPairs);
+                settingKey);
 
             return AccountPairFilterParser.Parse(setting?.VALUE);
         }

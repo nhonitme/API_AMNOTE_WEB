@@ -13,6 +13,7 @@ namespace API_AMNOTE_WEB.Helpers
     public static class AccountPairFilterParser
     {
         public const string MaterialIssueFilterCode = "MATERIAL_ISSUE";
+        public const string FinishGoodsInFilterCode = "FINISH_GOODS_IN";
 
         /// <summary>
         /// Parse VALUE dạng "621/152,624/,/156". Token không có '/' hoặc cả hai phía trống → bỏ qua.

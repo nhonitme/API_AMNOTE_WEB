@@ -18,6 +18,24 @@ namespace API_AMNOTE_WEB.Constants
         /// VALUE: token cách nhau dấu phẩy; dạng NO/CO | NO/ | /CO (prefix).
         /// </summary>
         public const string MaterialIssueAccountPairs = "MATERIAL_ISSUE_ACCOUNT_PAIRS";
+
+        /// <summary>
+        /// Nhập thành phẩm (/cost/finish-goods-in) - cặp TK Nợ/Có được phép.
+        /// VALUE: token cách nhau dấu phẩy; dạng NO/CO | NO/ | /CO (prefix).
+        /// </summary>
+        public const string FinishGoodsInAccountPairs = "FINISH_GOODS_IN_ACCOUNT_PAIRS";
+
+        /// <summary>
+        /// Phiếu OT - cặp TK xác định hướng nhập kho (IR) khi nhấn Hàng tồn kho.
+        /// VALUE: token cách nhau dấu phẩy; dạng NO/CO | NO/ | /CO (prefix).
+        /// </summary>
+        public const string OtInventoryReceiptAccountPairs = "OT_INVENTORY_RECEIPT_ACCOUNT_PAIRS";
+
+        /// <summary>
+        /// Phiếu OT - cặp TK xác định hướng xuất kho (IO) khi nhấn Hàng tồn kho.
+        /// VALUE: token cách nhau dấu phẩy; dạng NO/CO | NO/ | /CO (prefix).
+        /// </summary>
+        public const string OtInventoryIssueAccountPairs = "OT_INVENTORY_ISSUE_ACCOUNT_PAIRS";
     }
 }
 
