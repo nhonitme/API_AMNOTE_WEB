@@ -3,7 +3,7 @@
 -- Transaction: KHÔNG START/COMMIT trong claim (tránh commit nhầm TX của caller).
 -- Mutex: GET_LOCK theo COMPANY_CD+PERIOD_YM + UPDATE có điều kiện / UNIQUE race.
 
-CALL sp_pc_2b_require_allowed_db();
+SOURCE 20261102_2b_00_guard_inline.sql;
 
 DELIMITER $$
 

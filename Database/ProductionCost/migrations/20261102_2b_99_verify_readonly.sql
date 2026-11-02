@@ -2,7 +2,7 @@
 -- Chạy sau migration. Mô tả CT nằm ở chitdescriptioninfo.DESCRIPTION
 -- (chitinfo không có cột DESCRIPTION).
 
-CALL sp_pc_2b_require_allowed_db();
+SOURCE 20261102_2b_00_guard_inline.sql;
 
 SELECT DATABASE() AS db_name, NOW() AS checked_at;
 

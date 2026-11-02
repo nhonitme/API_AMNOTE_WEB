@@ -7,8 +7,8 @@
 
 SET NAMES utf8;
 
--- Hard-stop: bắt buộc đã SOURCE 00_preflight (có sp_pc_2b_require_allowed_db + @GK_2B_ALLOW_DB)
-CALL sp_pc_2b_require_allowed_db();
+-- Hard-stop thuần SQL (0 DDL) — FAIL thì dừng trước CREATE TABLE
+SOURCE 20261102_2b_00_guard_inline.sql;
 
 -- -----------------------------------------------------------------------------
 -- 1) Kỳ G-K (1 dòng / công ty / kỳ) — trỏ RUN hiện hành

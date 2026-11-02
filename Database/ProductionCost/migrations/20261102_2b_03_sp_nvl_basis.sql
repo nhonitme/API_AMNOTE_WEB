@@ -8,7 +8,7 @@
 -- 4) Không BOM → orphan NO_BOM
 -- 5) 1 OUTPUT → nhiều TP nhưng Σ CONFIRMED_QUANTITY = 0 → orphan SPLIT_QTY_ZERO (KHÔNG chia đều)
 
-CALL sp_pc_2b_require_allowed_db();
+SOURCE 20261102_2b_00_guard_inline.sql;
 
 DELIMITER $$
 

@@ -1,70 +1,40 @@
-# Báo cáo nghiệm thu G-K 2B + rà soát an toàn (pre-DEV)
+# G-K 2B — Final safety gate (pre-DEV)
 
-Ngày cập nhật: 2026-11-02 (safety review — **chưa execute SQL**).
+**Chưa execute SQL trên database.** APPROVED_ENV còn placeholder → preflight sẽ FAIL cho đến khi bạn điền DB/host đã duyệt.
 
----
+## 1. Preflight trước mọi DDL — đã xử lý
 
-## File đã sửa / thêm (safety pass)
+- `00_preflight_dev.sql` + `00_guard_inline.sql` + `APPROVED_ENV.sql`: **0 DROP/CREATE**.
+- Khớp `DATABASE()`, `@@hostname` (exact hoặc CONTAINS), `ENV_TAG∈{DEV,TEST}`; chặn tên prod-like.
+- Không chỉ tin `@GK_2B_ALLOW_DB` — nếu set phải trùng allowlist committed.
+- Install/rollback: `SOURCE preflight` **trước** mọi DDL/DROP; FAIL → `1/0` dừng chain (`--abort-source-on-error`).
+- Orchestrator: `Invoke-Gk2bInstall.ps1` từ chối khi còn placeholder.
 
-### Migration
-- `20261102_2b_00_preflight_dev.sql` — **mới**: hard-stop `@GK_2B_ALLOW_DB` + `sp_pc_2b_require_allowed_db`
-- `20261102_2b_00_install_dev.sql` — gọi preflight guard trước SOURCE
-- `20261102_2b_01_tables.sql` — `CALL sp_pc_2b_require_allowed_db()` trước DDL
-- `20261102_2b_02_sp_engine.sql` — tách check/claim; bỏ COMMIT; GET_LOCK; release có expected engine
-- `20261102_2b_03_sp_nvl_basis.sql` — `SPLIT_QTY_ZERO` orphan, không chia đều
-- `20261102_2b_04_sp_period_lock_cogs.sql` — handler an toàn; claim chỉ ở create; CONFIRMED+REDUCTION; unlock guard; overwrite assert
-- `20261102_2b_98_test_scenarios_dev.sql` — assertion tự động (đúng cột schema)
-- `20261102_2b_99_verify_readonly.sql` — (giữ)
-- `20261102_2b_README.md` / `ACCEPTANCE_2B.md`
+## 2. Transaction bảo toàn chứng từ — đã xử lý
 
-### Canonical / C#
-- `Database/StoredProcedures/PeriodLock/CogsSummary/01_sp_period_lock_cogs.sql` — đồng bộ
-- `Repositories/PeriodLockRepository.cs` — unlock truyền `p_EXPECTED_ENGINE='BI'`
+- Xác nhận `CreateSessionAsync` gọi `conn.BeginTransaction()` (`API_Build/Data/DapperExecutor.cs`).
+- `RunCogsCreateVoucherAndCompleteAsync`: **Claim→Build→Delete→Post→Step DONE** trong một session; `Commit` / `Rollback`.
+- `create_voucher` handler: chỉ `RESIGNAL` — **không** xóa CT khi lỗi.
+- Hook `@GK_2B_FAIL_POINT`: `AFTER_DELETE` | `DURING_POST`.
+- Test T10/T11 trong `98_test_scenarios_dev.sql` (cần DEV).
 
----
+## 3. Rollback migration — đã xử lý
 
-## Test case đã bổ sung (98)
+- `rollback_dev.sql`: preflight trước; inventory tables/routines; DROP IF EXISTS chỉ object 2B; restore COGS B-I; ưu tiên backup.
 
-| ID | Nội dung | Assertion |
-|----|----------|-----------|
-| **T9** | G-K đã có CT → B-I `154_TO_632` bị reject | reject=1; CHIT_CNT/AMOUNT/DETAIL/ENGINE/RULE/STEP **không đổi** |
-| T1 | CT EXP chỉ Nợ 154 / Có 621–627 | bad_lines=0; forbidden 154→155/632=0 |
-| T4 | BI unlock kỳ GK bị reject | reject=1; số CT không đổi |
-| T5 | validate không đổi `COST_ENGINE` | engine trước=sau |
+## Static check + build
 
-Mô tả CT: `chitdescriptioninfo.DESCRIPTION` (không dùng `C.DESCRIPTION`).  
-Khóa CT: `INPUT_TYPE='LOCK'`, `LOCK_STEP_CODE='COGS_SUMMARY'`, `CHIT_YMD=last day`.
+Chạy local (không DB): `Invoke-Gk2bStaticCheck.ps1` + `dotnet build`.
 
----
+## Test còn cần DEV
 
-## Vấn đề còn tồn tại / chờ DEV
+| ID | Cần DB |
+|----|--------|
+| Preflight PASS với APPROVED_ENV thật | Có |
+| Install end-to-end + verify | Có |
+| T9 BI reject giữ CT G-K | Có |
+| **T10** AFTER_DELETE → rollback CT | Có |
+| **T11** DURING_POST → rollback CT | Có |
+| Rollback inventory + COGS B-I | Có (sau backup) |
 
-1. **Chưa chạy** trên DB DEV — cần bạn cung cấp tên DB + backup.
-2. **G-K unlock API** chưa có: mở kỳ GK phải `p_EXPECTED_ENGINE='GK'` (PeriodLock UI chỉ `'BI'` → đúng yêu cầu tách engine).
-3. **Sau `v_write_started=1`**, nếu post lỗi giữa chừng: handler xóa CT (có thể mất bản cũ) — cần TX caller bao ngoài hoặc 2C staging.
-4. **Seed dữ liệu** T9: kỳ `@ym_gk` phải đã có CT EXP + `COST_ENGINE=GK` + RUN CONFIRMED.
-5. Chưa 2C / production / tính giá thành thật.
-
----
-
-## Hướng dẫn preflight DEV/TEST
-
-```sql
--- 1) Backup mysqldump schema+data DEV
--- 2) Trong mysql client (cwd = thư mục migrations):
-SET @GK_2B_ALLOW_DB = '<TEN_DB_DEV_DA_DUYET>';
-USE <TEN_DB_DEV_DA_DUYET>;
-SOURCE 20261102_2b_00_preflight_dev.sql;
--- Nếu PASS:
-SOURCE 20261102_2b_00_install_dev.sql;
-SOURCE 20261102_2b_99_verify_readonly.sql;
-
--- 3) Sau khi có kỳ G-K khóa EXP thành công:
-SET @cd='...'; SET @ym_gk='yyyyMM'; SET @user='dev_test';
-SOURCE 20261102_2b_98_test_scenarios_dev.sql;
--- fail_cnt phải = 0
-```
-
-Sai `@GK_2B_ALLOW_DB` / sai `USE` → `SIGNAL 45000` **trước** CREATE TABLE / DROP PROCEDURE nghiệp vụ.
-
-**Không triển khai production. Không chuyển 2C** cho đến khi bạn duyệt kết quả test 2B trên DEV.
+**Không production. Không 2C** đến khi bạn duyệt kết quả DEV.

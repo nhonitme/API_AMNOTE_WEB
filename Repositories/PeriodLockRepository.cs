@@ -1389,6 +1389,8 @@ namespace API_AMNOTE_WEB.Repositories
                 () => RunCogsCalculateAsync(companyCd, periodYm, ruleCode, userId, databaseName, cancellationToken)
             );
 
+            // Claim→Build→Delete→Post→Step DONE trong MỘT CreateSessionAsync (BeginTransaction).
+            // Lỗi sau Delete → session.Rollback() khôi phục CT cũ; SP không xóa thêm trong handler.
             doneSteps = await RunProgressUnitAsync(
                 companyCd,
                 jobId,
@@ -1401,19 +1403,13 @@ namespace API_AMNOTE_WEB.Repositories
                 userId,
                 databaseName,
                 cancellationToken,
-                () => RunCogsCreateVoucherAsync(companyCd, periodYm, ruleCode, userId, databaseName, cancellationToken)
-            );
-
-            await UpsertStepAsync(
-                companyCd,
-                periodYm,
-                stepCode,
-                stepName,
-                stepOrder,
-                PeriodLockStepStatus.Done,
-                "Hoàn tất tổng hợp giá vốn",
-                userId,
-                databaseName
+                () => RunCogsCreateVoucherAndCompleteAsync(
+                    companyCd,
+                    periodYm,
+                    ruleCode,
+                    userId,
+                    databaseName,
+                    cancellationToken)
             );
 
             return doneSteps;
@@ -1727,6 +1723,67 @@ namespace API_AMNOTE_WEB.Repositories
                 p_RULE_CODE = ruleCode,
                 p_USER_ID = userId
             }, databaseName);
+        }
+
+        /// <summary>
+        /// Ghi nhận COGS + cập nhật step DONE trong cùng transaction (CreateSessionAsync → BeginTransaction).
+        /// </summary>
+        private async Task RunCogsCreateVoucherAndCompleteAsync(
+            string companyCd,
+            string periodYm,
+            string ruleCode,
+            string userId,
+            string databaseName,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await using var session = await _db.CreateSessionAsync(Net_DB.Net_DB_Company, databaseName);
+
+            try
+            {
+                const string createProc =
+                    "CALL sp_period_lock_cogs_create_voucher(@p_COMPANY_CD, @p_PERIOD_YM, @p_RULE_CODE, @p_USER_ID)";
+
+                await session.ExecuteAsync(createProc, new
+                {
+                    p_COMPANY_CD = companyCd,
+                    p_PERIOD_YM = periodYm,
+                    p_RULE_CODE = ruleCode,
+                    p_USER_ID = userId
+                });
+
+                const string stepProc = @"
+                    CALL sp_period_lock_step_upsert(
+                        @p_COMPANY_CD,
+                        @p_PERIOD_YM,
+                        @p_STEP_CODE,
+                        @p_STEP_NAME,
+                        @p_STEP_ORDER,
+                        @p_STATUS,
+                        @p_MESSAGE,
+                        @p_USER_ID
+                    );";
+
+                await session.ExecuteAsync(stepProc, new
+                {
+                    p_COMPANY_CD = companyCd,
+                    p_PERIOD_YM = periodYm,
+                    p_STEP_CODE = PeriodLockStepCode.CogsSummary,
+                    p_STEP_NAME = "Báo cáo về tổng hợp giá vốn",
+                    p_STEP_ORDER = 2,
+                    p_STATUS = PeriodLockStepStatus.Done,
+                    p_MESSAGE = "Hoàn tất tổng hợp giá vốn",
+                    p_USER_ID = userId
+                });
+
+                session.Commit();
+            }
+            catch
+            {
+                session.Rollback();
+                throw;
+            }
         }
 
         private async Task RunProfitLossValidateAsync(

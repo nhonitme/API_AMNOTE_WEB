@@ -1,5 +1,7 @@
 -- Rollback artifact: PeriodLock COGS = 3 rule B-I only (pre G-K 2B).
--- Không dùng làm bản triển khai mới.
+-- Không dùng làm bản triển khai mới. Phải qua preflight/guard trước.
+
+SOURCE 20261102_2b_00_guard_inline.sql;
 
 DELIMITER $$
 

@@ -13,7 +13,7 @@
 -- Kết quả: bảng tmp_gk2b_assert (ASSERT_NAME, EXPECTED, ACTUAL, PASS_FAIL)
 -- =============================================================================
 
-CALL sp_pc_2b_require_allowed_db();
+SOURCE 20261102_2b_00_guard_inline.sql;
 
 DROP TEMPORARY TABLE IF EXISTS tmp_gk2b_assert;
 CREATE TEMPORARY TABLE tmp_gk2b_assert (
@@ -247,6 +247,78 @@ FROM production_cost_period WHERE COMPANY_CD = @cd AND PERIOD_YM = @ym_gk AND IS
 CALL sp_gk2b_assert_eq('T5_VALIDATE_NO_ENGINE_CHANGE', IFNULL(@eng_v1, 'NONE'), IFNULL(@eng_v2, 'NONE'));
 
 -- ---------------------------------------------------------------------------
+-- T10/T11: TX rollback — ép lỗi AFTER_DELETE / DURING_POST, CT cũ phải nguyên
+-- (mở step OPEN tạm trong cùng TX test; ROLLBACK khôi phục cả step + CT)
+-- ---------------------------------------------------------------------------
+DROP PROCEDURE IF EXISTS sp_gk2b_try_tx_fail_point;
+DELIMITER $$
+CREATE PROCEDURE sp_gk2b_try_tx_fail_point(
+    IN p_cd VARCHAR(20),
+    IN p_ym CHAR(6),
+    IN p_user VARCHAR(50),
+    IN p_fail_point VARCHAR(30),
+    OUT p_rejected INT
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        SET @GK_2B_FAIL_POINT = NULL;
+        SET p_rejected = 1;
+    END;
+
+    SET p_rejected = 0;
+    START TRANSACTION;
+
+    -- Cho phép create_voucher chạy lại (validate require OPEN) trong TX test
+    CALL sp_period_lock_step_upsert(
+        p_cd, p_ym, 'COGS_SUMMARY', 'Báo cáo về tổng hợp giá vốn', 2,
+        'OPEN', 'GK2B TX test reopen', p_user
+    );
+
+    SET @GK_2B_FAIL_POINT = p_fail_point;
+    CALL sp_period_lock_cogs_create_voucher(p_cd, p_ym, 'EXP_TO_154_ONLY', p_user);
+
+    -- Không được tới đây nếu hook hoạt động
+    SET @GK_2B_FAIL_POINT = NULL;
+    COMMIT;
+    SET p_rejected = 0;
+END$$
+DELIMITER ;
+
+SELECT COUNT(DISTINCT h.CHIT_ID), IFNULL(SUM(h.AMOUNT), 0)
+  INTO @tx_chit_before, @tx_amt_before
+FROM chitinfo h
+WHERE h.COMPANY_CD = @cd AND h.ISDEL = '0' AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY' AND h.CHIT_YMD = @to_gk;
+
+CALL sp_gk2b_try_tx_fail_point(@cd, @ym_gk, @user, 'AFTER_DELETE', @tx_fail_after_del);
+CALL sp_gk2b_assert_eq('T10_AFTER_DELETE_REJECTED', '1', CAST(IFNULL(@tx_fail_after_del, 0) AS CHAR));
+
+SELECT COUNT(DISTINCT h.CHIT_ID), IFNULL(SUM(h.AMOUNT), 0)
+  INTO @tx_chit_after_del, @tx_amt_after_del
+FROM chitinfo h
+WHERE h.COMPANY_CD = @cd AND h.ISDEL = '0' AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY' AND h.CHIT_YMD = @to_gk;
+
+CALL sp_gk2b_assert_eq('T10_CHIT_RESTORED_AFTER_DELETE_FAIL', CAST(@tx_chit_before AS CHAR), CAST(@tx_chit_after_del AS CHAR));
+CALL sp_gk2b_assert_eq('T10_AMT_RESTORED_AFTER_DELETE_FAIL', CAST(@tx_amt_before AS CHAR), CAST(@tx_amt_after_del AS CHAR));
+
+CALL sp_gk2b_try_tx_fail_point(@cd, @ym_gk, @user, 'DURING_POST', @tx_fail_during_post);
+CALL sp_gk2b_assert_eq('T11_DURING_POST_REJECTED', '1', CAST(IFNULL(@tx_fail_during_post, 0) AS CHAR));
+
+SELECT COUNT(DISTINCT h.CHIT_ID), IFNULL(SUM(h.AMOUNT), 0)
+  INTO @tx_chit_after_post, @tx_amt_after_post
+FROM chitinfo h
+WHERE h.COMPANY_CD = @cd AND h.ISDEL = '0' AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY' AND h.CHIT_YMD = @to_gk;
+
+CALL sp_gk2b_assert_eq('T11_CHIT_RESTORED_DURING_POST_FAIL', CAST(@tx_chit_before AS CHAR), CAST(@tx_chit_after_post AS CHAR));
+CALL sp_gk2b_assert_eq('T11_AMT_RESTORED_DURING_POST_FAIL', CAST(@tx_amt_before AS CHAR), CAST(@tx_amt_after_post AS CHAR));
+
+SET @GK_2B_FAIL_POINT = NULL;
+
+-- ---------------------------------------------------------------------------
 -- Báo cáo
 -- ---------------------------------------------------------------------------
 SELECT * FROM tmp_gk2b_assert ORDER BY ASSERT_NAME;
@@ -259,4 +331,5 @@ FROM tmp_gk2b_assert;
 DROP PROCEDURE IF EXISTS sp_gk2b_try_bi_on_gk;
 DROP PROCEDURE IF EXISTS sp_gk2b_try_unlock;
 DROP PROCEDURE IF EXISTS sp_gk2b_try_validate;
+DROP PROCEDURE IF EXISTS sp_gk2b_try_tx_fail_point;
 DROP PROCEDURE IF EXISTS sp_gk2b_assert_eq;

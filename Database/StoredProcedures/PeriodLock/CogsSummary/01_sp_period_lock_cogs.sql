@@ -7,7 +7,7 @@
 -- create_voucher = claim → build → (chỉ khi build OK) xóa CT cũ + post.
 -- Exclusive fail / validate fail: handler KHÔNG xóa chứng từ hiện có.
 
-CALL sp_pc_2b_require_allowed_db();
+SOURCE 20261102_2b_00_guard_inline.sql;
 
 DELIMITER $$
 
@@ -448,19 +448,17 @@ CREATE PROCEDURE `sp_period_lock_cogs_create_voucher`(
 )
 proc: BEGIN
     DECLARE v_description VARCHAR(500);
-    DECLARE v_write_started TINYINT DEFAULT 0;
     DECLARE v_line_cnt INT DEFAULT 0;
+    DECLARE v_fail_point VARCHAR(30) DEFAULT NULL;
 
+    -- Không START/COMMIT ở đây: transaction owner = caller (CreateSessionAsync).
+    -- Không xóa CT trong handler khi lỗi — để caller ROLLBACK khôi phục CT cũ.
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
-        -- Chỉ dọn CT khi đã bắt đầu giai đoạn ghi (delete/post).
-        -- Exclusive reject / validate fail / claim fail: GIỮ NGUYÊN CT hiện có.
-        IF v_write_started = 1 THEN
-            CALL sp_period_lock_cogs_rollback_period(p_COMPANY_CD, p_PERIOD_YM);
-        END IF;
         RESIGNAL;
     END;
 
+    SET v_fail_point = NULLIF(TRIM(IFNULL(@GK_2B_FAIL_POINT, '')), '');
     SET v_description = CONCAT(
         'Tự động kết chuyển giá vốn - ',
         p_RULE_CODE,
@@ -492,14 +490,24 @@ proc: BEGIN
     -- 4) Chặn ghi đè khi bước sau / downstream đang dùng
     CALL sp_period_lock_cogs_assert_can_overwrite(p_COMPANY_CD, p_PERIOD_YM, p_RULE_CODE);
 
-    -- 5) Ghi nhận: xóa CT COGS cũ + post bản mới (chỉ sau khi có bản thay thế hợp lệ)
-    SET v_write_started = 1;
+    -- 5) Trong cùng TX caller: xóa CT cũ → post mới
     CALL sp_period_lock_cogs_rollback_period(p_COMPANY_CD, p_PERIOD_YM);
+
+    -- Hook test DEV: SET @GK_2B_FAIL_POINT='AFTER_DELETE' trước CALL
+    IF v_fail_point = 'AFTER_DELETE' THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'GK2B TEST HOOK: FAIL AFTER_DELETE (expect TX rollback restore vouchers)';
+    END IF;
 
     CALL sp_period_lock_post_xfer_group(
         p_COMPANY_CD, p_PERIOD_YM, 'COGS_SUMMARY',
         'EXP_TO_154', v_description, p_USER_ID, 'CG1'
     );
+
+    IF v_fail_point = 'DURING_POST' THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'GK2B TEST HOOK: FAIL DURING_POST (expect TX rollback restore vouchers)';
+    END IF;
 
     IF p_RULE_CODE IN ('154_TO_155', '154_TO_155_TO_632') THEN
         CALL sp_period_lock_post_xfer_group(
