@@ -49,6 +49,23 @@ public static class GkRunStatus
             return Confirmed; // không hạ cấp
         return AllocConfirmed;
     }
+
+    /// <summary>
+    /// Sau Confirm Bước 4 (COST_CALC=DONE): không tự chuyển RUN → CONFIRMED toàn kỳ
+    /// (cần B5/B6 đủ điều kiện). Giữ STATUS hiện tại; không hạ CONFIRMED.
+    /// </summary>
+    public static string AfterCostCalcConfirm(string? currentStatus)
+    {
+        if (string.Equals(currentStatus, Confirmed, StringComparison.OrdinalIgnoreCase))
+            return Confirmed;
+        if (string.IsNullOrWhiteSpace(currentStatus))
+            return AllocConfirmed;
+        return currentStatus.Trim().ToUpperInvariant();
+    }
+
+    /// <summary>COST_CALC=DONE chỉ khóa bước 4 — chưa đủ để coi là giá thành toàn kỳ.</summary>
+    public static bool IsFullPeriodConfirmed(string? runStatus) =>
+        string.Equals(runStatus, Confirmed, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>Khóa dòng alloc_detail đồng bộ DDL UNIQUE mới.</summary>

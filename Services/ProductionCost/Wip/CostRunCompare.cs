@@ -2,45 +2,118 @@ using API_AMNOTE_WEB.Models;
 
 namespace API_AMNOTE_WEB.Services.ProductionCost.Wip;
 
-/// <summary>So sánh phiên CONFIRMED vs PREVIEW (unit cost / tổng GT / incurred).</summary>
+/// <summary>
+/// So sánh phiên CONFIRMED vs PREVIEW theo khóa (PRODUCT_ID, DEPARTMENT_ID).
+/// </summary>
 public static class CostRunCompare
 {
+    public static class Presence
+    {
+        public const string Both = "BOTH";
+        public const string ConfirmedOnly = "CONFIRMED_ONLY";
+        public const string PreviewOnly = "PREVIEW_ONLY";
+    }
+
+    private static readonly string[] ValueFields =
+    {
+        "TOTAL_COST_PRICE",
+        "UNIT_COST",
+        "TOTAL_AMOUNT_INCURRED",
+        "CLOSING_INCOMPLETE_AMOUNT_154"
+    };
+
+    public static (long ProductId, long DepartmentId) Key(WipCalcResult row) =>
+        (row.ProductId, row.DepartmentId);
+
     public static IReadOnlyList<CostCompareLine> Compare(
         IEnumerable<WipCalcResult> confirmed,
         IEnumerable<WipCalcResult> preview)
     {
-        var confMap = confirmed.ToDictionary(x => x.ProductId);
+        var confMap = ToUniqueMap(confirmed, "CONFIRMED");
+        var prevMap = ToUniqueMap(preview, "PREVIEW");
+        var allKeys = confMap.Keys.Union(prevMap.Keys).OrderBy(k => k.ProductId).ThenBy(k => k.DepartmentId);
         var lines = new List<CostCompareLine>();
 
-        foreach (var p in preview)
+        foreach (var key in allKeys)
         {
-            confMap.TryGetValue(p.ProductId, out var c);
-            Add(lines, p, "TOTAL_COST_PRICE", c?.TotalCostPrice ?? 0, p.TotalCostPrice);
-            Add(lines, p, "UNIT_COST", c?.UnitCost ?? 0, p.UnitCost);
-            Add(lines, p, "TOTAL_AMOUNT_INCURRED", c?.TotalAmountIncurred ?? 0, p.TotalAmountIncurred);
-            Add(lines, p, "CLOSING_INCOMPLETE_AMOUNT_154",
-                c?.ClosingIncompleteAmount154 ?? 0, p.ClosingIncompleteAmount154);
+            confMap.TryGetValue(key, out var c);
+            prevMap.TryGetValue(key, out var p);
+
+            if (c != null && p == null)
+            {
+                lines.Add(RowPresence(c, Presence.ConfirmedOnly, c.TotalCostPrice, 0));
+                continue;
+            }
+
+            if (c == null && p != null)
+            {
+                lines.Add(RowPresence(p, Presence.PreviewOnly, 0, p.TotalCostPrice));
+                continue;
+            }
+
+            // BOTH
+            foreach (var field in ValueFields)
+            {
+                var cv = FieldValue(c!, field);
+                var pv = FieldValue(p!, field);
+                if (cv == pv)
+                    continue;
+                lines.Add(new CostCompareLine
+                {
+                    ProductId = key.ProductId,
+                    DepartmentId = key.DepartmentId,
+                    ProductCd = p!.ProductCd ?? c!.ProductCd,
+                    Field = field,
+                    Presence = Presence.Both,
+                    ConfirmedValue = cv,
+                    PreviewValue = pv
+                });
+            }
         }
 
         return lines;
     }
 
-    private static void Add(
-        List<CostCompareLine> lines,
-        WipCalcResult preview,
-        string field,
-        decimal confirmed,
-        decimal previewValue)
+    private static Dictionary<(long ProductId, long DepartmentId), WipCalcResult> ToUniqueMap(
+        IEnumerable<WipCalcResult> rows,
+        string side)
     {
-        if (confirmed == previewValue)
-            return;
-        lines.Add(new CostCompareLine
+        var map = new Dictionary<(long, long), WipCalcResult>();
+        foreach (var row in rows)
         {
-            ProductId = preview.ProductId,
-            ProductCd = preview.ProductCd,
-            Field = field,
-            ConfirmedValue = confirmed,
-            PreviewValue = previewValue
-        });
+            var key = Key(row);
+            if (!map.TryAdd(key, row))
+            {
+                throw new InvalidOperationException(
+                    $"Trùng khóa so sánh {side}: PRODUCT={key.ProductId} DEPT={key.DepartmentId}.");
+            }
+        }
+
+        return map;
     }
+
+    private static CostCompareLine RowPresence(
+        WipCalcResult row,
+        string presence,
+        decimal confirmed,
+        decimal preview) =>
+        new()
+        {
+            ProductId = row.ProductId,
+            DepartmentId = row.DepartmentId,
+            ProductCd = row.ProductCd,
+            Field = "ROW",
+            Presence = presence,
+            ConfirmedValue = confirmed,
+            PreviewValue = preview
+        };
+
+    private static decimal FieldValue(WipCalcResult row, string field) => field switch
+    {
+        "TOTAL_COST_PRICE" => row.TotalCostPrice,
+        "UNIT_COST" => row.UnitCost,
+        "TOTAL_AMOUNT_INCURRED" => row.TotalAmountIncurred,
+        "CLOSING_INCOMPLETE_AMOUNT_154" => row.ClosingIncompleteAmount154,
+        _ => 0
+    };
 }

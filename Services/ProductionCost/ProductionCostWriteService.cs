@@ -173,9 +173,10 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
 
         // Skeleton sau gate:
         // 1) C# TX owner → sp_pc_source_rebuild (loại XFER) → sp_pc_wip_calculate
-        // 2) Không DELETE version CONFIRMED cũ; chỉ ghi RUN_VERSION hiện tại
-        // 3) Receipt prep theo INPUT_ID — chưa apply inventory khi 2C-03
-        // 4) Confirm → step COST_CALC=DONE; RUN.STATUS=CONFIRMED (toàn kỳ) sau nghiệm thu
+        // 2) Không DELETE snapshot CONFIRMED cũ; chỉ ghi RUN_VERSION hiện tại (DRAFT)
+        // 3) Receipt prep theo PRODUCT+DEPT+INPUT_ID — chưa apply inventory
+        // 4) Confirm → step COST_CALC=DONE ONLY; RUN.STATUS giữ nguyên (AfterCostCalcConfirm)
+        //    — không tự CONFIRMED toàn kỳ trước B5/B6
         throw new InvalidOperationException(
             "Confirm COST_CALC DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-03.");
     }

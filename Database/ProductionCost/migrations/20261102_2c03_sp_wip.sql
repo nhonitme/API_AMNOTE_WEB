@@ -83,10 +83,11 @@ CREATE PROCEDURE `sp_pc_cost_confirm`(
     IN p_USER_ID VARCHAR(50)
 )
 BEGIN
-    -- Khi mở: upsert production_cost_receipt theo INPUT_ID; COST_CALC=DONE;
-    -- RUN.STATUS=CONFIRMED; KHÔNG gọi cập nhật kho cho đến giai đoạn sau.
+    -- Khi mở: upsert production_cost_receipt theo PRODUCT+DEPT+INPUT_ID;
+    -- COST_CALC=DONE ONLY — KHÔNG tự set RUN.STATUS=CONFIRMED (cần B5/B6).
+    -- KHÔNG gọi cập nhật kho cho đến giai đoạn sau.
     SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'sp_pc_cost_confirm skeleton — ReceiptPricePrep C#; chua bat EnableWrites / khong cap nhat kho';
+        SET MESSAGE_TEXT = 'sp_pc_cost_confirm skeleton — COST_CALC=DONE only; khong CONFIRMED toan ky; khong cap nhat kho';
 END$$
 
 DELIMITER ;

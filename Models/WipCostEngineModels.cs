@@ -103,6 +103,8 @@ public sealed class CostSourceLine
 public sealed class ReceiptPricePrepInput
 {
     public long ProductId { get; set; }
+    /// <summary>Bắt buộc khi cùng PRODUCT có nhiều phòng ban / nhiều UNIT_COST.</summary>
+    public long DepartmentId { get; set; }
     public long InputId { get; set; }
     public long? InventoryId { get; set; }
     public string? ProductCd { get; set; }
@@ -115,6 +117,7 @@ public sealed class ReceiptPricePrepInput
 public sealed class ReceiptPricePrepLine
 {
     public long ProductId { get; set; }
+    public long DepartmentId { get; set; }
     public long InputId { get; set; }
     public long? InventoryId { get; set; }
     public string? ProductCd { get; set; }
@@ -132,8 +135,11 @@ public sealed class ReceiptPricePrepLine
 public sealed class CostCompareLine
 {
     public long ProductId { get; set; }
+    public long DepartmentId { get; set; }
     public string? ProductCd { get; set; }
     public string Field { get; set; } = string.Empty;
+    /// <summary>BOTH | CONFIRMED_ONLY | PREVIEW_ONLY</summary>
+    public string Presence { get; set; } = "BOTH";
     public decimal ConfirmedValue { get; set; }
     public decimal PreviewValue { get; set; }
     public decimal Delta => PreviewValue - ConfirmedValue;

@@ -223,7 +223,9 @@ public static class WipCostEngine
         };
     }
 
-    /// <summary>Tính nhiều dòng; nếu có Sources thì gộp vào Amount* (loại XFER).</summary>
+    /// <summary>
+    /// Tính nhiều dòng; nếu có Sources thì phân bổ mỗi nguồn đúng một lần (DEPT=0 không nhân phòng ban).
+    /// </summary>
     public static IReadOnlyList<WipCalcResult> Run(
         IEnumerable<WipCalcInput> products,
         string wipMethod,
@@ -231,22 +233,14 @@ public static class WipCostEngine
         IEnumerable<CostSourceLine>? sources = null)
     {
         config ??= DefaultConfig;
+        var productList = products.ToList();
         var sourceList = sources?.ToList() ?? new List<CostSourceLine>();
+
+        IReadOnlyList<WipCalcInput> inputs = productList;
         if (sourceList.Count > 0)
-            CostSourceRules.AssertNoTransferInIncurred(sourceList);
+            inputs = CostSourceRules.DistributeToProducts(productList, sourceList).Products;
 
-        var results = new List<WipCalcResult>();
-        foreach (var product in products)
-        {
-            var input = sourceList.Count > 0
-                ? CostSourceRules.ApplySourcesToProduct(product, sourceList)
-                : product;
-            // Khi có sources: vẫn giữ Amount154Direct từ product nếu source không có dòng DIRECT
-            // ApplySourcesToProduct đã Pick — OK.
-            results.Add(CalculateRow(input, wipMethod, config));
-        }
-
-        return results;
+        return inputs.Select(input => CalculateRow(input, wipMethod, config)).ToList();
     }
 
     private static WipCalcInput CloneWithQty(WipCalcInput input, decimal closingQty) =>

@@ -52,4 +52,24 @@ public static class WipRecalcGuard
     /// </summary>
     public static bool WouldDeleteConfirmedVersion(int deleteRunVersion, int confirmedRunVersion) =>
         confirmedRunVersion > 0 && deleteRunVersion == confirmedRunVersion;
+
+    /// <summary>Preview chỉ ghi version hiện tại — tuyệt đối không đụng snapshot CONFIRMED.</summary>
+    public static void EnsurePreviewPreservesConfirmedSnapshot(
+        int previewRunVersion,
+        int? confirmedRunVersion,
+        bool wouldDeleteWithoutVersionFilter)
+    {
+        if (confirmedRunVersion is > 0 && previewRunVersion == confirmedRunVersion.Value)
+        {
+            throw new InvalidOperationException(
+                "Preview không được ghi đè snapshot WIP cùng RUN_VERSION đã CONFIRMED. " +
+                "Tăng version hoặc REOPEN trước.");
+        }
+
+        if (wouldDeleteWithoutVersionFilter)
+        {
+            throw new InvalidOperationException(
+                "Preview cấm DELETE theo RUN_ID không kèm RUN_VERSION — sẽ mất snapshot CONFIRMED cũ.");
+        }
+    }
 }
