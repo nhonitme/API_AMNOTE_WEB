@@ -139,17 +139,10 @@ public sealed class ProductionCostController : BaseApiController
 
     private static string CompanyCd() => Common.GetCompanyCode();
 
-    private static string? DbName()
-    {
-        try
-        {
-            return Common.GetDatabaseName();
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    /// <summary>
+    /// DB công ty bắt buộc từ auth — không nuốt lỗi rồi fallback sang DB không xác định.
+    /// </summary>
+    private static string DbName() => Common.GetDatabaseName();
 
     private async Task<IActionResult> ReadAsync<T>(Func<Task<T>> action)
     {
@@ -161,6 +154,11 @@ public sealed class ProductionCostController : BaseApiController
         catch (ArgumentException ex)
         {
             return ValidationError(ex.Message);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "ProductionCost read missing auth/company/database context");
+            return BusinessError(ex.Message);
         }
         catch (InvalidOperationException ex)
         {

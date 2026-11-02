@@ -7,7 +7,7 @@ namespace API_AMNOTE_WEB.Interfaces;
 /// </summary>
 public interface IProductionCostRepository
 {
-    Task<bool> IsSchemaAvailableAsync(string? databaseName = null);
+    Task<ProductionCostSchemaProbe> ProbeSchemaAsync(string? databaseName = null);
 
     Task<ProductionCostPeriodDto?> GetPeriodRowAsync(string companyCd, string periodYm, string? databaseName = null);
 
@@ -21,6 +21,9 @@ public interface IProductionCostRepository
         long? runId,
         int? runVersion,
         string? databaseName = null);
+
+    /// <summary>true nếu version có ít nhất một dòng detail (pool/detail/wip/source/receipt/nvl).</summary>
+    Task<bool> HasRunVersionDetailAsync(string companyCd, long runId, int runVersion, string? databaseName = null);
 
     Task<IReadOnlyList<ProductionCostStepDto>> GetGkStepsAsync(string companyCd, long runId, string? databaseName = null);
 

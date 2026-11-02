@@ -11,6 +11,24 @@ namespace API_AMNOTE_WEB.Repositories;
 /// </summary>
 public sealed class ProductionCostRepository : IProductionCostRepository
 {
+    private static readonly string[] RequiredTables =
+    {
+        "production_cost_period",
+        "production_cost_run",
+        "production_cost_step",
+        "production_cost_object",
+        "production_cost_alloc_pool",
+        "production_cost_alloc_detail",
+        "production_cost_nvl_basis",
+        "production_cost_nvl_basis_line",
+        "production_cost_nvl_orphan",
+        "production_cost_source",
+        "production_cost_wip",
+        "production_cost_receipt",
+        "production_cost_voucher_ref",
+        "production_cost_history"
+    };
+
     private readonly DapperExecutor _db;
 
     public ProductionCostRepository(DapperExecutor db)
@@ -18,20 +36,58 @@ public sealed class ProductionCostRepository : IProductionCostRepository
         _db = db;
     }
 
-    public async Task<bool> IsSchemaAvailableAsync(string? databaseName = null)
+    public async Task<ProductionCostSchemaProbe> ProbeSchemaAsync(string? databaseName = null)
     {
+        EnsureDatabase(databaseName);
+
         const string sql = @"
-SELECT COUNT(*)
+SELECT TABLE_NAME
 FROM information_schema.TABLES
 WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME = 'production_cost_period'";
+  AND TABLE_NAME LIKE 'production_cost_%'";
 
-        var count = await _db.QueryFirstAsync<int>(Net_DB.Net_DB_Company, sql, null, databaseName);
-        return count > 0;
+        var existing = (await _db.QueryAsync<string>(Net_DB.Net_DB_Company, sql, null, databaseName))
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (existing.Count == 0)
+        {
+            return new ProductionCostSchemaProbe
+            {
+                Status = ProductionCostSchemaStatus.Missing,
+                MissingTables = RequiredTables
+            };
+        }
+
+        var missing = RequiredTables
+            .Where(t => !existing.Contains(t))
+            .ToList();
+
+        if (missing.Count > 0)
+        {
+            return new ProductionCostSchemaProbe
+            {
+                Status = ProductionCostSchemaStatus.Incomplete,
+                MissingTables = missing
+            };
+        }
+
+        return new ProductionCostSchemaProbe
+        {
+            Status = ProductionCostSchemaStatus.Ready,
+            MissingTables = Array.Empty<string>()
+        };
+    }
+
+    private static void EnsureDatabase(string? databaseName)
+    {
+        if (string.IsNullOrWhiteSpace(databaseName))
+            throw new InvalidOperationException("Database name is required; refusing silent fallback to an unknown company database.");
     }
 
     public async Task<ProductionCostPeriodDto?> GetPeriodRowAsync(string companyCd, string periodYm, string? databaseName = null)
     {
+        EnsureDatabase(databaseName);
         const string sql = @"
 SELECT
     PERIOD_COST_ID AS PeriodCostId,
@@ -58,6 +114,7 @@ LIMIT 1";
 
     public async Task<ProductionCostRunDto?> GetRunAsync(string companyCd, long runId, string? databaseName = null)
     {
+        EnsureDatabase(databaseName);
         const string sql = @"
 SELECT
     RUN_ID AS RunId,
@@ -93,6 +150,7 @@ LIMIT 1";
 
     public async Task<ProductionCostRunDto?> GetCurrentRunAsync(string companyCd, string periodYm, string? databaseName = null)
     {
+        EnsureDatabase(databaseName);
         const string sql = @"
 SELECT
     r.RUN_ID AS RunId,
@@ -137,27 +195,53 @@ LIMIT 1";
         int? runVersion,
         string? databaseName = null)
     {
+        EnsureDatabase(databaseName);
         if (runId.HasValue && runId.Value > 0)
         {
+            // Bắt buộc thuộc đúng COMPANY_CD (filter GetRun) + PERIOD_YM.
             var byId = await GetRunAsync(companyCd, runId.Value, databaseName);
             if (byId == null)
                 return null;
             if (!string.Equals(byId.PeriodYm, periodYm, StringComparison.Ordinal))
                 return null;
-            if (runVersion.HasValue && runVersion.Value > 0 && byId.RunVersion != runVersion.Value)
-            {
-                // Version cụ thể có thể là snapshot cùng RUN_ID (ghi trong bảng con); RUN header giữ version hiện tại.
-                // Trả header; caller dùng runVersion param khi đọc detail.
-                return byId;
-            }
+            // Header giữ RUN_VERSION hiện tại; version cũ đọc từ bảng con — trả header cho caller.
+            _ = runVersion;
             return byId;
         }
 
         return await GetCurrentRunAsync(companyCd, periodYm, databaseName);
     }
 
+    public async Task<bool> HasRunVersionDetailAsync(string companyCd, long runId, int runVersion, string? databaseName = null)
+    {
+        EnsureDatabase(databaseName);
+        const string sql = @"
+SELECT (
+    EXISTS(SELECT 1 FROM production_cost_alloc_pool
+           WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0')
+    OR EXISTS(SELECT 1 FROM production_cost_alloc_detail
+              WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0')
+    OR EXISTS(SELECT 1 FROM production_cost_wip
+              WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0')
+    OR EXISTS(SELECT 1 FROM production_cost_source
+              WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0')
+    OR EXISTS(SELECT 1 FROM production_cost_receipt
+              WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0')
+    OR EXISTS(SELECT 1 FROM production_cost_nvl_basis
+              WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0')
+) AS HasDetail";
+
+        var flag = await _db.QueryFirstAsync<int>(
+            Net_DB.Net_DB_Company,
+            sql,
+            new { CompanyCd = companyCd, RunId = runId, RunVersion = runVersion },
+            databaseName);
+        return flag != 0;
+    }
+
     public async Task<IReadOnlyList<ProductionCostStepDto>> GetGkStepsAsync(string companyCd, long runId, string? databaseName = null)
     {
+        EnsureDatabase(databaseName);
         const string sql = @"
 SELECT
     STEP_INDEX AS StepIndex,
@@ -184,6 +268,7 @@ ORDER BY STEP_INDEX";
 
     public async Task<IReadOnlyDictionary<string, string>> GetBiStepStatusesAsync(string companyCd, string periodYm, string? databaseName = null)
     {
+        EnsureDatabase(databaseName);
         const string sql = @"
 SELECT STEP_CODE AS StepCode, STATUS AS Status
 FROM acc_period_lock_step
