@@ -62,8 +62,16 @@ public static class CostSourceRules
             throw new ArgumentException("Danh sách đối tượng tính GT không được rỗng.");
 
         AssertNoTransferInIncurred(sources);
-        var incurred = FilterForIncurred(sources);
-        var before = AllocationMath.RoundDigit(incurred.Sum(s => s.Amount), 0);
+        var incurred = FilterForIncurred(sources)
+            .Select(s => new CostSourceLine
+            {
+                ProductId = s.ProductId,
+                DepartmentId = s.DepartmentId,
+                SourceKind = s.SourceKind,
+                Amount = AllocationMath.RoundDigit(s.Amount, 0)
+            })
+            .ToList();
+        var before = incurred.Sum(s => s.Amount);
 
         var bags = products.Select(AmountBag.FromProduct).ToList();
 
@@ -110,13 +118,30 @@ public static class CostSourceRules
 
     private static void DistributeKind(IReadOnlyList<AmountBag> targets, string sourceKind, decimal amount)
     {
+        if (targets.Any(t => t.Quantity < 0))
+        {
+            throw new InvalidOperationException(
+                $"Quantity âm không hợp lệ khi phân bổ nguồn {sourceKind}.");
+        }
+
+        // Chuẩn hóa về độ chính xác hạch toán (RoundDigit 0) trước khi chia
+        var roundedAmount = AllocationMath.RoundDigit(amount, 0);
+
         if (targets.Count == 1)
         {
-            targets[0].Add(sourceKind, amount);
+            targets[0].Add(sourceKind, roundedAmount);
             return;
         }
 
-        var basisSum = targets.Sum(t => Math.Max(0m, t.Quantity));
+        var basisSum = targets.Sum(t => t.Quantity);
+        if (basisSum <= 0)
+        {
+            // Không tự chia đều khi toàn bộ Quantity = 0 — chưa có quy tắc nghiệp vụ.
+            throw new InvalidOperationException(
+                $"Không phân bổ nguồn dùng chung {sourceKind} khi tổng Quantity đối tượng = 0. " +
+                "Cần tiêu thức hợp lệ hoặc gắn DEPARTMENT_ID cụ thể.");
+        }
+
         var shares = new decimal[targets.Count];
         decimal allocated = 0;
 
@@ -124,16 +149,12 @@ public static class CostSourceRules
         {
             if (i == targets.Count - 1)
             {
-                shares[i] = AllocationMath.RoundDigit(amount - allocated, 0);
-            }
-            else if (basisSum > 0)
-            {
-                shares[i] = AllocationMath.RoundDigit(amount * targets[i].Quantity / basisSum, 0);
-                allocated += shares[i];
+                // Dòng cuối nhận phần dư — bảo toàn tổng tiền đã round
+                shares[i] = roundedAmount - allocated;
             }
             else
             {
-                shares[i] = AllocationMath.RoundDigit(amount / targets.Count, 0);
+                shares[i] = AllocationMath.RoundDigit(roundedAmount * targets[i].Quantity / basisSum, 0);
                 allocated += shares[i];
             }
         }

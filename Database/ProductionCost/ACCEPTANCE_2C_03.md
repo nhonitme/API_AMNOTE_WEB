@@ -1,8 +1,8 @@
 # Nghiệm thu Giai đoạn 2C-03 — Tính dở dang và giá thành thành phẩm
 
-Ngày: 2026-11-02 (fix logic chống cộng trùng / so sánh / B4 status)  
-Phạm vi: Engine WIP/GT thuần C#, Preview dry-run, so sánh phiên, chuẩn bị giá INPUT_ID, script SQL skeleton.  
-**Không** kết nối DB · **Không** chạy SQL · **Không** bật `EnableWrites` · **Không** cập nhật giá nhập kho thật · **Không** production.
+Ngày: 2026-11-02 (final schema & reconciliation)  
+Phạm vi: Engine WIP/GT, DDL khóa PRODUCT+DEPT, so sánh/reconcile phiếu nhập, script bàn giao.  
+**Không** kết nối DB · **Không** chạy SQL · **Không** bật `EnableWrites` · **Không** cập nhật kho thật · **Không** production.
 
 ---
 
@@ -10,61 +10,57 @@ Phạm vi: Engine WIP/GT thuần C#, Preview dry-run, so sánh phiên, chuẩn b
 
 | Hạng mục | Trạng thái thật |
 |----------|----------------|
-| `WipCostEngine` (PERCENT / Qdd / SL_TP_SX / ID2720) | **Đã implement** + unit test |
-| `CostSourceRules.DistributeToProducts` — DEPT=0 dùng 1 lần; Σ trước=sau; loại XFER | **Đã implement** + unit test |
-| `CostRunCompare` — khóa PRODUCT+DEPT; CONFIRMED_ONLY / PREVIEW_ONLY / BOTH | **Đã implement** + unit test |
-| `ReceiptPricePrep` — PRODUCT+DEPT+INPUT_ID; không chọn đơn giá tùy ý | **Đã implement** + unit test |
-| `GkRunStatus.AfterCostCalcConfirm` — COST_CALC=DONE ≠ CONFIRMED toàn kỳ | **Đã implement** + unit test |
-| `WipRecalcGuard` — Preview không đụng snapshot CONFIRMED | **Đã implement** + unit test |
-| API `POST .../cost-calc/preview` | **DryRun** — `Persisted=false` |
-| API `POST .../cost-calc/confirm` | **Chặn gate** — skeleton |
-| `sp_pc_source_rebuild` / `wip_calculate` / `cost_confirm` | **Skeleton SIGNAL** |
-| Cập nhật giá nhập kho thật | **Chưa** |
-
-**Không báo cáo** Confirm DB / apply inventory là đã vận hành.
+| `WipCostEngine` + ngoại lệ SL_TP_SX / ID2720 | **Đã implement** + unit test |
+| `CostSourceRules` — DEPT=0 một lần; cấm chia đều khi ΣQ=0; round bảo toàn tổng | **Đã implement** + unit test |
+| `CostRunCompare` / `ReceiptPricePrep` / `ReceiptReconcile` | **Đã implement** + unit test |
+| `GetComparisonLinesAsync` JOIN PRODUCT+DEPT+COMPANY | **Đã sửa** (SQL đọc) |
+| DTO/Repo receipt có `DEPARTMENT_ID` | **Đã đồng bộ** |
+| Schema gốc + 2B: `uk_pc_wip` + receipt.DEPT | **Đã cập nhật source** |
+| Migration nâng cấp schema cũ | **Script bàn giao** (user tự chạy) |
+| API Preview dry-run / Confirm gate | Preview dry-run; Confirm **skeleton gate** |
+| SP `source_rebuild` / `wip_calculate` / `cost_confirm` | **Skeleton SIGNAL** |
+| Apply giá kho thật | **Chưa** |
 
 ---
 
-## 1. Fix logic (sau rà soát)
+## 1. Schema & reconciliation (final fix)
 
-### 1.1 CostSourceRules
-- Nguồn `DEPARTMENT_ID=0` chia theo Quantity giữa đối tượng khớp — **không** cộng nguyên khoản vào mỗi phòng.
-- Nguồn `DEPARTMENT_ID>0` chỉ vào đúng phòng.
-- Assert tổng nguồn trước = sau (sai lệch làm tròn ≤ 1).
-- `XFER_EXP_TO_154` vẫn bị loại / ném lỗi nếu đưa vào incurred.
+### 1.1 `production_cost_wip`
+- UNIQUE: `(RUN_ID, RUN_VERSION, PRODUCT_ID, DEPARTMENT_ID)`.
+- Đồng bộ `01_production_cost_tables.sql`, `2b_01_tables.sql`.
+- Migration: `20261102_2c03_ddl_wip_receipt_key.sql` — precheck trùng PRODUCT+DEPT trước ALTER.
 
-### 1.2 ReceiptPricePrep
-- Khóa giá: `(PRODUCT_ID, DEPARTMENT_ID)` + `INPUT_ID`.
-- Nhiều UNIT_COST cùng PRODUCT mà receipt thiếu DEPT → lỗi (không chọn tùy ý).
-- INPUT_ID trùng / Qty≤0 → lỗi; kiểm tra tổng Delta vs New−Old.
+### 1.2 `production_cost_receipt`
+- Thêm `DEPARTMENT_ID` (không tự suy đoán khi thiếu).
+- UNIQUE giữ `(RUN_ID, RUN_VERSION, INPUT_ID)`.
+- `ProductionCostReceiptDto` + `GetReceiptsAsync` đọc `DEPARTMENT_ID`.
 
-### 1.3 CostRunCompare
-- Khóa `(PRODUCT_ID, DEPARTMENT_ID)`.
-- Dòng chỉ CONFIRMED / chỉ PREVIEW / chênh BOTH — không mất dòng multi-dept.
+### 1.3 So sánh phiên
+- Repo JOIN: `PRODUCT_ID + DEPARTMENT_ID + COMPANY_CD` (full outer).
+- Engine compare: khóa PRODUCT+DEPT; CONFIRMED_ONLY / PREVIEW_ONLY / BOTH.
 
-### 1.4 Trạng thái Bước 4
-- Confirm B4 → `COST_CALC=DONE` only.
-- `AfterCostCalcConfirm`: **không** tự `RUN.STATUS=CONFIRMED` (cần B5/B6).
-- Preview không DELETE/ghi đè snapshot CONFIRMED cũ.
-- B-I và B2/B3 source không đổi trong fix này.
+### 1.4 Reconcile giá nhập
+- `ReceiptReconcile`: Σ QTY ↔ QUANTITY; Σ NEW_AMOUNT ↔ TOTAL_COST_PRICE theo PRODUCT+DEPT.
+- Dung sai tiền = 1 (RoundDigit 0); không tự phân bổ khi lệch / đối tượng không khớp.
+
+### 1.5 Nguồn dùng chung
+- Σ Quantity = 0 → lỗi (không chia đều).
+- Quantity âm → lỗi.
+- Số lẻ: round từng dòng nguồn rồi chia; dòng cuối nhận phần dư — Σ sau = Σ trước.
+
+### 1.6 B4 status (giữ)
+- `COST_CALC=DONE` only; không tự `RUN=CONFIRMED`.
 
 ---
 
-## 2. File chính
+## 2. Migration DDL (user tự chạy nếu schema cũ)
 
-### C# (đã sửa)
-- `Services/ProductionCost/Wip/CostSourceRules.cs`
-- `Services/ProductionCost/Wip/ReceiptPricePrep.cs`
-- `Services/ProductionCost/Wip/CostRunCompare.cs`
-- `Services/ProductionCost/Wip/WipRecalcGuard.cs`
-- `Services/ProductionCost/Wip/WipCostEngine.cs` (dùng Distribute)
-- `Services/ProductionCost/Allocation/GkRunStatus.cs` (`AfterCostCalcConfirm`)
-- `Models/WipCostEngineModels.cs` (DepartmentId / Presence)
-- Tests: `ProductionCostWipEngineTests.cs`
+| File | Khi nào |
+|------|---------|
+| `migrations/20261102_2c03_ddl_wip_receipt_key.sql` | Schema cũ: UNIQUE WIP thiếu DEPT hoặc receipt thiếu cột |
+| Không cần | Cài mới từ `01` / `2b_01` bản repo hiện tại |
 
-### SQL bàn giao (skeleton — không bắt buộc DDL mới)
-- `migrations/20261102_2c03_sp_wip.sql` — comment COST_CALC=DONE only
-- Không có script DDL riêng cho fix này (chỉ DTO/C#/comment SP).
+Thứ tự gợi ý DEV: precheck trong script → ALTER WIP UNIQUE → ADD receipt.DEPARTMENT_ID → `2c03_verify_readonly.sql`.
 
 ---
 
@@ -73,29 +69,26 @@ Phạm vi: Engine WIP/GT thuần C#, Preview dry-run, so sánh phiên, chuẩn b
 ```text
 dotnet build → 0 Error(s)
 dotnet test --filter FullyQualifiedName~ProductionCost
-→ Passed: 62, Failed: 0
+→ Passed: 65, Failed: 0
 ```
 
 | Case | Kết quả |
 |------|---------|
-| Shared DEPT=0 cùng PRODUCT nhiều DEPT — tổng nguồn 1 lần | PASS |
-| Compare CONFIRMED_ONLY / PREVIEW_ONLY / BOTH + multi-dept | PASS |
-| Receipt bắt DEPT khi multi UNIT_COST; INPUT trùng; Qty≤0 | PASS |
-| B4 không promote CONFIRMED; Preview giữ snapshot | PASS |
-| Doc % / Qdd / XFER excluded / gate confirm | PASS |
+| Shared DEPT=0 / multi-dept / XFER | PASS |
+| Q=0 không chia đều; Q&lt;0 lỗi; số lẻ bảo toàn tổng | PASS |
+| Compare multi-dept presence | PASS |
+| Receipt DEPT bắt buộc khi multi UNIT; reconcile QTY/AMOUNT | PASS |
+| B4 không promote CONFIRMED | PASS |
 
 ---
 
-## 4. Chờ nghiệm thu DEV
+## 4. Skeleton / chờ DEV
 
-1. Body SQL `source_rebuild` / `wip_calculate` / `cost_confirm`.
-2. EnableWrites trên DEV (không production).
-3. Apply giá kho theo INPUT_ID (sau 2C-03).
-4. Điều kiện RUN → CONFIRMED toàn kỳ khi B5/B6 đủ.
+- Body SQL SP source/wip/confirm; EnableWrites; apply kho; điều kiện CONFIRMED toàn kỳ (B5/B6).
 
 ---
 
 ## 5. Dừng
 
-Fix logic 2C-03 xong để duyệt trước giai đoạn tiếp theo.  
-Không bật ghi · không SQL trên môi trường thật.
+Final fix 2C-03 xong để nghiệm thu và duyệt chuyển 2C-04.  
+Không thực thi SQL · không bật ghi · không đụng production.

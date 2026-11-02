@@ -398,6 +398,8 @@ public sealed class ProductionCostReceiptDto
     public long RunId { get; set; }
     public int RunVersion { get; set; }
     public long ProductId { get; set; }
+    /// <summary>Khớp WIP PRODUCT+DEPT; 0 = chứng từ thiếu DEPT hợp lệ (không tự suy đoán).</summary>
+    public long DepartmentId { get; set; }
     public long InputId { get; set; }
     public long? InventoryId { get; set; }
     public string? ProductCd { get; set; }

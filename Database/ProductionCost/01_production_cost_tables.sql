@@ -324,11 +324,11 @@ CREATE TABLE IF NOT EXISTS `production_cost_wip` (
   `UPDATE_BY` varchar(50) DEFAULT NULL,
   `UPDATE_AT` datetime DEFAULT NULL,
   PRIMARY KEY (`WIP_ID`),
-  UNIQUE KEY `uk_pc_wip` (`RUN_ID`,`RUN_VERSION`,`PRODUCT_ID`),
+  UNIQUE KEY `uk_pc_wip` (`RUN_ID`,`RUN_VERSION`,`PRODUCT_ID`,`DEPARTMENT_ID`),
   KEY `idx_pc_wip_prod` (`COMPANY_CD`,`PRODUCT_ID`),
   KEY `idx_pc_wip_dept` (`COMPANY_CD`,`DEPARTMENT_ID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
-  COMMENT='Kết quả tính dở dang và tổng giá thành theo PRODUCT_ID';
+  COMMENT='Kết quả tính dở dang và tổng giá thành theo PRODUCT_ID + DEPARTMENT_ID';
 
 -- -----------------------------------------------------------------------------
 -- 8) Liên kết cập nhật giá phiếu nhập TP (INPUT_ID)
@@ -339,6 +339,7 @@ CREATE TABLE IF NOT EXISTS `production_cost_receipt` (
   `RUN_VERSION` int(11) NOT NULL DEFAULT '1',
   `COMPANY_CD` varchar(20) NOT NULL,
   `PRODUCT_ID` bigint(20) NOT NULL,
+  `DEPARTMENT_ID` bigint(20) NOT NULL DEFAULT '0' COMMENT 'Khớp WIP PRODUCT+DEPT; 0 chỉ khi chứng từ không có DEPT hợp lệ (không tự suy đoán)',
   `INPUT_ID` bigint(20) NOT NULL COMMENT 'FK logic → chit_inventory_input.INPUT_ID',
   `INVENTORY_ID` bigint(20) DEFAULT NULL COMMENT 'FK logic → chit_inventory_info',
   `PRODUCT_CD` varchar(50) DEFAULT NULL,
@@ -358,7 +359,8 @@ CREATE TABLE IF NOT EXISTS `production_cost_receipt` (
   PRIMARY KEY (`RECEIPT_COST_ID`),
   UNIQUE KEY `uk_pc_receipt` (`RUN_ID`,`RUN_VERSION`,`INPUT_ID`),
   KEY `idx_pc_receipt_input` (`COMPANY_CD`,`INPUT_ID`),
-  KEY `idx_pc_receipt_prod` (`COMPANY_CD`,`PRODUCT_ID`)
+  KEY `idx_pc_receipt_prod` (`COMPANY_CD`,`PRODUCT_ID`),
+  KEY `idx_pc_receipt_dept` (`COMPANY_CD`,`PRODUCT_ID`,`DEPARTMENT_ID`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
   COMMENT='Ánh xạ giá thành → phiếu nhập TP theo INPUT_ID (ghi đè, không tạo phiếu mới)';
 

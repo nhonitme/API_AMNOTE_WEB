@@ -520,7 +520,7 @@ WHERE COMPANY_CD = @CompanyCd
   AND RUN_ID = @RunId
   AND RUN_VERSION = @RunVersion
   AND ISDEL = '0'
-ORDER BY PRODUCT_ID";
+ORDER BY PRODUCT_ID, DEPARTMENT_ID";
 
         var rows = await _db.QueryAsync<ProductionCostWipDto>(
             Net_DB.Net_DB_Company,
@@ -563,6 +563,7 @@ SELECT
     RUN_ID AS RunId,
     RUN_VERSION AS RunVersion,
     PRODUCT_ID AS ProductId,
+    DEPARTMENT_ID AS DepartmentId,
     INPUT_ID AS InputId,
     INVENTORY_ID AS InventoryId,
     PRODUCT_CD AS ProductCd,
@@ -579,7 +580,7 @@ WHERE COMPANY_CD = @CompanyCd
   AND RUN_ID = @RunId
   AND RUN_VERSION = @RunVersion
   AND ISDEL = '0'
-ORDER BY PRODUCT_ID, INPUT_ID";
+ORDER BY PRODUCT_ID, DEPARTMENT_ID, INPUT_ID";
 
         var rows = await _db.QueryAsync<ProductionCostReceiptDto>(
             Net_DB.Net_DB_Company,
@@ -629,6 +630,8 @@ ORDER BY ACTION_AT DESC, HISTORY_ID DESC";
         int compareRunVersion,
         string? databaseName = null)
     {
+        // Full outer: base LEFT compare UNION compare-only.
+        // JOIN khóa nghiệp vụ: PRODUCT_ID + DEPARTMENT_ID + COMPANY_CD
         const string sql = @"
 SELECT
     COALESCE(b.PRODUCT_ID, c.PRODUCT_ID) AS ProductId,
@@ -661,7 +664,9 @@ LEFT JOIN (
       AND RUN_ID = @CompareRunId
       AND RUN_VERSION = @CompareRunVersion
       AND ISDEL = '0'
-) c ON c.PRODUCT_ID = b.PRODUCT_ID AND c.COMPANY_CD = b.COMPANY_CD
+) c ON c.PRODUCT_ID = b.PRODUCT_ID
+   AND c.DEPARTMENT_ID = b.DEPARTMENT_ID
+   AND c.COMPANY_CD = b.COMPANY_CD
 UNION
 SELECT
     COALESCE(b.PRODUCT_ID, c.PRODUCT_ID) AS ProductId,
@@ -694,9 +699,11 @@ LEFT JOIN (
       AND RUN_ID = @BaseRunId
       AND RUN_VERSION = @BaseRunVersion
       AND ISDEL = '0'
-) b ON b.PRODUCT_ID = c.PRODUCT_ID AND b.COMPANY_CD = c.COMPANY_CD
+) b ON b.PRODUCT_ID = c.PRODUCT_ID
+   AND b.DEPARTMENT_ID = c.DEPARTMENT_ID
+   AND b.COMPANY_CD = c.COMPANY_CD
 WHERE b.PRODUCT_ID IS NULL
-ORDER BY ProductId";
+ORDER BY ProductId, DepartmentId";
 
         var rows = await _db.QueryAsync<ProductionCostComparisonLineDto>(
             Net_DB.Net_DB_Company,

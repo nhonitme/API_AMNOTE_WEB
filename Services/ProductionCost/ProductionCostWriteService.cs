@@ -228,6 +228,9 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             ? ReceiptPricePrep.Build(items, dry.Receipts)
             : Array.Empty<ReceiptPricePrepLine>();
 
+        if (receipts.Count > 0)
+            ReceiptReconcile.AssertMatches(items, receipts);
+
         return new ProductionCostWipWriteResponse
         {
             WipMethod = dry.WipMethod,
