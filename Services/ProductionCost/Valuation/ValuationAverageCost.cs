@@ -1,73 +1,104 @@
 using API_AMNOTE_WEB.Models;
+using API_AMNOTE_WEB.Services.Inventory;
 using API_AMNOTE_WEB.Services.ProductionCost.Allocation;
 using API_AMNOTE_WEB.Services.ProductionCost.Wip;
 
 namespace API_AMNOTE_WEB.Services.ProductionCost.Valuation;
 
 /// <summary>
-/// Bình quân cuối kỳ / tức thời theo nhóm tồn kho — khớp InventoryValuationService
-/// (PRODUCT + STORE + CHIT_TYPE; sort TXN_YMD → INVENTORY_ID → CHITDETAIL_ID).
-/// Không đổi nghiệp vụ InventoryValuation / B-I.
+/// Adapter G-K Bước 5 → <see cref="InventoryOutPriceEngine"/> (cùng menu Kho / calc-out-price).
+/// Không phải engine định giá độc lập — nhóm/công thức/thứ tự do InventoryOutPriceEngine quyết định.
 /// </summary>
 public static class ValuationAverageCost
 {
+    /// <summary>Khóa nhóm = InventoryValuation: PRODUCT_CD + PRODUCT_NAME + STORE_CD + STORE_NAME + CHIT_TYPE.</summary>
     public static ValuationGroupKey GroupKeyOf(ValuationMovementInput m) => new()
     {
         CompanyCd = (m.CompanyCd ?? string.Empty).Trim(),
         ProductId = m.ProductId,
         ProductCd = (m.ProductCd ?? string.Empty).Trim(),
+        ProductName = (m.ProductName ?? string.Empty).Trim(),
         StoreId = m.StoreId ?? 0,
         StoreCd = (m.StoreCd ?? string.Empty).Trim(),
+        StoreName = (m.StoreName ?? string.Empty).Trim(),
         ChitType = (m.ChitType ?? string.Empty).Trim()
     };
 
-    /// <summary>
-    /// Sắp xếp giống InventoryValuationService.RunCalculationAsync:
-    /// PRODUCT_CD → STORE_CD → TXN_YMD → INVENTORY_ID → CHITDETAIL_ID.
-    /// </summary>
     public static IReadOnlyList<ValuationMovementInput> OrderLikeInventoryEngine(
-        IEnumerable<ValuationMovementInput> movements) =>
-        movements
-            .OrderBy(m => m.ProductCd ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(m => m.ProductId)
-            .ThenBy(m => m.StoreCd ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(m => m.StoreId ?? 0)
-            .ThenBy(m => m.TxnYmd ?? string.Empty, StringComparer.Ordinal)
-            .ThenBy(m => m.InventoryId ?? 0)
-            .ThenBy(m => m.ChitdetailId ?? 0)
+        IEnumerable<ValuationMovementInput> movements)
+    {
+        // Cùng thứ tự InventoryOutPriceEngine; ThenBy index giữ ổn định khi trùng khóa.
+        return movements
+            .Select((m, index) => (m, index))
+            .OrderBy(x => x.m.ProductCd ?? string.Empty)
+            .ThenBy(x => x.m.StoreCd ?? string.Empty)
+            .ThenBy(x => x.m.TxnYmd ?? string.Empty)
+            .ThenBy(x => x.m.InventoryId ?? 0)
+            .ThenBy(x => x.m.ChitdetailId ?? 0)
+            .ThenBy(x => x.index)
+            .Select(x => x.m)
             .ToList();
+    }
 
     public static IReadOnlyList<ValuationAverageResult> ComputeByGroup(
         IEnumerable<ValuationMovementInput> movements,
         string methodCode)
     {
-        var method = (methodCode ?? GkValuationMethod.PeriodEndAverage).Trim();
-        if (method is not (GkValuationMethod.PeriodEndAverage or GkValuationMethod.MovingAverage))
-        {
-            throw new ArgumentException(
-                $"ValuationMethod không hỗ trợ: {methodCode}. Dùng PERIOD_END_AVG hoặc MOVING_AVG.");
-        }
+        var method = InventoryValuationMethod.Normalize(
+            string.IsNullOrWhiteSpace(methodCode) ? GkValuationMethod.PeriodEndAverage : methodCode);
 
         var list = movements.ToList();
         Cogs632PreviewRules.AssertMovementsSafeForValuation(list);
 
-        if (method == GkValuationMethod.MovingAverage)
-            AssertMovingAvgSortFields(list);
+        var inventoryMoves = list.Select(ToInventoryMovement).ToList();
+        var computed = InventoryOutPriceEngine.ComputeByGroups(inventoryMoves, method);
 
-        var ordered = OrderLikeInventoryEngine(list);
+        // Map lại ProductId/CompanyCd từ movement nguồn (không dùng làm khóa nhóm)
+        var byInventoryKey = list
+            .GroupBy(m => InventoryOutPriceEngine.KeyOf(ToInventoryMovement(m)))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var results = new List<ValuationAverageResult>();
-
-        foreach (var group in ordered.GroupBy(GroupKeyOf))
+        foreach (var (key, engineResult) in computed)
         {
-            var rows = group.ToList();
-            var key = group.Key;
-            if (key.ProductId <= 0)
-                throw new InvalidOperationException("Nhóm định giá thiếu PRODUCT_ID hợp lệ.");
+            byInventoryKey.TryGetValue(key, out var rows);
+            rows ??= new List<ValuationMovementInput>();
+            var first = rows.FirstOrDefault();
+            var outUnit = engineResult.OutputQuantity > 0
+                ? engineResult.OutputAmount / engineResult.OutputQuantity
+                : 0m;
 
-            var result = method == GkValuationMethod.PeriodEndAverage
-                ? PeriodEndAverage(rows, key)
-                : MovingAverage(rows, key);
-            results.Add(result);
+            results.Add(new ValuationAverageResult
+            {
+                MethodCode = engineResult.MethodCode,
+                Group = new ValuationGroupKey
+                {
+                    CompanyCd = first?.CompanyCd ?? string.Empty,
+                    ProductId = first?.ProductId ?? 0,
+                    ProductCd = key.ProductCd,
+                    ProductName = key.ProductName,
+                    StoreId = first?.StoreId ?? 0,
+                    StoreCd = key.StoreCd,
+                    StoreName = key.StoreName,
+                    ChitType = key.ChitType
+                },
+                ProductId = first?.ProductId ?? 0,
+                ProductCd = key.ProductCd,
+                StoreId = first?.StoreId ?? 0,
+                StoreCd = key.StoreCd,
+                ChitType = key.ChitType,
+                CompanyCd = first?.CompanyCd ?? string.Empty,
+                InputQuantity = engineResult.InputQuantity,
+                InputAmount = engineResult.InputAmount,
+                OutputQuantity = engineResult.OutputQuantity,
+                OutputAmount = engineResult.OutputAmount,
+                OutputAverageUnitCost = outUnit,
+                EndingQuantity = engineResult.EndingQuantity,
+                EndingAmount = engineResult.EndingAmount,
+                EndingAverageUnitCost = engineResult.EndingAverageUnitCost,
+                IsValid = true,
+                Errors = Array.Empty<string>()
+            });
         }
 
         return results;
@@ -84,14 +115,15 @@ public static class ValuationAverageCost
         if (all.Count > 1)
         {
             throw new InvalidOperationException(
-                $"Có {all.Count} nhóm định giá — dùng ComputeByGroup, không gộp ProductId=0.");
+                $"Có {all.Count} nhóm định giá — dùng ComputeByGroup (khóa PRODUCT_CD+STORE_CD+CHIT_TYPE).");
         }
 
         return all[0];
     }
 
     /// <summary>
-    /// Áp giá nhập mới theo INPUT_ID — chỉ INPUT cùng COMPANY_CD + PRODUCT_ID + qty khớp.
+    /// Áp giá nhập mới theo INPUT_ID — lớp G-K (không thuộc engine Kho).
+    /// Chỉ INPUT cùng COMPANY_CD + PRODUCT_ID + qty khớp; IsApplied luôn false ở đây.
     /// </summary>
     public static IReadOnlyList<ValuationMovementInput> ApplyReceiptPrices(
         IEnumerable<ValuationMovementInput> movements,
@@ -179,156 +211,23 @@ public static class ValuationAverageCost
         return result;
     }
 
-    private static void AssertMovingAvgSortFields(IReadOnlyList<ValuationMovementInput> list)
-    {
-        foreach (var m in list.Where(x =>
-                     string.Equals(x.FlowType, "INPUT", StringComparison.OrdinalIgnoreCase)
-                     || string.Equals(x.FlowType, "OUTPUT", StringComparison.OrdinalIgnoreCase)))
-        {
-            if (string.IsNullOrWhiteSpace(m.TxnYmd) || m.TxnYmd.Length != 8)
-            {
-                throw new InvalidOperationException(
-                    $"MOVING_AVG yêu cầu TXN_YMD (yyyyMMdd) trên mọi INPUT/OUTPUT — PRODUCT={m.ProductId}.");
-            }
-        }
-    }
-
-    private static ValuationAverageResult PeriodEndAverage(
-        IReadOnlyList<ValuationMovementInput> ordered,
-        ValuationGroupKey key)
-    {
-        var errors = new List<string>();
-        var openQty = SumQty(ordered, "OPEN");
-        var openAmt = SumAmt(ordered, "OPEN");
-        var inQty = SumQty(ordered, "INPUT");
-        var inAmt = SumAmt(ordered, "INPUT");
-        var outQty = SumQty(ordered, "OUTPUT");
-
-        var totalQty = openQty + inQty;
-        var totalAmt = openAmt + inAmt;
-        var avg = totalQty <= 0 ? 0m : totalAmt / totalQty;
-        var endQty = totalQty - outQty;
-        if (endQty < -ReceiptReconcile.QtyTolerance)
-            errors.Add($"Nhóm {key}: tồn cuối âm ({endQty}) — dữ liệu không đủ/không hợp lệ.");
-
-        if (outQty > totalQty + ReceiptReconcile.QtyTolerance)
-            errors.Add($"Nhóm {key}: xuất ({outQty}) vượt tồn khả dụng ({totalQty}).");
-
-        var endAmt = Math.Max(0m, endQty * avg);
-        var outAmt = Math.Max(0m, outQty * avg);
-        var outUnit = outQty > 0 ? outAmt / outQty : 0m;
-
-        return BuildResult(
-            GkValuationMethod.PeriodEndAverage, key,
-            inQty, inAmt, outQty, outAmt, outUnit, endQty, endAmt, avg, errors);
-    }
-
-    private static ValuationAverageResult MovingAverage(
-        IReadOnlyList<ValuationMovementInput> ordered,
-        ValuationGroupKey key)
-    {
-        var errors = new List<string>();
-        var currentQty = SumQty(ordered, "OPEN");
-        var currentAmt = SumAmt(ordered, "OPEN");
-        var currentPrice = currentQty > 0 ? currentAmt / currentQty : 0m;
-        decimal inQty = 0, inAmt = 0, outQty = 0, outCost = 0;
-
-        foreach (var m in ordered)
-        {
-            if (string.Equals(m.FlowType, "OPEN", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            if (string.Equals(m.FlowType, "INPUT", StringComparison.OrdinalIgnoreCase))
-            {
-                currentQty += m.Quantity;
-                currentAmt += m.AmountCc;
-                currentPrice = currentQty > 0 ? currentAmt / currentQty : 0m;
-                inQty += m.Quantity;
-                inAmt += m.AmountCc;
-            }
-            else if (string.Equals(m.FlowType, "OUTPUT", StringComparison.OrdinalIgnoreCase))
-            {
-                if (m.Quantity > currentQty + ReceiptReconcile.QtyTolerance)
-                {
-                    errors.Add(
-                        $"Nhóm {key}: xuất Q={m.Quantity} ngày {m.TxnYmd} vượt tồn {currentQty} — không coi kết quả hợp lệ.");
-                    return BuildResult(
-                        GkValuationMethod.MovingAverage, key,
-                        inQty, inAmt, outQty, outCost, 0, currentQty, currentAmt, currentPrice, errors);
-                }
-
-                if (currentQty <= 0 && m.Quantity > 0)
-                {
-                    errors.Add($"Nhóm {key}: không đủ tồn để tính giá xuất ngày {m.TxnYmd}.");
-                    return BuildResult(
-                        GkValuationMethod.MovingAverage, key,
-                        inQty, inAmt, outQty, outCost, 0, currentQty, currentAmt, currentPrice, errors);
-                }
-
-                var cost = m.Quantity * currentPrice;
-                outQty += m.Quantity;
-                outCost += cost;
-                currentQty -= m.Quantity;
-                currentAmt -= cost;
-                if (currentQty <= 0m)
-                {
-                    currentQty = 0;
-                    currentAmt = 0;
-                    currentPrice = 0;
-                }
-                else
-                {
-                    currentPrice = currentAmt / currentQty;
-                }
-            }
-        }
-
-        var outUnit = outQty > 0 ? outCost / outQty : 0m;
-        var endAvg = currentQty > 0 ? currentAmt / currentQty : 0m;
-        return BuildResult(
-            GkValuationMethod.MovingAverage, key,
-            inQty, inAmt, outQty, outCost, outUnit, currentQty, currentAmt, endAvg, errors);
-    }
-
-    private static ValuationAverageResult BuildResult(
-        string method,
-        ValuationGroupKey key,
-        decimal inQty,
-        decimal inAmt,
-        decimal outQty,
-        decimal outAmt,
-        decimal outUnit,
-        decimal endQty,
-        decimal endAmt,
-        decimal endUnit,
-        List<string> errors) =>
+    private static InventoryValuationMovement ToInventoryMovement(ValuationMovementInput m) =>
         new()
         {
-            MethodCode = method,
-            Group = key,
-            ProductId = key.ProductId,
-            ProductCd = key.ProductCd,
-            StoreId = key.StoreId,
-            StoreCd = key.StoreCd,
-            ChitType = key.ChitType,
-            CompanyCd = key.CompanyCd,
-            InputQuantity = inQty,
-            InputAmount = inAmt,
-            OutputQuantity = outQty,
-            OutputAmount = AllocationMath.RoundDigit(outAmt, 0),
-            OutputAverageUnitCost = outUnit,
-            EndingQuantity = endQty,
-            EndingAmount = AllocationMath.RoundDigit(endAmt, 0),
-            EndingAverageUnitCost = endUnit,
-            IsValid = errors.Count == 0,
-            Errors = errors
+            FLOW_TYPE = m.FlowType,
+            COMPANY_CD = m.CompanyCd ?? string.Empty,
+            INVENTORY_ID = m.InventoryId,
+            CHITDETAIL_ID = m.ChitdetailId,
+            CHIT_TYPE = m.ChitType ?? string.Empty,
+            PRODUCT_CD = m.ProductCd ?? string.Empty,
+            PRODUCT_NAME = m.ProductName ?? string.Empty,
+            STORE_CD = m.StoreCd ?? string.Empty,
+            STORE_NAME = m.StoreName ?? string.Empty,
+            TXN_YMD = m.TxnYmd,
+            QUANTITY = m.Quantity,
+            UNIT_PRICE_CC = m.Quantity != 0 ? m.AmountCc / m.Quantity : 0m,
+            AMOUNT_CC = m.AmountCc
         };
-
-    private static decimal SumQty(IEnumerable<ValuationMovementInput> rows, string flow) =>
-        rows.Where(m => string.Equals(m.FlowType, flow, StringComparison.OrdinalIgnoreCase)).Sum(m => m.Quantity);
-
-    private static decimal SumAmt(IEnumerable<ValuationMovementInput> rows, string flow) =>
-        rows.Where(m => string.Equals(m.FlowType, flow, StringComparison.OrdinalIgnoreCase)).Sum(m => m.AmountCc);
 
     private static ValuationMovementInput Clone(ValuationMovementInput m, decimal? amountCc = null) =>
         new()

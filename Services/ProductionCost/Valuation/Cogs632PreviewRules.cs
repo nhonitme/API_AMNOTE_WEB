@@ -45,16 +45,22 @@ public static class Cogs632PreviewRules
         var afterMap = afterGroups.ToDictionary(g => Key(g));
         var lines = new List<Cogs632PreviewLine>();
 
-        foreach (var before in beforeGroups.OrderBy(g => g.ProductId).ThenBy(g => g.StoreId).ThenBy(g => g.ChitType))
+        foreach (var before in beforeGroups
+                     .OrderBy(g => g.ProductCd)
+                     .ThenBy(g => g.StoreCd)
+                     .ThenBy(g => g.ChitType))
         {
             if (!afterMap.TryGetValue(Key(before), out var after))
             {
                 throw new InvalidOperationException(
-                    $"Thiếu nhóm after cho PRODUCT={before.ProductId} STORE={before.StoreCd} CHIT={before.ChitType}.");
+                    $"Thiếu nhóm after cho PRODUCT_CD={before.ProductCd} STORE_CD={before.StoreCd} CHIT={before.ChitType}.");
             }
 
-            if (before.ProductId <= 0 || after.ProductId <= 0)
-                throw new InvalidOperationException("Preview 632 yêu cầu ProductId nhóm > 0 — không dùng mặc định 0.");
+            if (string.IsNullOrWhiteSpace(before.ProductCd) || string.IsNullOrWhiteSpace(after.ProductCd))
+            {
+                throw new InvalidOperationException(
+                    "Preview 632 yêu cầu PRODUCT_CD nhóm (khóa InventoryValuation) — không gộp nhiều sản phẩm.");
+            }
 
             lines.Add(new Cogs632PreviewLine
             {
@@ -116,9 +122,13 @@ public static class Cogs632PreviewRules
         }
     }
 
-    private static (string Company, long ProductId, long StoreId, string StoreCd, string ChitType) Key(
+    private static (string ProductCd, string ProductName, string StoreCd, string StoreName, string ChitType) Key(
         ValuationAverageResult g) =>
-        (g.CompanyCd ?? string.Empty, g.ProductId, g.StoreId, g.StoreCd ?? string.Empty, g.ChitType ?? string.Empty);
+        (g.ProductCd ?? string.Empty,
+            g.Group.ProductName ?? string.Empty,
+            g.StoreCd ?? string.Empty,
+            g.Group.StoreName ?? string.Empty,
+            g.ChitType ?? string.Empty);
 
     private static bool Starts632(string? acc) =>
         !string.IsNullOrWhiteSpace(acc) && acc.TrimStart().StartsWith("632", StringComparison.Ordinal);

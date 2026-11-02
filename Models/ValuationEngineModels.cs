@@ -1,10 +1,14 @@
 namespace API_AMNOTE_WEB.Models;
 
-/// <summary>Phương pháp bình quân tái sử dụng cho Preview Bước 5 (không đụng B-I).</summary>
+/// <summary>
+/// Mã phương pháp G-K Bước 5 — trùng InventoryValuationMethod (menu Kho / calc-out-price).
+/// </summary>
 public static class GkValuationMethod
 {
     public const string PeriodEndAverage = "PERIOD_END_AVG";
     public const string MovingAverage = "MOVING_AVG";
+    public const string Fifo = "FIFO";
+    public const string Specific = "SPECIFIC";
 }
 
 public sealed class ValuationMovementInput
@@ -16,7 +20,7 @@ public sealed class ValuationMovementInput
     public long? StoreId { get; set; }
     public string? StoreCd { get; set; }
     public string? StoreName { get; set; }
-    /// <summary>Loại chứng từ kho — khớp nhóm InventoryValuation (CHIT_TYPE).</summary>
+    /// <summary>Loại chứng từ kho — thuộc khóa nhóm InventoryValuation (CHIT_TYPE).</summary>
     public string? ChitType { get; set; }
     public long? InputId { get; set; }
     public long? InventoryId { get; set; }
@@ -33,39 +37,39 @@ public sealed class ValuationMovementInput
     public string CompanyCd { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Khóa nhóm khớp InventoryValuationService:
+/// PRODUCT_CD + PRODUCT_NAME + STORE_CD + STORE_NAME + CHIT_TYPE.
+/// ProductId/StoreId chỉ mang theo cho liên kết G-K (receipt), không thay khóa nhóm.
+/// </summary>
 public sealed class ValuationGroupKey : IEquatable<ValuationGroupKey>
 {
     public string CompanyCd { get; init; } = string.Empty;
     public long ProductId { get; init; }
     public string ProductCd { get; init; } = string.Empty;
+    public string ProductName { get; init; } = string.Empty;
     public long StoreId { get; init; }
     public string StoreCd { get; init; } = string.Empty;
+    public string StoreName { get; init; } = string.Empty;
     public string ChitType { get; init; } = string.Empty;
 
     public override string ToString() =>
-        $"{CompanyCd}|P{ProductId}:{ProductCd}|S{StoreId}:{StoreCd}|{ChitType}";
+        $"{ProductCd}|{ProductName}|{StoreCd}|{StoreName}|{ChitType}";
 
     public bool Equals(ValuationGroupKey? other)
     {
         if (other is null) return false;
-        return ProductId == other.ProductId
-               && StoreId == other.StoreId
-               && string.Equals(CompanyCd, other.CompanyCd, StringComparison.OrdinalIgnoreCase)
-               && string.Equals(ProductCd, other.ProductCd, StringComparison.OrdinalIgnoreCase)
-               && string.Equals(StoreCd, other.StoreCd, StringComparison.OrdinalIgnoreCase)
-               && string.Equals(ChitType, other.ChitType, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(ProductCd, other.ProductCd, StringComparison.Ordinal)
+               && string.Equals(ProductName, other.ProductName, StringComparison.Ordinal)
+               && string.Equals(StoreCd, other.StoreCd, StringComparison.Ordinal)
+               && string.Equals(StoreName, other.StoreName, StringComparison.Ordinal)
+               && string.Equals(ChitType, other.ChitType, StringComparison.Ordinal);
     }
 
     public override bool Equals(object? obj) => Equals(obj as ValuationGroupKey);
 
     public override int GetHashCode() =>
-        HashCode.Combine(
-            ProductId,
-            StoreId,
-            CompanyCd?.ToUpperInvariant(),
-            ProductCd?.ToUpperInvariant(),
-            StoreCd?.ToUpperInvariant(),
-            ChitType?.ToUpperInvariant());
+        HashCode.Combine(ProductCd, ProductName, StoreCd, StoreName, ChitType);
 }
 
 public sealed class ValuationAverageResult

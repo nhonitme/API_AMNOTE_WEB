@@ -1,51 +1,67 @@
-# Nghiệm thu Giai đoạn 2C-04 — VALUATION (final fix nhóm định giá)
+# Nghiệm thu Giai đoạn 2C-04 — VALUATION (điều chỉnh tái sử dụng engine Kho)
 
-Ngày: 2026-11-02 (final fix trước 2C-05)  
-**Không** DB · **Không** SOURCE · **Không** EnableWrites · **Không** cập nhật kho.
+Ngày: 2026-11-02  
+**Không** DB · **Không** SOURCE · **Không** EnableWrites · **Không** cập nhật kho · **Không** đổi menu Kho / B-I.
 
 ---
 
-## 0. Implemented vs skeleton vs pending DEV
+## 0. Quyết định nghiệp vụ (cuối cùng)
+
+1. **Giữ nguyên** quy tắc tách nhóm `InventoryValuationService`:
+   `PRODUCT_CD + PRODUCT_NAME + STORE_CD + STORE_NAME + CHIT_TYPE` (gồm `CHIT_TYPE`).
+2. **Hủy** yêu cầu bắt buộc chuyển khóa nhóm sang `PRODUCT_ID + STORE_ID`.
+3. **Không** xây engine tính giá xuất kho thứ hai. G-K Bước 5 dùng `InventoryOutPriceEngine` (logic tách từ menu Kho) qua adapter `ValuationAverageCost`.
+4. Bốn phương pháp: `PERIOD_END_AVG` · `MOVING_AVG` · `FIFO` · `SPECIFIC` — cùng mã với menu `/inventory/calc-out-price`.
+5. Không tự sửa công thức / nhóm / sắp xếp của bất kỳ phương pháp nào.
+
+### Vai trò G-K
+
+| Bước | Việc làm |
+|------|----------|
+| B4 COST_CALC | Tính & xác nhận giá thành TP |
+| B5 VALUATION | Chuẩn bị cập nhật giá nhập theo INPUT_ID; đối chiếu SL/GT; **tái sử dụng** tính giá xuất kho; Preview ảnh hưởng 632; không tạo bút toán trùng |
+
+---
+
+## 1. Báo cáo thực trạng engine Kho (chỉ đọc — chưa bổ sung persist)
+
+| Câu hỏi | Kết quả rà soát source |
+|---------|-------------------------|
+| Engine chỉ tính hay cập nhật dữ liệu? | **Chỉ tính toán in-memory.** `CalculateAsync` → `InventoryOutPriceEngine.ComputeByGroups` → trả `ProcessedGroups` / `MovementCount`. **Không** gọi repository UPDATE. |
+| Bảng lưu kết quả giá xuất kho? | **Không có bảng kết quả valuation** trong luồng `api/inventory/valuation`. |
+| Có cập nhật ĐG / TT chứng từ xuất? | **Không** trong job valuation. Cập nhật tay/hàng loạt nằm ở luồng riêng `InventoryPriceUpdate` → SP `apply_inventory_update_out_price` → `chit_inventory_output.UNIT_PRICE_CC` / `AMOUNT_CC`. |
+| Giá vốn 632 cập nhật ở đâu? | (1) Phiếu xuất OT: `setInventoryCogs` / `InventoryVoucherRepository.Cogs` → `chitinfo` + `chitdetailinfo` gắn `CHIT_ID_COGS`. (2) Khi đổi giá xuất hàng loạt: `apply_inventory_update_out_price` cộng dồn lại `chitdetailinfo` / `chitinfo` COGS đã link. **G-K VALUATION_COGS (N632/C155) chưa persist trong 2C-04.** |
+
+**Kết luận:** Menu tính giá xuất kho hiện là **compute + progress job**; persist đơn giá xuất / 632 thuộc luồng khác. Bổ sung ghi kho cho G-K = việc **sau nghiệm thu**, không làm trong báo cáo này.
+
+---
+
+## 2. Implemented vs skeleton
 
 | Hạng mục | Trạng thái |
 |----------|------------|
-| `ValuationAverageCost.ComputeByGroup` — nhóm PRODUCT+STORE+CHIT_TYPE | **Implemented** + test |
-| Sort MOVING_AVG = InventoryValuation (TXN_YMD→INVENTORY_ID→CHITDETAIL_ID) | **Implemented** + test |
-| Tồn âm / xuất vượt tồn → `IsValid=false` (không âm thầm OK) | **Implemented** + test |
-| `ApplyReceiptPrices` — COMPANY/PRODUCT/QTY; chặn INPUT orphan/trùng | **Implemented** + test |
-| COGS 632 theo nhóm; OutputUnitCost ≠ EndingUnitCost (MOVING) | **Implemented** + test |
-| STABLE_KEY + COMPANY_CD ownership cho VALUATION_COGS | **Implemented** + test |
-| DryRun: B2/B3/B4 = mô phỏng client (`StepStatusesAreClientSimulated`) | **Implemented** |
-| Confirm: bắt buộc đọc lại DB (skeleton message) | **Skeleton gate** |
-| Apply kho / post 632 / SP body | **Pending DEV** |
-
-DDL 2C-03 (đã vá trước đó): `20261102_2c03_ddl_wip_receipt_key.sql` — không đổi thêm trong final fix này.
+| `InventoryOutPriceEngine` — 4 PP, nhóm/sort như Kho | **Implemented** (dùng chung) |
+| `InventoryValuationService` ủy thác engine chung (không đổi nghiệp vụ) | **Implemented** |
+| `ValuationAverageCost` = adapter G-K (ApplyReceiptPrices + map kết quả) | **Implemented** |
+| Preview 632 theo nhóm PRODUCT_CD+STORE+CHIT; không EXP | **Implemented** |
+| STABLE_KEY + COMPANY ownership | **Implemented** |
+| DryRun B2/B3/B4 = mô phỏng client | **Implemented** |
+| Confirm DB + apply kho + post 632 | **Skeleton / WriteGate OFF** |
 
 ---
 
-## 1. Fix logic (final)
-
-1. **Không gộp** nhiều sản phẩm/kho thành một kết quả ProductId=0 — dùng `ComputeByGroup`.
-2. Khóa nhóm khớp InventoryValuation: Product (+Cd), Store (+Cd/Id), ChitType; CompanyCd.
-3. MOVING_AVG bắt buộc TXN_YMD; sắp xếp nhất quán engine tồn kho.
-4. ApplyReceiptPrices chỉ áp INPUT thuộc COMPANY + PRODUCT + qty khớp; receipt không có trong movements → lỗi.
-5. Preview 632: `OutputAverageUnitCost` vs `EndingAverageUnitCost`; không EXP; không N632/C155 nguồn.
-6. Confirm sau này: đọc B2/B3/B4 từ DB — không tin DryRun.
-
----
-
-## 2. Build & test
+## 3. Build & test
 
 ```text
-dotnet build → 0 Error(s), 3 Warning(s) (nullability cũ — không mới)
+dotnet build (Tests + linked sources) → 0 Error(s)
 dotnet test --filter FullyQualifiedName~ProductionCost
-→ Passed: 71, Failed: 0
+→ Passed: 72, Failed: 0
 ```
 
-Test bổ sung final fix: nhiều SP/kho, MOVING_AVG sort + tồn thiếu, INPUT_ID sai/orphan, COGS 632 theo nhóm, DryRun mô phỏng + Confirm bị WriteGate.
+Test then chốt: parity adapter ↔ `InventoryOutPriceEngine` (4 PP); nhóm gồm CHIT_TYPE; ApplyReceiptPrices; Preview 632; Confirm bị WriteGate.
 
 ---
 
-## 3. Dừng
+## 4. Dừng
 
-Final fix 2C-04 xong — chờ duyệt trước khi triển khai 2C-05.
+Điều chỉnh 2C-04 theo quyết định tái sử dụng engine Kho — chờ duyệt trước 2C-05.
