@@ -2194,6 +2194,7 @@ namespace API_AMNOTE_WEB.Repositories
                 CogsTransferRuleCode.Transfer154To155 => "154 >> 155 Tự động chuyển dữ liệu",
                 CogsTransferRuleCode.Transfer154To155To632 => "154 >> 155 >> 632 Tự động chuyển dữ liệu",
                 CogsTransferRuleCode.Transfer154To632 => "154 >> 632 Tự động chuyển dữ liệu",
+                CogsTransferRuleCode.ExpTo154Only => "G-K: 621/622/623/627 >> 154 (không 155/632)",
                 _ => ruleCode
             };
         }

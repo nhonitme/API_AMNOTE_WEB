@@ -1,3 +1,7 @@
+-- G-K 2B — PeriodLock COGS: thêm EXP_TO_154_ONLY, giữ nguyên 3 rule B-I
+-- Đồng bộ nội dung với Database/StoredProcedures/PeriodLock/CogsSummary/01_sp_period_lock_cogs.sql
+-- DEV/TEST only. CẤM production.
+
 DELIMITER $$
 
 DROP PROCEDURE IF EXISTS `sp_period_lock_cogs_build_xfer`$$
@@ -13,6 +17,11 @@ proc: BEGIN
     DECLARE v_acc_155 VARCHAR(20);
     DECLARE v_acc_632 VARCHAR(20);
     DECLARE v_has_source INT DEFAULT 0;
+    DECLARE v_run_id BIGINT DEFAULT NULL;
+    DECLARE v_run_ver INT DEFAULT NULL;
+    DECLARE v_alloc_sum DECIMAL(18,2) DEFAULT 0;
+    DECLARE v_gl_622627 DECIMAL(18,2) DEFAULT 0;
+    DECLARE v_tbl_alloc INT DEFAULT 0;
 
     SET v_from_ymd = CONCAT(p_PERIOD_YM, '01');
     SET v_to_ymd = DATE_FORMAT(LAST_DAY(STR_TO_DATE(CONCAT(p_PERIOD_YM, '01'), '%Y%m%d')), '%Y%m%d');
@@ -36,6 +45,142 @@ proc: BEGIN
         PRIMARY KEY (DEPARTMENT_ID)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
+    -- ========== G-K: EXP_TO_154_ONLY ==========
+    IF p_RULE_CODE = 'EXP_TO_154_ONLY' THEN
+        SELECT COUNT(*) INTO v_tbl_alloc
+        FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'production_cost_alloc_detail';
+
+        IF IFNULL(v_tbl_alloc, 0) = 0 THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'EXP_TO_154_ONLY can bang production_cost_alloc_detail';
+        END IF;
+
+        SELECT p.CURRENT_RUN_ID, r.RUN_VERSION
+          INTO v_run_id, v_run_ver
+        FROM production_cost_period p
+        INNER JOIN production_cost_run r
+            ON r.RUN_ID = p.CURRENT_RUN_ID
+           AND r.COMPANY_CD = p.COMPANY_CD
+           AND r.ISDEL = '0'
+        WHERE p.COMPANY_CD = p_COMPANY_CD
+          AND p.PERIOD_YM = p_PERIOD_YM
+          AND p.ISDEL = '0'
+          AND p.COST_ENGINE = 'GK'
+        LIMIT 1;
+
+        IF v_run_id IS NULL OR v_run_ver IS NULL THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'EXP_TO_154_ONLY can RUN G-K (COST_ENGINE=GK + CURRENT_RUN_ID)';
+        END IF;
+
+        SELECT IFNULL(SUM(ALLOCATED_AMOUNT), 0)
+          INTO v_alloc_sum
+        FROM production_cost_alloc_detail
+        WHERE COMPANY_CD = p_COMPANY_CD
+          AND RUN_ID = v_run_id
+          AND RUN_VERSION = v_run_ver
+          AND ISDEL = '0'
+          AND (
+                ACCOUNT_CD LIKE '622%'
+             OR ACCOUNT_CD LIKE '627%'
+          );
+
+        IF IFNULL(v_alloc_sum, 0) <= 0 THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Chua co ket qua phan bo 622/627 CONFIRMED cho ky G-K';
+        END IF;
+
+        CALL sp_period_lock_resolve_posting_acc(p_COMPANY_CD, '154', v_acc_154);
+
+        -- 621 (loại 6212) + 623 từ GL nguồn — không lấy CT LOCK
+        INSERT INTO tmp_xfer_lines (TRANSFER_CODE, DEBIT_ACC, CREDIT_ACC, AMOUNT, DEPARTMENT_ID)
+        SELECT
+            'EXP_TO_154',
+            v_acc_154,
+            TRIM(CD.DEBIT),
+            SUM(CD.AMOUNT),
+            IFNULL(ext.DEPARTMENT_ID, 0)
+        FROM chitinfo C
+        INNER JOIN chitdetailinfo CD
+            ON CD.COMPANY_CD = C.COMPANY_CD
+           AND CD.CHIT_ID = C.CHIT_ID
+           AND CD.ISDEL = '0'
+        LEFT JOIN chitdetailinfo_ext ext
+            ON ext.COMPANY_CD = CD.COMPANY_CD
+           AND ext.CHITDETAIL_ID = CD.CHITDETAIL_ID
+           AND ext.ISDEL = '0'
+        INNER JOIN acclist_info A
+            ON A.COMPANY_CD = CD.COMPANY_CD
+           AND A.ACC_CD = TRIM(CD.DEBIT)
+           AND IFNULL(A.ISDEL, '0') = '0'
+           AND IFNULL(A.ISABLEINPUT, '0') = '1'
+        WHERE C.COMPANY_CD = p_COMPANY_CD
+          AND C.ISDEL = '0'
+          AND IFNULL(C.INPUT_TYPE, '') <> 'LOCK'
+          AND C.CHIT_YMD >= v_from_ymd
+          AND C.CHIT_YMD <= v_to_ymd
+          AND (
+                (TRIM(CD.DEBIT) LIKE '621%' AND TRIM(CD.DEBIT) NOT LIKE '6212%')
+             OR TRIM(CD.DEBIT) LIKE '623%'
+             OR TRIM(CD.DEBIT) LIKE '6212%'
+          )
+        GROUP BY TRIM(CD.DEBIT), IFNULL(ext.DEPARTMENT_ID, 0)
+        HAVING SUM(CD.AMOUNT) > 0;
+
+        -- 622/627 chỉ từ phân bổ G-K (không lấy lại GL 622/627 → tránh cộng trùng)
+        INSERT INTO tmp_xfer_lines (TRANSFER_CODE, DEBIT_ACC, CREDIT_ACC, AMOUNT, DEPARTMENT_ID)
+        SELECT
+            'EXP_TO_154',
+            v_acc_154,
+            TRIM(ad.ACCOUNT_CD),
+            SUM(ad.ALLOCATED_AMOUNT),
+            IFNULL(ad.DEPARTMENT_ID, 0)
+        FROM production_cost_alloc_detail ad
+        WHERE ad.COMPANY_CD = p_COMPANY_CD
+          AND ad.RUN_ID = v_run_id
+          AND ad.RUN_VERSION = v_run_ver
+          AND ad.ISDEL = '0'
+          AND (
+                ad.ACCOUNT_CD LIKE '622%'
+             OR ad.ACCOUNT_CD LIKE '627%'
+          )
+        GROUP BY TRIM(ad.ACCOUNT_CD), IFNULL(ad.DEPARTMENT_ID, 0)
+        HAVING SUM(ad.ALLOCATED_AMOUNT) > 0;
+
+        -- Đối chiếu tổng GL 622/627 nguồn vs phân bổ (sai lệch > 1đ → lỗi)
+        SELECT IFNULL(SUM(CD.AMOUNT), 0)
+          INTO v_gl_622627
+        FROM chitinfo C
+        INNER JOIN chitdetailinfo CD
+            ON CD.COMPANY_CD = C.COMPANY_CD
+           AND CD.CHIT_ID = C.CHIT_ID
+           AND CD.ISDEL = '0'
+        INNER JOIN acclist_info A
+            ON A.COMPANY_CD = CD.COMPANY_CD
+           AND A.ACC_CD = TRIM(CD.DEBIT)
+           AND IFNULL(A.ISDEL, '0') = '0'
+           AND IFNULL(A.ISABLEINPUT, '0') = '1'
+        WHERE C.COMPANY_CD = p_COMPANY_CD
+          AND C.ISDEL = '0'
+          AND IFNULL(C.INPUT_TYPE, '') <> 'LOCK'
+          AND C.CHIT_YMD >= v_from_ymd
+          AND C.CHIT_YMD <= v_to_ymd
+          AND (
+                TRIM(CD.DEBIT) LIKE '622%'
+             OR TRIM(CD.DEBIT) LIKE '627%'
+          );
+
+        IF ABS(IFNULL(v_gl_622627, 0) - IFNULL(v_alloc_sum, 0)) > 1 THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Tong phan bo 622/627 khong khop chi phi nguon GL';
+        END IF;
+
+        -- Không tạo 154→155 / 154→632
+        LEAVE proc;
+    END IF;
+
+    -- ========== B-I: 3 rule hiện tại (không đổi hành vi) ==========
     SELECT COUNT(*)
       INTO v_has_source
     FROM chitinfo C
@@ -205,10 +350,13 @@ BEGIN
         'COGS_SUMMARY'
     );
 
-    IF p_RULE_CODE NOT IN ('154_TO_155', '154_TO_155_TO_632', '154_TO_632') THEN
+    IF p_RULE_CODE NOT IN ('154_TO_155', '154_TO_155_TO_632', '154_TO_632', 'EXP_TO_154_ONLY') THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Rule kết chuyển giá vốn không hợp lệ';
+            SET MESSAGE_TEXT = 'Rule ket chuyen gia von khong hop le';
     END IF;
+
+    -- Exclusive GK/BI (yêu cầu bảng production_cost_period đã migrate trên DEV)
+    CALL sp_pc_engine_assert_for_cogs(p_COMPANY_CD, p_PERIOD_YM, p_RULE_CODE, p_USER_ID);
 END$$
 
 DROP PROCEDURE IF EXISTS `sp_period_lock_cogs_calculate`$$
@@ -262,6 +410,10 @@ BEGIN
     );
 
     CALL sp_period_lock_cogs_validate(p_COMPANY_CD, p_PERIOD_YM, p_RULE_CODE, p_USER_ID);
+
+    -- Idempotent khi step còn OPEN nhưng còn CT LOCK sót (retry / lỗi giữa chừng)
+    CALL sp_period_lock_cogs_rollback_period(p_COMPANY_CD, p_PERIOD_YM);
+
     CALL sp_period_lock_cogs_build_xfer(p_COMPANY_CD, p_PERIOD_YM, p_RULE_CODE);
 
     CALL sp_period_lock_post_xfer_group(
@@ -269,6 +421,7 @@ BEGIN
         'EXP_TO_154', v_description, p_USER_ID, 'CG1'
     );
 
+    -- G-K EXP_TO_154_ONLY: chỉ Nợ 154 / Có 621..627 — không post 154→155/632
     IF p_RULE_CODE IN ('154_TO_155', '154_TO_155_TO_632') THEN
         CALL sp_period_lock_post_xfer_group(
             p_COMPANY_CD, p_PERIOD_YM, 'COGS_SUMMARY',
@@ -323,6 +476,8 @@ BEGIN
         'Đã mở',
         p_USER_ID
     );
+
+    CALL sp_pc_engine_release_cogs(p_COMPANY_CD, p_PERIOD_YM, p_USER_ID);
 
     COMMIT;
 END$$

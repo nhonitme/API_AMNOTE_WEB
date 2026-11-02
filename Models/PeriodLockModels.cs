@@ -97,6 +97,12 @@
 
         /// <summary>Chuyển dữ liệu từ tài khoản 154 sang 632.</summary>
         public const string Transfer154To632 = "154_TO_632";
+
+        /// <summary>
+        /// G-K: chỉ kết chuyển 621/622/623/627 → 154 (không 154→155/632).
+        /// 622/627 lấy từ phân bổ G-K bước 2 đã xác nhận.
+        /// </summary>
+        public const string ExpTo154Only = "EXP_TO_154_ONLY";
     }
 
     /// <summary>
