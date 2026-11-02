@@ -196,6 +196,8 @@ builder.Services.AddScoped<IVatInOutRepository, VatInOutRepository>();
 builder.Services.AddScoped<ILoginRepository, LoginRepository>();
 
 builder.Services.AddScoped<IPeriodLockRepository, PeriodLockRepository>();
+builder.Services.AddScoped<IProductionCostRepository, ProductionCostRepository>();
+builder.Services.AddScoped<IProductionCostService, API_AMNOTE_WEB.Services.ProductionCost.ProductionCostService>();
 
 builder.Services.AddSingleton<IPeriodLockJobQueue, PeriodLockJobQueue>();
 builder.Services.AddHostedService<PeriodLockBackgroundService>();

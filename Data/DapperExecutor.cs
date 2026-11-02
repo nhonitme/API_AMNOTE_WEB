@@ -82,6 +82,16 @@ namespace API_AMNOTE_WEB.Data
             return result;
         }
 
+        public async Task<T?> QueryFirstOrDefaultAsync<T>(Net_DB db, string sql, object param = null, string? sDBName = null, int? commandTimeout = null)
+        {
+            var sw = Stopwatch.StartNew();
+            Common.LogQuery(sql, param, sw.ElapsedMilliseconds);
+            using var conn = _context.CreateConnection(db, sDBName);
+            var result = await conn.QueryFirstOrDefaultAsync<T>(sql, param, commandTimeout: commandTimeout);
+            sw.Stop();
+            return result;
+        }
+
         public async Task<T> QuerySingleAsync<T>(Net_DB db, string sql, object param = null, string? sDBName = null, int? commandTimeout = null)
         {
             var sw = Stopwatch.StartNew();
