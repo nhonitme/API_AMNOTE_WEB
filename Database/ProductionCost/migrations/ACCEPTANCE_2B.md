@@ -7,7 +7,7 @@
 - `00_preflight_dev.sql` + `00_guard_inline.sql` + `APPROVED_ENV.sql`: **0 DROP/CREATE**.
 - Khớp `DATABASE()`, `@@hostname` (exact hoặc CONTAINS), `ENV_TAG∈{DEV,TEST}`; chặn tên prod-like.
 - Không chỉ tin `@GK_2B_ALLOW_DB` — nếu set phải trùng allowlist committed.
-- Install/rollback: `SOURCE preflight` **trước** mọi DDL/DROP; FAIL → `1/0` dừng chain (`--abort-source-on-error`).
+- Install/rollback: `SOURCE preflight` **trước** mọi DDL/DROP; FAIL → `PREPARE` SQL không hợp lệ sinh ERROR 1064 để dừng chain (`--abort-source-on-error`, cấm `--force`).
 - Orchestrator: `Invoke-Gk2bInstall.ps1` từ chối khi còn placeholder.
 
 ## 2. Transaction bảo toàn chứng từ — đã xử lý
