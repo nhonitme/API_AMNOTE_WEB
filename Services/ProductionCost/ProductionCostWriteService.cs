@@ -206,8 +206,10 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         response.RunVersion = request.RunVersion;
         response.InventoryPriceApplied = false;
         response.CogsVoucherPosted = false;
+        response.StepStatusesAreClientSimulated = true;
         response.Message =
-            "Preview VALUATION dry-run — không ghi kho / không post 632 / không đụng phiên CONFIRMED cũ.";
+            "Preview VALUATION dry-run — không ghi kho / không post 632. " +
+            "Trạng thái B2/B3/B4 trong DryRun chỉ mô phỏng client; Confirm phải đọc lại từ DB.";
         return Task.FromResult(response);
     }
 
@@ -222,13 +224,14 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         _gate.EnsureWritable();
 
         // Skeleton (TX owner = C#):
-        // 1) Assert B2/B3/B4 DONE + RUN_ID+VERSION; cấm SUPERSEDED
-        // 2) ReadyToApply reconcile → apply_inventory_update_in_price theo INPUT_ID (COMPANY_CD)
-        // 3) Tính lại xuất (BQGQ) + post/UPDATE VALUATION_COGS theo STABLE_KEY — atomic với (2)
+        // 1) ĐỌC LẠI từ DB: B2/B3/B4 DONE + RUN_ID+VERSION + COMPANY_CD — không tin DryRun client
+        // 2) ReadyToApply reconcile → apply giá INPUT_ID (COMPANY_CD) theo nhóm PRODUCT+STORE
+        // 3) Tính lại xuất theo nhóm + UPSERT VALUATION_COGS (STABLE_KEY+COMPANY) — atomic với (2)
         // 4) VALUATION=DONE; không tự RUN.STATUS=CONFIRMED toàn kỳ
         // 5) RollbackRestoreLines nếu fail giữa chừng
         throw new InvalidOperationException(
-            "Confirm VALUATION DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-04.");
+            "Confirm VALUATION DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-04. " +
+            "Confirm bắt buộc kiểm tra lại trạng thái bước từ database.");
     }
 
     /// <summary>Tính phân bổ thuần — dùng unit test / dry-run API.</summary>
@@ -314,33 +317,34 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         if (dry.ConfirmedWip.Count == 0)
             throw new ArgumentException("ValuationDryRun.ConfirmedWip không được rỗng.");
 
-        var receiptPreps = ReceiptPricePrep.Build(dry.ConfirmedWip, dry.Receipts);
+        var receiptPreps = ReceiptPricePrep.Build(dry.ConfirmedWip, dry.Receipts, companyCd);
         var reconcile = ReceiptReconcile.Check(
             dry.ConfirmedWip, receiptPreps, ReceiptReconcileMode.Preview);
 
         if (!reconcile.Ok)
             throw new InvalidOperationException(reconcile.Errors[0]);
 
-        var before = dry.Movements.Count > 0
-            ? ValuationAverageCost.Compute(dry.Movements, dry.ValuationMethod)
-            : null;
-        var afterMovements = dry.Movements.Count > 0
-            ? ValuationAverageCost.ApplyReceiptPrices(dry.Movements, receiptPreps)
-            : Array.Empty<ValuationMovementInput>();
-        var after = afterMovements.Count > 0
-            ? ValuationAverageCost.Compute(afterMovements, dry.ValuationMethod)
-            : null;
+        IReadOnlyList<ValuationAverageResult> beforeGroups = Array.Empty<ValuationAverageResult>();
+        IReadOnlyList<ValuationAverageResult> afterGroups = Array.Empty<ValuationAverageResult>();
+        IReadOnlyList<Cogs632PreviewLine> cogs = Array.Empty<Cogs632PreviewLine>();
 
-        var cogs = before != null && after != null
-            ? Cogs632PreviewRules.BuildPreview(before, after)
-            : Array.Empty<Cogs632PreviewLine>();
+        if (dry.Movements.Count > 0)
+        {
+            beforeGroups = ValuationAverageCost.ComputeByGroup(dry.Movements, dry.ValuationMethod);
+            var afterMovements = ValuationAverageCost.ApplyReceiptPrices(
+                dry.Movements, receiptPreps, companyCd, dry.ConfirmedWip);
+            afterGroups = ValuationAverageCost.ComputeByGroup(afterMovements, dry.ValuationMethod);
+            cogs = Cogs632PreviewRules.BuildPreviewByGroup(beforeGroups, afterGroups);
+        }
 
         var plan = ValuationApplyPlan.Build(
             companyCd,
             request.PeriodYm,
             receiptPreps,
             dry.ExistingValuationChitId,
-            writeEnabled: false);
+            writeEnabled: false,
+            dry.ExistingValuationChitCompanyCd,
+            dry.ExistingValuationStableKey);
 
         return new ProductionCostValuationWriteResponse
         {
@@ -350,12 +354,13 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             ReconcileWarnings = reconcile.Warnings,
             ReconcileErrors = reconcile.Errors,
             ReadyToApply = reconcile.ReadyToApply,
-            AverageBefore = before,
-            AverageAfter = after,
+            AverageBeforeGroups = beforeGroups,
+            AverageAfterGroups = afterGroups,
             Cogs632Preview = cogs,
             TransactionPlan = plan,
             InventoryPriceApplied = false,
-            CogsVoucherPosted = false
+            CogsVoucherPosted = false,
+            StepStatusesAreClientSimulated = true
         };
     }
 

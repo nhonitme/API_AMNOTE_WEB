@@ -10,9 +10,19 @@ public static class GkValuationMethod
 public sealed class ValuationMovementInput
 {
     public long ProductId { get; set; }
+    public string? ProductCd { get; set; }
+    public string? ProductName { get; set; }
     public long? DepartmentId { get; set; }
+    public long? StoreId { get; set; }
+    public string? StoreCd { get; set; }
+    public string? StoreName { get; set; }
+    /// <summary>Loại chứng từ kho — khớp nhóm InventoryValuation (CHIT_TYPE).</summary>
+    public string? ChitType { get; set; }
     public long? InputId { get; set; }
     public long? InventoryId { get; set; }
+    public long? ChitdetailId { get; set; }
+    /// <summary>Ngày giao dịch yyyyMMdd — bắt buộc cho MOVING_AVG.</summary>
+    public string? TxnYmd { get; set; }
     public string FlowType { get; set; } = string.Empty; // OPEN | INPUT | OUTPUT
     public decimal Quantity { get; set; }
     public decimal AmountCc { get; set; }
@@ -23,25 +33,80 @@ public sealed class ValuationMovementInput
     public string CompanyCd { get; set; } = string.Empty;
 }
 
+public sealed class ValuationGroupKey : IEquatable<ValuationGroupKey>
+{
+    public string CompanyCd { get; init; } = string.Empty;
+    public long ProductId { get; init; }
+    public string ProductCd { get; init; } = string.Empty;
+    public long StoreId { get; init; }
+    public string StoreCd { get; init; } = string.Empty;
+    public string ChitType { get; init; } = string.Empty;
+
+    public override string ToString() =>
+        $"{CompanyCd}|P{ProductId}:{ProductCd}|S{StoreId}:{StoreCd}|{ChitType}";
+
+    public bool Equals(ValuationGroupKey? other)
+    {
+        if (other is null) return false;
+        return ProductId == other.ProductId
+               && StoreId == other.StoreId
+               && string.Equals(CompanyCd, other.CompanyCd, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(ProductCd, other.ProductCd, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(StoreCd, other.StoreCd, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(ChitType, other.ChitType, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public override bool Equals(object? obj) => Equals(obj as ValuationGroupKey);
+
+    public override int GetHashCode() =>
+        HashCode.Combine(
+            ProductId,
+            StoreId,
+            CompanyCd?.ToUpperInvariant(),
+            ProductCd?.ToUpperInvariant(),
+            StoreCd?.ToUpperInvariant(),
+            ChitType?.ToUpperInvariant());
+}
+
 public sealed class ValuationAverageResult
 {
     public string MethodCode { get; set; } = string.Empty;
+    public ValuationGroupKey Group { get; set; } = new();
+    public long ProductId { get; set; }
+    public string? ProductCd { get; set; }
+    public long StoreId { get; set; }
+    public string? StoreCd { get; set; }
+    public string? ChitType { get; set; }
+    public string CompanyCd { get; set; } = string.Empty;
     public decimal InputQuantity { get; set; }
     public decimal InputAmount { get; set; }
     public decimal OutputQuantity { get; set; }
     public decimal OutputAmount { get; set; }
+    /// <summary>Đơn giá xuất bình quân thực tế = OutputAmount / OutputQuantity (0 nếu không xuất).</summary>
+    public decimal OutputAverageUnitCost { get; set; }
     public decimal EndingQuantity { get; set; }
     public decimal EndingAmount { get; set; }
+    /// <summary>Đơn giá bình quân tồn cuối — khác OutputAverageUnitCost ở MOVING_AVG.</summary>
     public decimal EndingAverageUnitCost { get; set; }
+    public bool IsValid { get; set; } = true;
+    public IReadOnlyList<string> Errors { get; set; } = Array.Empty<string>();
 }
 
 public sealed class Cogs632PreviewLine
 {
     public long ProductId { get; set; }
+    public string? ProductCd { get; set; }
     public long DepartmentId { get; set; }
+    public long StoreId { get; set; }
+    public string? StoreCd { get; set; }
+    public string? ChitType { get; set; }
+    public string CompanyCd { get; set; } = string.Empty;
     public decimal OutputQuantity { get; set; }
-    public decimal UnitCostBefore { get; set; }
-    public decimal UnitCostAfter { get; set; }
+    /// <summary>Đơn giá xuất bình quân trước/sau — dùng cho COGS, không dùng tồn cuối thay thế.</summary>
+    public decimal OutputUnitCostBefore { get; set; }
+    public decimal OutputUnitCostAfter { get; set; }
+    public decimal EndingUnitCostBefore { get; set; }
+    public decimal EndingUnitCostAfter { get; set; }
     public decimal CogsAmountBefore { get; set; }
     public decimal CogsAmountAfter { get; set; }
     public decimal CogsDelta { get; set; }
@@ -72,6 +137,8 @@ public sealed class ValuationTransactionPlan
     public bool AtomicInAndOutRequired { get; set; } = true;
     public bool WouldApplyInventory { get; set; }
     public bool WouldPostCogs632 { get; set; }
+    /// <summary>Đã có CHIT VALUATION_COGS theo STABLE_KEY+COMPANY — Confirm phải UPDATE.</summary>
+    public bool ExistingValuationCogsVoucher { get; set; }
     public IReadOnlyList<ValuationPriceApplyPlanLine> PriceLines { get; set; }
         = Array.Empty<ValuationPriceApplyPlanLine>();
     public IReadOnlyList<ValuationPriceApplyPlanLine> RollbackRestoreLines { get; set; }
@@ -89,11 +156,18 @@ public sealed class ValuationDryRunPayload
     public IReadOnlyList<ReceiptPricePrepInput> Receipts { get; set; } = Array.Empty<ReceiptPricePrepInput>();
     /// <summary>Chuyển động kho để Preview bình quân / 632 (thuần).</summary>
     public IReadOnlyList<ValuationMovementInput> Movements { get; set; } = Array.Empty<ValuationMovementInput>();
+    /// <summary>
+    /// Trạng thái bước do client gửi trong DryRun — chỉ mô phỏng Preview.
+    /// Confirm thật bắt buộc đọc lại từ DB.
+    /// </summary>
     public string? AllocationStepStatus { get; set; }
     public string? ExpTo154StepStatus { get; set; }
     public string? CostCalcStepStatus { get; set; }
     public string? RunStatus { get; set; }
     public long? ExistingValuationChitId { get; set; }
+    /// <summary>COMPANY_CD của chứng từ VALUATION_COGS đã có (nếu khác → lỗi).</summary>
+    public string? ExistingValuationChitCompanyCd { get; set; }
+    public string? ExistingValuationStableKey { get; set; }
 }
 
 public sealed class ProductionCostValuationWriteResponse
@@ -109,11 +183,14 @@ public sealed class ProductionCostValuationWriteResponse
     public IReadOnlyList<string> ReconcileWarnings { get; set; } = Array.Empty<string>();
     public IReadOnlyList<string> ReconcileErrors { get; set; } = Array.Empty<string>();
     public bool ReadyToApply { get; set; }
-    public ValuationAverageResult? AverageBefore { get; set; }
-    public ValuationAverageResult? AverageAfter { get; set; }
+    /// <summary>Kết quả bình quân từng nhóm (PRODUCT+STORE+CHIT_TYPE) — trước cập nhật giá.</summary>
+    public IReadOnlyList<ValuationAverageResult> AverageBeforeGroups { get; set; } = Array.Empty<ValuationAverageResult>();
+    public IReadOnlyList<ValuationAverageResult> AverageAfterGroups { get; set; } = Array.Empty<ValuationAverageResult>();
     public IReadOnlyList<Cogs632PreviewLine> Cogs632Preview { get; set; } = Array.Empty<Cogs632PreviewLine>();
     public ValuationTransactionPlan? TransactionPlan { get; set; }
     public bool InventoryPriceApplied { get; set; }
     public bool CogsVoucherPosted { get; set; }
+    /// <summary>True khi B2/B3/B4 trong DryRun chỉ là mô phỏng client, chưa xác thực DB.</summary>
+    public bool StepStatusesAreClientSimulated { get; set; } = true;
     public string? Message { get; set; }
 }

@@ -120,6 +120,7 @@ public sealed class ReceiptPricePrepLine
     public long DepartmentId { get; set; }
     public long InputId { get; set; }
     public long? InventoryId { get; set; }
+    public string CompanyCd { get; set; } = string.Empty;
     public string? ProductCd { get; set; }
     public string? InventoryNo { get; set; }
     public decimal Qty { get; set; }

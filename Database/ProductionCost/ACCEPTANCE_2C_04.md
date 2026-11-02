@@ -1,8 +1,7 @@
-# Nghiệm thu Giai đoạn 2C-04 — VALUATION (giá nhập TP + Preview 632)
+# Nghiệm thu Giai đoạn 2C-04 — VALUATION (final fix nhóm định giá)
 
-Ngày: 2026-11-02  
-Phạm vi: Tiền đề B2–B4, Receipt reconcile Preview/ReadyToApply, bình quân xuất kho thuần, Preview 632, API gate OFF.  
-**Không** DB · **Không** SOURCE · **Không** EnableWrites · **Không** cập nhật kho · **Không** production.
+Ngày: 2026-11-02 (final fix trước 2C-05)  
+**Không** DB · **Không** SOURCE · **Không** EnableWrites · **Không** cập nhật kho.
 
 ---
 
@@ -10,55 +9,43 @@ Phạm vi: Tiền đề B2–B4, Receipt reconcile Preview/ReadyToApply, bình q
 
 | Hạng mục | Trạng thái |
 |----------|------------|
-| `ValuationPrerequisite` (B2/B3/B4 DONE; cấm SUPERSEDED) | **Implemented** + test |
-| `ReceiptReconcile` Preview (cảnh báo thiếu phiếu) / ReadyToApply (bắt buộc đủ) | **Implemented** + test |
-| `ReceiptPricePrep` + plan old/new/delta + COMPANY_CD trên plan | **Implemented** |
-| `ValuationAverageCost` PERIOD_END_AVG / MOVING_AVG (công thức InventoryValuation) | **Implemented** + test |
-| `Cogs632PreviewRules` — không EXP; không trùng N632/C155 nguồn | **Implemented** + test |
-| `ValuationApplyPlan` — atomic flag, rollback map, STABLE_KEY, IsApplied=false | **Implemented** + test |
-| API `POST .../valuation/preview` | **DryRun** — không ghi DB |
-| API `POST .../valuation/confirm` | **Skeleton + WriteGate OFF** |
-| `sp_pc_valuation_preview/confirm` | **Skeleton SIGNAL** |
-| Apply `INPUT_ID` kho thật / post 632 / tính xuất persist | **Pending DEV** |
-| RUN → CONFIRMED toàn kỳ | **Chưa** (cần đủ bước; B5 chỉ VALUATION=DONE) |
+| `ValuationAverageCost.ComputeByGroup` — nhóm PRODUCT+STORE+CHIT_TYPE | **Implemented** + test |
+| Sort MOVING_AVG = InventoryValuation (TXN_YMD→INVENTORY_ID→CHITDETAIL_ID) | **Implemented** + test |
+| Tồn âm / xuất vượt tồn → `IsValid=false` (không âm thầm OK) | **Implemented** + test |
+| `ApplyReceiptPrices` — COMPANY/PRODUCT/QTY; chặn INPUT orphan/trùng | **Implemented** + test |
+| COGS 632 theo nhóm; OutputUnitCost ≠ EndingUnitCost (MOVING) | **Implemented** + test |
+| STABLE_KEY + COMPANY_CD ownership cho VALUATION_COGS | **Implemented** + test |
+| DryRun: B2/B3/B4 = mô phỏng client (`StepStatusesAreClientSimulated`) | **Implemented** |
+| Confirm: bắt buộc đọc lại DB (skeleton message) | **Skeleton gate** |
+| Apply kho / post 632 / SP body | **Pending DEV** |
 
-DDL 2C-03 (vá kèm 2C-04): `20261102_2c03_ddl_wip_receipt_key.sql` — precheck ISDEL; skip DROP/ADD nếu UNIQUE đã mới.
+DDL 2C-03 (đã vá trước đó): `20261102_2c03_ddl_wip_receipt_key.sql` — không đổi thêm trong final fix này.
 
 ---
 
-## 1. Phạm vi nghiệp vụ đã khóa
+## 1. Fix logic (final)
 
-1. Chỉ VALUATION khi COST_ALLOCATION / EXP_TO_154_ONLY / COST_CALC = DONE cùng RUN_ID+VERSION.
-2. Giá nhập theo PRODUCT_ID + DEPARTMENT_ID + INPUT_ID; không nhầm COMPANY_CD.
-3. Preview: thiếu phiếu → Warning; ReadyToApply: thiếu đối tượng bắt buộc (Q&gt;0) → Error.
-4. Không tự điều chỉnh lệch tiền/SL; Q=0 không bắt buộc phiếu nhập.
-5. Preview 632 từ bình quân sau đổi giá nhập — không cộng EXP_TO_154; không INSERT trùng N632/C155.
-6. Không đổi nghiệp vụ B-I; B3 vẫn cấm downstream.
-
----
-
-## 2. File chính
-
-- `Services/ProductionCost/Valuation/*`
-- `Services/ProductionCost/Wip/ReceiptReconcile.cs` (mở rộng mode)
-- `Models/ValuationEngineModels.cs`
-- `ProductionCostWriteService` / Controller / Interface
-- `migrations/20261102_2c04_sp_valuation.sql`, `2c04_README.md`
-- Tests: `ProductionCostValuationTests.cs`
+1. **Không gộp** nhiều sản phẩm/kho thành một kết quả ProductId=0 — dùng `ComputeByGroup`.
+2. Khóa nhóm khớp InventoryValuation: Product (+Cd), Store (+Cd/Id), ChitType; CompanyCd.
+3. MOVING_AVG bắt buộc TXN_YMD; sắp xếp nhất quán engine tồn kho.
+4. ApplyReceiptPrices chỉ áp INPUT thuộc COMPANY + PRODUCT + qty khớp; receipt không có trong movements → lỗi.
+5. Preview 632: `OutputAverageUnitCost` vs `EndingAverageUnitCost`; không EXP; không N632/C155 nguồn.
+6. Confirm sau này: đọc B2/B3/B4 từ DB — không tin DryRun.
 
 ---
 
-## 3. Build & test
+## 2. Build & test
 
 ```text
-dotnet build → 0 Error(s)
+dotnet build → 0 Error(s), 3 Warning(s) (nullability cũ — không mới)
 dotnet test --filter FullyQualifiedName~ProductionCost
-→ Passed: 70, Failed: 0
+→ Passed: 71, Failed: 0
 ```
+
+Test bổ sung final fix: nhiều SP/kho, MOVING_AVG sort + tồn thiếu, INPUT_ID sai/orphan, COGS 632 theo nhóm, DryRun mô phỏng + Confirm bị WriteGate.
 
 ---
 
-## 4. Dừng
+## 3. Dừng
 
-2C-04 source xong để duyệt trước 2C-05.  
-Không thực thi SQL · không bật ghi · không cập nhật kho.
+Final fix 2C-04 xong — chờ duyệt trước khi triển khai 2C-05.

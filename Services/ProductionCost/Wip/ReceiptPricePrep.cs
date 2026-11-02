@@ -18,12 +18,14 @@ public static class ReceiptPricePrep
 
     public static IReadOnlyList<ReceiptPricePrepLine> Build(
         IEnumerable<WipCalcResult> costs,
-        IEnumerable<ReceiptPricePrepInput> receipts) =>
-        BuildDetailed(costs, receipts).Lines;
+        IEnumerable<ReceiptPricePrepInput> receipts,
+        string? companyCd = null) =>
+        BuildDetailed(costs, receipts, companyCd).Lines;
 
     public static PrepResult BuildDetailed(
         IEnumerable<WipCalcResult> costs,
-        IEnumerable<ReceiptPricePrepInput> receipts)
+        IEnumerable<ReceiptPricePrepInput> receipts,
+        string? companyCd = null)
     {
         var costList = costs.ToList();
         var receiptList = receipts.ToList();
@@ -52,6 +54,7 @@ public static class ReceiptPricePrep
                 DepartmentId = r.DepartmentId,
                 InputId = r.InputId,
                 InventoryId = r.InventoryId,
+                CompanyCd = companyCd ?? string.Empty,
                 ProductCd = r.ProductCd,
                 InventoryNo = r.InventoryNo,
                 Qty = r.Qty,

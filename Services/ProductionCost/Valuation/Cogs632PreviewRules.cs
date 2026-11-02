@@ -5,8 +5,8 @@ using API_AMNOTE_WEB.Services.ProductionCost.Transfer;
 namespace API_AMNOTE_WEB.Services.ProductionCost.Valuation;
 
 /// <summary>
-/// Preview giá vốn 632 sau cập nhật giá nhập — không tạo trùng N632/C155 kiểu B-I;
-/// không cộng EXP_TO_154_ONLY vào tính giá vốn thêm lần nữa.
+/// Preview giá vốn 632 theo từng nhóm tồn — không gộp nhiều sản phẩm;
+/// không cộng EXP; phân biệt đơn giá xuất vs tồn cuối.
 /// </summary>
 public static class Cogs632PreviewRules
 {
@@ -20,55 +20,105 @@ public static class Cogs632PreviewRules
                     "Không đưa bút toán EXP_TO_154_ONLY (Bước 3) vào tính giá vốn 632 / bình quân xuất kho.");
             }
 
-            if (ExpTo154Rules.IsForbiddenDownstreamLine(m.DebitAccountCd, m.CreditAccountCd)
-                && string.Equals(m.FlowType, "OUTPUT", StringComparison.OrdinalIgnoreCase) == false)
+            if (Starts632(m.DebitAccountCd) && Starts155(m.CreditAccountCd)
+                && !string.Equals(m.FlowType, "OUTPUT", StringComparison.OrdinalIgnoreCase))
             {
-                // Forbidden GL lines (N632/C155 as transfer from 154 path) must not appear as source movements
-                // except legitimate stock OUTPUT valuation targets prepared separately.
-                if (Starts632(m.DebitAccountCd) && Starts155(m.CreditAccountCd))
-                {
-                    throw new InvalidOperationException(
-                        "Không dùng bút toán N632/C155 sẵn có (B-I / trùng) làm nguồn movements VALUATION.");
-                }
+                throw new InvalidOperationException(
+                    "Không dùng bút toán N632/C155 sẵn có (B-I / trùng) làm nguồn movements VALUATION.");
             }
+
+            _ = ExpTo154Rules.IsForbiddenDownstreamLine(m.DebitAccountCd, m.CreditAccountCd);
         }
     }
 
-    public static IReadOnlyList<Cogs632PreviewLine> BuildPreview(
-        ValuationAverageResult before,
-        ValuationAverageResult after,
-        long productId = 0,
-        long departmentId = 0)
+    public static IReadOnlyList<Cogs632PreviewLine> BuildPreviewByGroup(
+        IReadOnlyList<ValuationAverageResult> beforeGroups,
+        IReadOnlyList<ValuationAverageResult> afterGroups)
     {
-        var cogsBefore = before.OutputAmount;
-        var cogsAfter = after.OutputAmount;
-        return
-        [
-            new Cogs632PreviewLine
+        if (beforeGroups.Any(g => !g.IsValid) || afterGroups.Any(g => !g.IsValid))
+        {
+            var err = beforeGroups.Concat(afterGroups).SelectMany(g => g.Errors).FirstOrDefault()
+                      ?? "Kết quả bình quân nhóm không hợp lệ — không tạo Preview 632.";
+            throw new InvalidOperationException(err);
+        }
+
+        var afterMap = afterGroups.ToDictionary(g => Key(g));
+        var lines = new List<Cogs632PreviewLine>();
+
+        foreach (var before in beforeGroups.OrderBy(g => g.ProductId).ThenBy(g => g.StoreId).ThenBy(g => g.ChitType))
+        {
+            if (!afterMap.TryGetValue(Key(before), out var after))
             {
-                ProductId = productId,
-                DepartmentId = departmentId,
+                throw new InvalidOperationException(
+                    $"Thiếu nhóm after cho PRODUCT={before.ProductId} STORE={before.StoreCd} CHIT={before.ChitType}.");
+            }
+
+            if (before.ProductId <= 0 || after.ProductId <= 0)
+                throw new InvalidOperationException("Preview 632 yêu cầu ProductId nhóm > 0 — không dùng mặc định 0.");
+
+            lines.Add(new Cogs632PreviewLine
+            {
+                ProductId = after.ProductId,
+                ProductCd = after.ProductCd,
+                StoreId = after.StoreId,
+                StoreCd = after.StoreCd,
+                ChitType = after.ChitType,
+                CompanyCd = after.CompanyCd,
                 OutputQuantity = after.OutputQuantity,
-                UnitCostBefore = before.EndingAverageUnitCost,
-                UnitCostAfter = after.EndingAverageUnitCost,
-                CogsAmountBefore = cogsBefore,
-                CogsAmountAfter = cogsAfter,
-                CogsDelta = AllocationMath.RoundDigit(cogsAfter - cogsBefore, 0),
+                OutputUnitCostBefore = before.OutputAverageUnitCost,
+                OutputUnitCostAfter = after.OutputAverageUnitCost,
+                EndingUnitCostBefore = before.EndingAverageUnitCost,
+                EndingUnitCostAfter = after.EndingAverageUnitCost,
+                CogsAmountBefore = before.OutputAmount,
+                CogsAmountAfter = after.OutputAmount,
+                CogsDelta = AllocationMath.RoundDigit(after.OutputAmount - before.OutputAmount, 0),
                 DebitAccountHint = "632",
                 CreditAccountHint = "155"
-            }
-        ];
+            });
+        }
+
+        return lines;
     }
 
-    /// <summary>Kế hoạch post 632 chỉ là hint Preview — không tạo CT trùng trong 2C-04.</summary>
+    /// <summary>Kiểm tra chứng từ VALUATION_COGS đã tồn tại theo STABLE_KEY + COMPANY_CD.</summary>
+    public static void AssertExistingVoucherOwnership(
+        string companyCd,
+        string periodYm,
+        long? existingChitId,
+        string? existingChitCompanyCd,
+        string? existingStableKey)
+    {
+        if (existingChitId is null or <= 0)
+            return;
+
+        var expectedKey = ValuationApplyPlan.StableKey(companyCd, periodYm);
+        if (!string.IsNullOrWhiteSpace(existingStableKey) &&
+            !string.Equals(existingStableKey, expectedKey, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"STABLE_KEY chứng từ hiện có ({existingStableKey}) ≠ {expectedKey}.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(existingChitCompanyCd) &&
+            !string.Equals(existingChitCompanyCd, companyCd, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"VALUATION_COGS CHIT_ID={existingChitId} thuộc COMPANY_CD={existingChitCompanyCd}, không phải {companyCd}.");
+        }
+    }
+
     public static void AssertNoDuplicateCogsPost(bool alreadyHasValuationCogsVoucher, bool wouldInsertNew)
     {
         if (alreadyHasValuationCogsVoucher && wouldInsertNew)
         {
             throw new InvalidOperationException(
-                "Đã có VALUATION_COGS — Confirm phải UPDATE theo STABLE_KEY, không INSERT trùng N632/C155.");
+                "Đã có VALUATION_COGS — Confirm phải UPDATE theo STABLE_KEY+COMPANY_CD, không INSERT trùng N632/C155.");
         }
     }
+
+    private static (string Company, long ProductId, long StoreId, string StoreCd, string ChitType) Key(
+        ValuationAverageResult g) =>
+        (g.CompanyCd ?? string.Empty, g.ProductId, g.StoreId, g.StoreCd ?? string.Empty, g.ChitType ?? string.Empty);
 
     private static bool Starts632(string? acc) =>
         !string.IsNullOrWhiteSpace(acc) && acc.TrimStart().StartsWith("632", StringComparison.Ordinal);
