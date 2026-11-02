@@ -7,7 +7,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace API_AMNOTE_WEB.Controllers;
 
 /// <summary>
-/// G-K Giá thành giản đơn — API đọc (2C-01). COMPANY_CD lấy từ auth, không tin FE.
+/// G-K Giá thành giản đơn — API đọc (2C-01) + ghi Bước 2/3 (2C-02, mặc định chặn).
+/// COMPANY_CD lấy từ auth, không tin FE.
 /// </summary>
 [ApiController]
 [Authorize]
@@ -15,11 +16,16 @@ namespace API_AMNOTE_WEB.Controllers;
 public sealed class ProductionCostController : BaseApiController
 {
     private readonly IProductionCostService _service;
+    private readonly IProductionCostWriteService _writeService;
     private readonly ILogger<ProductionCostController> _logger;
 
-    public ProductionCostController(IProductionCostService service, ILogger<ProductionCostController> logger)
+    public ProductionCostController(
+        IProductionCostService service,
+        IProductionCostWriteService writeService,
+        ILogger<ProductionCostController> logger)
     {
         _service = service;
+        _writeService = writeService;
         _logger = logger;
     }
 
@@ -129,6 +135,40 @@ public sealed class ProductionCostController : BaseApiController
             DbName()));
     }
 
+    // ---- 2C-02 write (mặc định chặn ghi DB) ----
+
+    /// <summary>POST /api/production-cost/allocation/preview</summary>
+    [HttpPost("allocation/preview")]
+    public async Task<IActionResult> PreviewAllocation([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.PreviewAllocationAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
+    /// <summary>POST /api/production-cost/allocation/confirm</summary>
+    [HttpPost("allocation/confirm")]
+    public async Task<IActionResult> ConfirmAllocation([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.ConfirmAllocationAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
+    /// <summary>POST /api/production-cost/transfer/preview</summary>
+    [HttpPost("transfer/preview")]
+    public async Task<IActionResult> PreviewTransfer([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.PreviewTransferAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
+    /// <summary>POST /api/production-cost/transfer/confirm</summary>
+    [HttpPost("transfer/confirm")]
+    public async Task<IActionResult> ConfirmTransfer([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.ConfirmTransferAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
     private static ProductionCostQuery Query(string? periodYm, long? runId, int? runVersion) =>
         new()
         {
@@ -139,12 +179,22 @@ public sealed class ProductionCostController : BaseApiController
 
     private static string CompanyCd() => Common.GetCompanyCode();
 
+    private static string? UserIdOrNull()
+    {
+        try { return Common.GetUserId(); }
+        catch { return null; }
+    }
+
     /// <summary>
     /// DB công ty bắt buộc từ auth — không nuốt lỗi rồi fallback sang DB không xác định.
     /// </summary>
     private static string DbName() => Common.GetDatabaseName();
 
-    private async Task<IActionResult> ReadAsync<T>(Func<Task<T>> action)
+    private async Task<IActionResult> ReadAsync<T>(Func<Task<T>> action) => await ExecuteAsync(action, "read");
+
+    private async Task<IActionResult> WriteAsync<T>(Func<Task<T>> action) => await ExecuteAsync(action, "write");
+
+    private async Task<IActionResult> ExecuteAsync<T>(Func<Task<T>> action, string kind)
     {
         try
         {
@@ -157,18 +207,20 @@ public sealed class ProductionCostController : BaseApiController
         }
         catch (UnauthorizedAccessException ex)
         {
-            _logger.LogWarning(ex, "ProductionCost read missing auth/company/database context");
+            _logger.LogWarning(ex, "ProductionCost {Kind} missing auth/company/database context", kind);
             return BusinessError(ex.Message);
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "ProductionCost read invalid operation");
+            _logger.LogWarning(ex, "ProductionCost {Kind} invalid operation", kind);
             return BusinessError(ex.Message);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "ProductionCost read failed");
-            return ServerError("Không đọc được dữ liệu giá thành giản đơn.");
+            _logger.LogError(ex, "ProductionCost {Kind} failed", kind);
+            return ServerError(kind == "write"
+                ? "Không ghi được dữ liệu giá thành giản đơn."
+                : "Không đọc được dữ liệu giá thành giản đơn.");
         }
     }
 }

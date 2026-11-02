@@ -198,6 +198,16 @@ builder.Services.AddScoped<ILoginRepository, LoginRepository>();
 builder.Services.AddScoped<IPeriodLockRepository, PeriodLockRepository>();
 builder.Services.AddScoped<IProductionCostRepository, ProductionCostRepository>();
 builder.Services.AddScoped<IProductionCostService, API_AMNOTE_WEB.Services.ProductionCost.ProductionCostService>();
+builder.Services.AddSingleton<API_AMNOTE_WEB.Services.ProductionCost.IProductionCostWriteGate>(sp =>
+{
+    var cfg = sp.GetRequiredService<IConfiguration>();
+    var env = sp.GetRequiredService<IHostEnvironment>();
+    var flag = cfg.GetValue(API_AMNOTE_WEB.Services.ProductionCost.ProductionCostWriteGate.ConfigKey, false);
+    // Cấm production dù flag=true
+    var enabled = flag && !env.IsProduction();
+    return new API_AMNOTE_WEB.Services.ProductionCost.ProductionCostWriteGate(enabled);
+});
+builder.Services.AddScoped<IProductionCostWriteService, API_AMNOTE_WEB.Services.ProductionCost.ProductionCostWriteService>();
 
 builder.Services.AddSingleton<IPeriodLockJobQueue, PeriodLockJobQueue>();
 builder.Services.AddHostedService<PeriodLockBackgroundService>();
