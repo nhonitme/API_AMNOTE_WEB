@@ -71,5 +71,15 @@ SELECT
     IF(@gk_2b_env_ok = 1, 0, 1) AS fail_env_tag,
     NOW() AS checked_at;
 
--- Hard-stop không DDL: chia cho 0 khi FAIL → dừng script / SOURCE chain
-SET @gk_2b_preflight_guard := (1 / @gk_2b_ok);
+-- Hard-stop không DDL: PREPARE báo lỗi SQL 1064 khi FAIL → abort SOURCE chain
+-- Hard-stop không DDL: PREPARE câu SQL không hợp lệ khi FAIL.
+-- MySQL sẽ trả ERROR 1064 (không phải warning/NULL như phép chia cho 0).
+-- BẮT BUỘC chạy bằng mysql --abort-source-on-error, không dùng --force.
+SET @gk_2b_stop_sql := IF(
+    @gk_2b_ok = 1,
+    'SELECT ''GK2B PREFLIGHT PASS'' AS gate_status',
+    'GK2B_PREFLIGHT_FAILED__STOP_BEFORE_ANY_DDL'
+);
+PREPARE gk2b_stop_stmt FROM @gk_2b_stop_sql;
+EXECUTE gk2b_stop_stmt;
+DEALLOCATE PREPARE gk2b_stop_stmt;
