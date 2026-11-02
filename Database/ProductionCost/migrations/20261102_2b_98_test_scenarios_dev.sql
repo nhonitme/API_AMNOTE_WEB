@@ -1,84 +1,262 @@
--- G-K 2B — kịch bản kiểm thử DEV/TEST (template)
--- CẤM production. Điền @cd / @ym / @user trước khi bỏ comment từng khối.
--- Yêu cầu: đã chạy migration 00_install + có dữ liệu phân bổ G-K CONFIRMED cho kỳ test.
+-- =============================================================================
+-- G-K 2B — assertion test DEV/TEST (không tự seed nghiệp vụ nặng)
+-- Cột đúng schema: chitinfo.INPUT_TYPE, LOCK_STEP_CODE, AMOUNT;
+--   mô tả ở chitdescriptioninfo.DESCRIPTION (KHÔNG có C.DESCRIPTION).
+--
+-- Cách chạy:
+--   SET @GK_2B_ALLOW_DB = '<dev>';
+--   USE <dev>;
+--   CALL sp_pc_2b_require_allowed_db();
+--   SET @cd='...'; SET @ym_gk='...'; SET @ym_bi='...'; SET @user='dev_test';
+--   SOURCE 20261102_2b_98_test_scenarios_dev.sql;
+--
+-- Kết quả: bảng tmp_gk2b_assert (ASSERT_NAME, EXPECTED, ACTUAL, PASS_FAIL)
+-- =============================================================================
 
--- SET @cd   = 'DEMO';
--- SET @ym   = '202601';
--- SET @user = 'dev_test';
+CALL sp_pc_2b_require_allowed_db();
 
--- ---------------------------------------------------------------------------
--- T0) Trạng thái engine trước test
--- ---------------------------------------------------------------------------
--- SELECT COMPANY_CD, PERIOD_YM, COST_ENGINE, COGS_RULE, CURRENT_RUN_ID, STATUS
--- FROM production_cost_period
--- WHERE COMPANY_CD = @cd AND PERIOD_YM = @ym AND ISDEL = '0';
+DROP TEMPORARY TABLE IF EXISTS tmp_gk2b_assert;
+CREATE TEMPORARY TABLE tmp_gk2b_assert (
+    ASSERT_NAME VARCHAR(100) NOT NULL,
+    EXPECTED VARCHAR(100) NOT NULL,
+    ACTUAL VARCHAR(100) NOT NULL,
+    PASS_FAIL CHAR(4) NOT NULL
+) ENGINE=MEMORY;
 
--- ---------------------------------------------------------------------------
--- T1) G-K khóa COGS với EXP_TO_154_ONLY
--- ---------------------------------------------------------------------------
--- CALL sp_period_lock_cogs_create_voucher(@cd, @ym, 'EXP_TO_154_ONLY', @user);
--- -- sau đó C#/PeriodLock đánh dấu step DONE như luồng B-I hiện có
+DROP PROCEDURE IF EXISTS sp_gk2b_assert_eq;
+DELIMITER $$
+CREATE PROCEDURE sp_gk2b_assert_eq(
+    IN p_name VARCHAR(100),
+    IN p_expected VARCHAR(100),
+    IN p_actual VARCHAR(100)
+)
+BEGIN
+    INSERT INTO tmp_gk2b_assert(ASSERT_NAME, EXPECTED, ACTUAL, PASS_FAIL)
+    VALUES (
+        p_name,
+        IFNULL(p_expected, ''),
+        IFNULL(p_actual, ''),
+        IF IFNULL(p_expected, '') = IFNULL(p_actual, '') THEN 'PASS' ELSE 'FAIL' END
+    );
+END$$
+DELIMITER ;
 
--- CT chỉ Nợ 154 / Có 621,622,623,627
--- SELECT TRIM(CD.DEBIT) AS D, TRIM(CD.CREDIT) AS C, SUM(CD.AMOUNT) AS AMT
--- FROM chitinfo C
--- JOIN chitdetailinfo CD ON CD.COMPANY_CD=C.COMPANY_CD AND CD.CHIT_ID=C.CHIT_ID AND CD.ISDEL='0'
--- WHERE C.COMPANY_CD=@cd AND C.ISDEL='0' AND C.INPUT_TYPE='LOCK'
---   AND C.CHIT_YMD BETWEEN CONCAT(@ym,'01')
---       AND DATE_FORMAT(LAST_DAY(STR_TO_DATE(CONCAT(@ym,'01'),'%Y%m%d')),'%Y%m%d')
---   AND C.DESCRIPTION LIKE '%EXP_TO_154_ONLY%'
--- GROUP BY TRIM(CD.DEBIT), TRIM(CD.CREDIT);
+-- Helper snapshot COGS LOCK vouchers
+-- Dùng CHIT_YMD = last day of period; INPUT_TYPE='LOCK'; LOCK_STEP_CODE='COGS_SUMMARY'
 
--- Không có 154→155 / 154→632 từ rule G-K
--- SELECT COUNT(*) AS forbidden_cnt
--- FROM chitinfo C
--- JOIN chitdetailinfo CD ON CD.COMPANY_CD=C.COMPANY_CD AND CD.CHIT_ID=C.CHIT_ID AND CD.ISDEL='0'
--- WHERE C.COMPANY_CD=@cd AND C.ISDEL='0' AND C.INPUT_TYPE='LOCK'
---   AND C.DESCRIPTION LIKE '%EXP_TO_154_ONLY%'
---   AND (
---         (TRIM(CD.DEBIT) LIKE '155%' AND TRIM(CD.CREDIT) LIKE '154%')
---      OR (TRIM(CD.DEBIT) LIKE '632%' AND TRIM(CD.CREDIT) LIKE '154%')
---      OR (TRIM(CD.DEBIT) LIKE '632%' AND TRIM(CD.CREDIT) LIKE '155%')
---   );
-
--- Đối chiếu phân bổ 622/627 vs Có 622/627 trên CT LOCK
--- (xem block comment trong 20261102_2b_99_verify_readonly.sql)
-
--- ---------------------------------------------------------------------------
--- T2) B-I bị chặn khi kỳ đã GK
--- ---------------------------------------------------------------------------
--- CALL sp_period_lock_cogs_create_voucher(@cd, @ym, '154_TO_632', @user);
--- Expect: SQLSTATE 45000 'Ky nay da thuoc engine khac...'
+SET @from_gk = CONCAT(@ym_gk, '01');
+SET @to_gk = DATE_FORMAT(LAST_DAY(STR_TO_DATE(CONCAT(@ym_gk, '01'), '%Y%m%d')), '%Y%m%d');
 
 -- ---------------------------------------------------------------------------
--- T3) G-K bị chặn khi kỳ đã BI
+-- SNAPSHOT trước khi thử B-I xâm nhập kỳ G-K
 -- ---------------------------------------------------------------------------
--- -- trên kỳ khác @ym2: khóa B-I trước, rồi thử EXP_TO_154_ONLY
--- CALL sp_period_lock_cogs_create_voucher(@cd, @ym2, '154_TO_632', @user);
--- CALL sp_period_lock_cogs_create_voucher(@cd, @ym2, 'EXP_TO_154_ONLY', @user);
--- Expect: exclusive error
+SELECT
+    COUNT(DISTINCT h.CHIT_ID) INTO @gk_chit_cnt_before
+FROM chitinfo h
+WHERE h.COMPANY_CD = @cd
+  AND h.ISDEL = '0'
+  AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY'
+  AND h.CHIT_YMD = @to_gk;
+
+SELECT
+    IFNULL(SUM(h.AMOUNT), 0) INTO @gk_amt_before
+FROM chitinfo h
+WHERE h.COMPANY_CD = @cd
+  AND h.ISDEL = '0'
+  AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY'
+  AND h.CHIT_YMD = @to_gk;
+
+SELECT
+    IFNULL(SUM(d.AMOUNT), 0) INTO @gk_detail_amt_before
+FROM chitinfo h
+INNER JOIN chitdetailinfo d
+    ON d.COMPANY_CD = h.COMPANY_CD AND d.CHIT_ID = h.CHIT_ID AND d.ISDEL = '0'
+WHERE h.COMPANY_CD = @cd
+  AND h.ISDEL = '0'
+  AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY'
+  AND h.CHIT_YMD = @to_gk;
+
+SELECT IFNULL(COST_ENGINE, 'NONE'), IFNULL(COGS_RULE, '')
+  INTO @eng_before, @rule_before
+FROM production_cost_period
+WHERE COMPANY_CD = @cd AND PERIOD_YM = @ym_gk AND ISDEL = '0'
+LIMIT 1;
+
+SELECT STATUS INTO @cogs_step_before
+FROM acc_period_lock_step
+WHERE COMPANY_CD = @cd AND PERIOD_YM = @ym_gk AND STEP_CODE = 'COGS_SUMMARY'
+LIMIT 1;
 
 -- ---------------------------------------------------------------------------
--- T4) Hai request đồng thời — chạy 2 session
+-- T9 BẮT BUỘC: G-K đã có CT → B-I rule khác bị từ chối → CT G-K nguyên vẹn
 -- ---------------------------------------------------------------------------
--- Session A: CALL sp_pc_engine_claim(@cd, @ym3, 'GK', 'EXP_TO_154_ONLY', @user);
--- Session B: CALL sp_pc_engine_claim(@cd, @ym3, 'BI', '154_TO_632', @user);
--- Expect: một thành công, một lỗi exclusive
+DROP PROCEDURE IF EXISTS sp_gk2b_try_bi_on_gk;
+DELIMITER $$
+CREATE PROCEDURE sp_gk2b_try_bi_on_gk(
+    IN p_cd VARCHAR(20),
+    IN p_ym CHAR(6),
+    IN p_user VARCHAR(50),
+    OUT p_rejected INT
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        SET p_rejected = 1;
+    END;
+    SET p_rejected = 0;
+    CALL sp_period_lock_cogs_create_voucher(p_cd, p_ym, '154_TO_632', p_user);
+END$$
+DELIMITER ;
+
+CALL sp_gk2b_try_bi_on_gk(@cd, @ym_gk, @user, @bi_rejected);
+
+CALL sp_gk2b_assert_eq('T9_BI_REJECTED', '1', CAST(IFNULL(@bi_rejected, 0) AS CHAR));
+
+SELECT COUNT(DISTINCT h.CHIT_ID) INTO @gk_chit_cnt_after
+FROM chitinfo h
+WHERE h.COMPANY_CD = @cd AND h.ISDEL = '0' AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY' AND h.CHIT_YMD = @to_gk;
+
+SELECT IFNULL(SUM(h.AMOUNT), 0) INTO @gk_amt_after
+FROM chitinfo h
+WHERE h.COMPANY_CD = @cd AND h.ISDEL = '0' AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY' AND h.CHIT_YMD = @to_gk;
+
+SELECT IFNULL(SUM(d.AMOUNT), 0) INTO @gk_detail_amt_after
+FROM chitinfo h
+INNER JOIN chitdetailinfo d ON d.COMPANY_CD = h.COMPANY_CD AND d.CHIT_ID = h.CHIT_ID AND d.ISDEL = '0'
+WHERE h.COMPANY_CD = @cd AND h.ISDEL = '0' AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY' AND h.CHIT_YMD = @to_gk;
+
+SELECT IFNULL(COST_ENGINE, 'NONE'), IFNULL(COGS_RULE, '')
+  INTO @eng_after, @rule_after
+FROM production_cost_period
+WHERE COMPANY_CD = @cd AND PERIOD_YM = @ym_gk AND ISDEL = '0'
+LIMIT 1;
+
+SELECT STATUS INTO @cogs_step_after
+FROM acc_period_lock_step
+WHERE COMPANY_CD = @cd AND PERIOD_YM = @ym_gk AND STEP_CODE = 'COGS_SUMMARY'
+LIMIT 1;
+
+CALL sp_gk2b_assert_eq('T9_CHIT_CNT_UNCHANGED', CAST(@gk_chit_cnt_before AS CHAR), CAST(@gk_chit_cnt_after AS CHAR));
+CALL sp_gk2b_assert_eq('T9_HEADER_AMT_UNCHANGED', CAST(@gk_amt_before AS CHAR), CAST(@gk_amt_after AS CHAR));
+CALL sp_gk2b_assert_eq('T9_DETAIL_AMT_UNCHANGED', CAST(@gk_detail_amt_before AS CHAR), CAST(@gk_detail_amt_after AS CHAR));
+CALL sp_gk2b_assert_eq('T9_ENGINE_UNCHANGED', IFNULL(@eng_before, 'NONE'), IFNULL(@eng_after, 'NONE'));
+CALL sp_gk2b_assert_eq('T9_RULE_UNCHANGED', IFNULL(@rule_before, ''), IFNULL(@rule_after, ''));
+CALL sp_gk2b_assert_eq('T9_STEP_STATUS_UNCHANGED', IFNULL(@cogs_step_before, ''), IFNULL(@cogs_step_after, ''));
 
 -- ---------------------------------------------------------------------------
--- T5) Chạy lại / unlock nhất quán
+-- T1b: CT G-K chỉ Nợ 154* / Có 621|622|623|627 (không 155/632)
 -- ---------------------------------------------------------------------------
--- CALL sp_period_lock_cogs_unlock(@cd, @ym, 'retest', @user);
--- SELECT COST_ENGINE, COGS_RULE FROM production_cost_period WHERE COMPANY_CD=@cd AND PERIOD_YM=@ym;
--- Expect: COST_ENGINE='NONE', không còn CT LOCK COGS_SUMMARY
--- CALL sp_period_lock_cogs_create_voucher(@cd, @ym, 'EXP_TO_154_ONLY', @user);
--- -- không nhân đôi số dòng CT (stable delete trước post)
+SELECT IFNULL(SUM(CASE
+    WHEN TRIM(d.DEBIT) LIKE '154%'
+     AND (
+            TRIM(d.CREDIT) LIKE '621%'
+         OR TRIM(d.CREDIT) LIKE '622%'
+         OR TRIM(d.CREDIT) LIKE '623%'
+         OR TRIM(d.CREDIT) LIKE '627%'
+     ) THEN 0 ELSE 1 END), 0)
+  INTO @bad_lines
+FROM chitinfo h
+INNER JOIN chitdetailinfo d ON d.COMPANY_CD = h.COMPANY_CD AND d.CHIT_ID = h.CHIT_ID AND d.ISDEL = '0'
+INNER JOIN chitdescriptioninfo des
+    ON des.COMPANY_CD = h.COMPANY_CD AND des.CHIT_ID = h.CHIT_ID AND des.ISDEL = '0'
+WHERE h.COMPANY_CD = @cd AND h.ISDEL = '0' AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY' AND h.CHIT_YMD = @to_gk
+  AND des.DESCRIPTION LIKE '%EXP_TO_154_ONLY%';
+
+CALL sp_gk2b_assert_eq('T1_ONLY_154_VS_62X', '0', CAST(@bad_lines AS CHAR));
+
+SELECT IFNULL(SUM(CASE
+    WHEN (TRIM(d.DEBIT) LIKE '155%' AND TRIM(d.CREDIT) LIKE '154%')
+      OR (TRIM(d.DEBIT) LIKE '632%' AND TRIM(d.CREDIT) LIKE '154%')
+      OR (TRIM(d.DEBIT) LIKE '632%' AND TRIM(d.CREDIT) LIKE '155%')
+    THEN 1 ELSE 0 END), 0)
+  INTO @forbidden_xfer
+FROM chitinfo h
+INNER JOIN chitdetailinfo d ON d.COMPANY_CD = h.COMPANY_CD AND d.CHIT_ID = h.CHIT_ID AND d.ISDEL = '0'
+INNER JOIN chitdescriptioninfo des
+    ON des.COMPANY_CD = h.COMPANY_CD AND des.CHIT_ID = h.CHIT_ID AND des.ISDEL = '0'
+WHERE h.COMPANY_CD = @cd AND h.ISDEL = '0' AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY' AND h.CHIT_YMD = @to_gk
+  AND des.DESCRIPTION LIKE '%EXP_TO_154_ONLY%';
+
+CALL sp_gk2b_assert_eq('T1_NO_154_TO_155_632', '0', CAST(@forbidden_xfer AS CHAR));
 
 -- ---------------------------------------------------------------------------
--- T6) B-I 3 rule trên kỳ không thuộc G-K (hành vi cũ)
+-- T4: unlock cross-engine bị từ chối
 -- ---------------------------------------------------------------------------
--- CALL sp_period_lock_cogs_create_voucher(@cd, @ym_bi, '154_TO_155', @user);
--- CALL sp_period_lock_cogs_unlock(@cd, @ym_bi, 'x', @user);
--- CALL sp_period_lock_cogs_create_voucher(@cd, @ym_bi, '154_TO_155_TO_632', @user);
--- CALL sp_period_lock_cogs_unlock(@cd, @ym_bi, 'x', @user);
--- CALL sp_period_lock_cogs_create_voucher(@cd, @ym_bi, '154_TO_632', @user);
+DROP PROCEDURE IF EXISTS sp_gk2b_try_unlock;
+DELIMITER $$
+CREATE PROCEDURE sp_gk2b_try_unlock(
+    IN p_cd VARCHAR(20),
+    IN p_ym CHAR(6),
+    IN p_user VARCHAR(50),
+    IN p_engine VARCHAR(10),
+    OUT p_rejected INT
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        SET p_rejected = 1;
+    END;
+    SET p_rejected = 0;
+    CALL sp_period_lock_cogs_unlock(p_cd, p_ym, 'test cross unlock', p_user, p_engine);
+END$$
+DELIMITER ;
+
+-- Nếu kỳ G-K: BI unlock phải reject
+CALL sp_gk2b_try_unlock(@cd, @ym_gk, @user, 'BI', @unlock_bi_rej);
+CALL sp_gk2b_assert_eq('T4_BI_UNLOCK_ON_GK_REJECT', '1', CAST(IFNULL(@unlock_bi_rej, 0) AS CHAR));
+
+-- CT vẫn nguyên sau unlock reject
+SELECT COUNT(DISTINCT h.CHIT_ID) INTO @gk_chit_cnt_after_unlock
+FROM chitinfo h
+WHERE h.COMPANY_CD = @cd AND h.ISDEL = '0' AND h.INPUT_TYPE = 'LOCK'
+  AND h.LOCK_STEP_CODE = 'COGS_SUMMARY' AND h.CHIT_YMD = @to_gk;
+CALL sp_gk2b_assert_eq('T4_CHIT_AFTER_BAD_UNLOCK', CAST(@gk_chit_cnt_before AS CHAR), CAST(@gk_chit_cnt_after_unlock AS CHAR));
+
+-- ---------------------------------------------------------------------------
+-- T5: validate không claim (engine không đổi khi chỉ validate rule trùng)
+-- ---------------------------------------------------------------------------
+SET @eng_v1 = NULL;
+SELECT IFNULL(COST_ENGINE, 'NONE') INTO @eng_v1
+FROM production_cost_period WHERE COMPANY_CD = @cd AND PERIOD_YM = @ym_gk AND ISDEL = '0' LIMIT 1;
+
+-- validate EXP khi đã GK: OK và không đổi
+DROP PROCEDURE IF EXISTS sp_gk2b_try_validate;
+DELIMITER $$
+CREATE PROCEDURE sp_gk2b_try_validate(
+    IN p_cd VARCHAR(20), IN p_ym CHAR(6), IN p_rule VARCHAR(50), IN p_user VARCHAR(50),
+    OUT p_ok INT
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN SET p_ok = 0; END;
+    SET p_ok = 1;
+    CALL sp_period_lock_cogs_validate(p_cd, p_ym, p_rule, p_user);
+END$$
+DELIMITER ;
+
+CALL sp_gk2b_try_validate(@cd, @ym_gk, 'EXP_TO_154_ONLY', @user, @val_ok);
+SELECT IFNULL(COST_ENGINE, 'NONE') INTO @eng_v2
+FROM production_cost_period WHERE COMPANY_CD = @cd AND PERIOD_YM = @ym_gk AND ISDEL = '0' LIMIT 1;
+CALL sp_gk2b_assert_eq('T5_VALIDATE_NO_ENGINE_CHANGE', IFNULL(@eng_v1, 'NONE'), IFNULL(@eng_v2, 'NONE'));
+
+-- ---------------------------------------------------------------------------
+-- Báo cáo
+-- ---------------------------------------------------------------------------
+SELECT * FROM tmp_gk2b_assert ORDER BY ASSERT_NAME;
+SELECT
+    SUM(CASE WHEN PASS_FAIL = 'PASS' THEN 1 ELSE 0 END) AS pass_cnt,
+    SUM(CASE WHEN PASS_FAIL = 'FAIL' THEN 1 ELSE 0 END) AS fail_cnt,
+    COUNT(*) AS total_cnt
+FROM tmp_gk2b_assert;
+
+DROP PROCEDURE IF EXISTS sp_gk2b_try_bi_on_gk;
+DROP PROCEDURE IF EXISTS sp_gk2b_try_unlock;
+DROP PROCEDURE IF EXISTS sp_gk2b_try_validate;
+DROP PROCEDURE IF EXISTS sp_gk2b_assert_eq;

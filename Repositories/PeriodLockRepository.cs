@@ -781,12 +781,15 @@ namespace API_AMNOTE_WEB.Repositories
 
             if (string.Equals(stepCode, PeriodLockStepCode.CogsSummary, StringComparison.OrdinalIgnoreCase))
             {
+                // PeriodLock B-I chỉ được mở khóa kỳ COST_ENGINE=BI (hoặc NONE).
+                // Kỳ G-K (COST_ENGINE=GK) phải mở qua luồng G-K với p_EXPECTED_ENGINE='GK'.
                 const string cogsUnlockProc = @"
                     CALL sp_period_lock_cogs_unlock(
                         @p_COMPANY_CD,
                         @p_PERIOD_YM,
                         @p_REASON,
-                        @p_USER_ID
+                        @p_USER_ID,
+                        @p_EXPECTED_ENGINE
                     );";
 
                 await ExecuteAsync(cogsUnlockProc, new
@@ -794,7 +797,8 @@ namespace API_AMNOTE_WEB.Repositories
                     p_COMPANY_CD = companyCd,
                     p_PERIOD_YM = periodYm,
                     p_REASON = reason ?? string.Empty,
-                    p_USER_ID = userId
+                    p_USER_ID = userId,
+                    p_EXPECTED_ENGINE = "BI"
                 }, databaseName);
 
                 await UpsertStepAsync(

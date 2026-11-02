@@ -1,5 +1,8 @@
 -- G-K 2B — kiểm tra chỉ đọc (DEV/TEST). Không DML/DDL.
--- Chạy sau migration: mysql ... < 20261102_2b_99_verify_readonly.sql
+-- Chạy sau migration. Mô tả CT nằm ở chitdescriptioninfo.DESCRIPTION
+-- (chitinfo không có cột DESCRIPTION).
+
+CALL sp_pc_2b_require_allowed_db();
 
 SELECT DATABASE() AS db_name, NOW() AS checked_at;
 

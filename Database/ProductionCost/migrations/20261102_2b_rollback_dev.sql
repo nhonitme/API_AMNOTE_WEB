@@ -14,10 +14,14 @@ SELECT DATABASE() AS current_database,
 
 DELIMITER $$
 
+DROP PROCEDURE IF EXISTS `sp_pc_2b_require_allowed_db`$$
+DROP PROCEDURE IF EXISTS `sp_pc_engine_check`$$
 DROP PROCEDURE IF EXISTS `sp_pc_engine_claim`$$
+DROP PROCEDURE IF EXISTS `sp_pc_engine_claim_for_cogs`$$
 DROP PROCEDURE IF EXISTS `sp_pc_engine_assert_for_cogs`$$
 DROP PROCEDURE IF EXISTS `sp_pc_engine_release_cogs`$$
 DROP PROCEDURE IF EXISTS `sp_pc_nvl_basis_build`$$
+DROP PROCEDURE IF EXISTS `sp_period_lock_cogs_assert_can_overwrite`$$
 
 DELIMITER ;
 

@@ -1,118 +1,70 @@
-# Báo cáo nghiệm thu G-K Giai đoạn 2B (DEV/TEST)
+# Báo cáo nghiệm thu G-K 2B + rà soát an toàn (pre-DEV)
 
-Ngày: 2026-11-02  
-Phạm vi: DDL + SP + exclusive lock + rule `EXP_TO_154_ONLY` + C# constant.  
-**Chưa** chạy migration trên DB thật (không có DSN DEV xác nhận — `ConnectionStrings:AMManagerConnection = FromGlobalData`).  
-**Chưa** production / **chưa** API tính giá thành thật / **chưa** cập nhật giá nhập kho TP.
+Ngày cập nhật: 2026-11-02 (safety review — **chưa execute SQL**).
 
 ---
 
-## 1. Danh sách file đã sửa / thêm
+## File đã sửa / thêm (safety pass)
 
-### Migration (mới)
+### Migration
+- `20261102_2b_00_preflight_dev.sql` — **mới**: hard-stop `@GK_2B_ALLOW_DB` + `sp_pc_2b_require_allowed_db`
+- `20261102_2b_00_install_dev.sql` — gọi preflight guard trước SOURCE
+- `20261102_2b_01_tables.sql` — `CALL sp_pc_2b_require_allowed_db()` trước DDL
+- `20261102_2b_02_sp_engine.sql` — tách check/claim; bỏ COMMIT; GET_LOCK; release có expected engine
+- `20261102_2b_03_sp_nvl_basis.sql` — `SPLIT_QTY_ZERO` orphan, không chia đều
+- `20261102_2b_04_sp_period_lock_cogs.sql` — handler an toàn; claim chỉ ở create; CONFIRMED+REDUCTION; unlock guard; overwrite assert
+- `20261102_2b_98_test_scenarios_dev.sql` — assertion tự động (đúng cột schema)
+- `20261102_2b_99_verify_readonly.sql` — (giữ)
+- `20261102_2b_README.md` / `ACCEPTANCE_2B.md`
 
-- `Database/ProductionCost/migrations/20261102_2b_00_install_dev.sql`
-- `Database/ProductionCost/migrations/20261102_2b_01_tables.sql`
-- `Database/ProductionCost/migrations/20261102_2b_02_sp_engine.sql`
-- `Database/ProductionCost/migrations/20261102_2b_03_sp_nvl_basis.sql`
-- `Database/ProductionCost/migrations/20261102_2b_04_sp_period_lock_cogs.sql`
-- `Database/ProductionCost/migrations/20261102_2b_98_test_scenarios_dev.sql`
-- `Database/ProductionCost/migrations/20261102_2b_99_verify_readonly.sql`
-- `Database/ProductionCost/migrations/20261102_2b_rollback_dev.sql`
-- `Database/ProductionCost/migrations/20261102_2b_rollback_cogs_bi_only.sql`
-- `Database/ProductionCost/migrations/20261102_2b_README.md`
-- `Database/ProductionCost/migrations/ACCEPTANCE_2B.md`
-
-### Schema / SP canonical
-
-- `Database/ProductionCost/01_production_cost_tables.sql` — UNIQUE nullable → `NOT NULL DEFAULT 0`
-- `Database/StoredProcedures/PeriodLock/CogsSummary/01_sp_period_lock_cogs.sql` — đồng bộ 2B
-
-### C# (đường gọi trực tiếp + background job PeriodLock)
-
-- `Models/PeriodLockModels.cs` — `CogsTransferRuleCode.ExpTo154Only`
-- `Repositories/PeriodLockRepository.cs` — tên rule hiển thị
-
-**Không** sửa `Database/database.sql` như migration.
+### Canonical / C#
+- `Database/StoredProcedures/PeriodLock/CogsSummary/01_sp_period_lock_cogs.sql` — đồng bộ
+- `Repositories/PeriodLockRepository.cs` — unlock truyền `p_EXPECTED_ENGINE='BI'`
 
 ---
 
-## 2. Stored procedure thay đổi
+## Test case đã bổ sung (98)
 
-| SP | Thay đổi |
-|----|----------|
-| `sp_pc_engine_claim` | **Mới** — claim exclusive `GK`/`BI` theo `COMPANY_CD+PERIOD_YM` (`FOR UPDATE` + xử lý race UNIQUE) |
-| `sp_pc_engine_assert_for_cogs` | **Mới** — map rule → engine (`EXP_TO_154_ONLY`→GK; 3 rule B-I→BI) |
-| `sp_pc_engine_release_cogs` | **Mới** — unlock COGS → `COST_ENGINE=NONE` |
-| `sp_pc_nvl_basis_build` | **Mới** — tiêu thức NVL; chia `CHITDETAIL`/`OUTPUT` chống nhân đôi |
-| `sp_period_lock_cogs_validate` | Thêm `EXP_TO_154_ONLY` + `CALL sp_pc_engine_assert_for_cogs` |
-| `sp_period_lock_cogs_build_xfer` | Nhánh G-K: 621(+6212 tách)/623 từ GL; 622/627 từ `production_cost_alloc_detail`; đối chiếu tổng; **không** 154→155/632. 3 rule B-I giữ nguyên |
-| `sp_period_lock_cogs_create_voucher` | Idempotent xóa CT sót trước post; G-K chỉ post `EXP_TO_154` |
-| `sp_period_lock_cogs_unlock` | Thêm `sp_pc_engine_release_cogs` |
-| `sp_period_lock_cogs_calculate` / `rollback_period` | Giữ; đi qua validate mới |
+| ID | Nội dung | Assertion |
+|----|----------|-----------|
+| **T9** | G-K đã có CT → B-I `154_TO_632` bị reject | reject=1; CHIT_CNT/AMOUNT/DETAIL/ENGINE/RULE/STEP **không đổi** |
+| T1 | CT EXP chỉ Nợ 154 / Có 621–627 | bad_lines=0; forbidden 154→155/632=0 |
+| T4 | BI unlock kỳ GK bị reject | reject=1; số CT không đổi |
+| T5 | validate không đổi `COST_ENGINE` | engine trước=sau |
 
-Luồng khóa B-I bước 1 (`FA_PREPAID_LOCK`) và bước 3 (`PROFIT_LOSS_REPORT`): **không đổi**.
+Mô tả CT: `chitdescriptioninfo.DESCRIPTION` (không dùng `C.DESCRIPTION`).  
+Khóa CT: `INPUT_TYPE='LOCK'`, `LOCK_STEP_CODE='COGS_SUMMARY'`, `CHIT_YMD=last day`.
 
 ---
 
-## 3. Cơ chế exclusive lock
+## Vấn đề còn tồn tại / chờ DEV
 
-1. Mọi COGS (API sync / background job PeriodLock) gọi `sp_period_lock_cogs_validate` → `sp_pc_engine_assert_for_cogs`.
-2. `production_cost_period` 1 dòng / `(COMPANY_CD, PERIOD_YM)`:
-   - `COST_ENGINE` ∈ `NONE|GK|BI`
-   - `COGS_RULE` lưu rule đang giữ
-3. Claim: `SELECT … FOR UPDATE`; nếu engine khác → `SIGNAL 45000`.
-4. Hai request đồng thời tạo kỳ mới: UNIQUE + handler 1062 → một thắng, một đi tiếp assert.
-5. Unlock COGS: xóa CT LOCK + step OPEN + `COST_ENGINE=NONE`.
+1. **Chưa chạy** trên DB DEV — cần bạn cung cấp tên DB + backup.
+2. **G-K unlock API** chưa có: mở kỳ GK phải `p_EXPECTED_ENGINE='GK'` (PeriodLock UI chỉ `'BI'` → đúng yêu cầu tách engine).
+3. **Sau `v_write_started=1`**, nếu post lỗi giữa chừng: handler xóa CT (có thể mất bản cũ) — cần TX caller bao ngoài hoặc 2C staging.
+4. **Seed dữ liệu** T9: kỳ `@ym_gk` phải đã có CT EXP + `COST_ENGINE=GK` + RUN CONFIRMED.
+5. Chưa 2C / production / tính giá thành thật.
 
 ---
 
-## 4. Câu lệnh kiểm tra chỉ đọc
+## Hướng dẫn preflight DEV/TEST
 
-Chạy sau install:
+```sql
+-- 1) Backup mysqldump schema+data DEV
+-- 2) Trong mysql client (cwd = thư mục migrations):
+SET @GK_2B_ALLOW_DB = '<TEN_DB_DEV_DA_DUYET>';
+USE <TEN_DB_DEV_DA_DUYET>;
+SOURCE 20261102_2b_00_preflight_dev.sql;
+-- Nếu PASS:
+SOURCE 20261102_2b_00_install_dev.sql;
+SOURCE 20261102_2b_99_verify_readonly.sql;
 
-```bash
-mysql -D <dev_db> < 20261102_2b_99_verify_readonly.sql
+-- 3) Sau khi có kỳ G-K khóa EXP thành công:
+SET @cd='...'; SET @ym_gk='yyyyMM'; SET @user='dev_test';
+SOURCE 20261102_2b_98_test_scenarios_dev.sql;
+-- fail_cnt phải = 0
 ```
 
-Hoặc các SELECT trong file đó (tables, UNIQUE nullable risk, routines, flag `EXP_TO_154_ONLY`).  
-Template đối chiếu phân bổ vs CT LOCK nằm trong comment cuối file verify + `20261102_2b_98_test_scenarios_dev.sql`.
+Sai `@GK_2B_ALLOW_DB` / sai `USE` → `SIGNAL 45000` **trước** CREATE TABLE / DROP PROCEDURE nghiệp vụ.
 
----
-
-## 5. Kết quả test DEV/TEST
-
-| Case | Kết quả |
-|------|---------|
-| G-K khóa `EXP_TO_154_ONLY` | **Chưa execute** — chờ DSN DEV + dữ liệu alloc CONFIRMED |
-| CT chỉ Nợ 154 / Có 621–627 | Script sẵn (T1) |
-| Tổng 622/627 alloc = kết chuyển | Assert trong `build_xfer` (sai lệch >1đ → lỗi) + SELECT verify |
-| Không 154→155/632 từ G-K | Logic SP + SELECT forbidden |
-| B-I 3 rule kỳ non-GK | Logic giữ nguyên; template T6 |
-| B-I chặn khi kỳ GK | `sp_pc_engine_claim` |
-| G-K chặn khi kỳ BI | tương tự |
-| Concurrent exclusive | `FOR UPDATE` + UNIQUE race |
-| Re-run không trùng CT | delete vouchers trước post + unlock release |
-| Lỗi/rollback nhất quán | `EXIT HANDLER` → `rollback_period` xóa CT; step không DONE nếu API chưa đánh dấu |
-
-**Gate an toàn:** dừng ghi dữ liệu thật cho đến khi người duyệt xác nhận tên DB DEV/TEST + backup.
-
----
-
-## 6. Phần còn chờ giai đoạn Backend API (sau 2B)
-
-- API G-K All-in-One: tạo/confirm RUN, bước 2 phân bổ → ghi `production_cost_alloc_*`, set `CURRENT_RUN_ID`, gọi COGS với `ExpTo154Only`.
-- Preview/calculate trước khóa (nếu tách khỏi PeriodLock job).
-- Bước 4–5: tính giá thành / cập nhật giá nhập kho TP (**ngoài phạm vi 2B**).
-- FE production wiring (hiện mock FE-01→04).
-- CI/monitor Postman cho rule mới (tuỳ chọn).
-
----
-
-## 7. Cách vận hành khi có DEV
-
-1. Xác nhận `SELECT DATABASE();` = DEV/TEST đã backup.  
-2. `SOURCE 20261102_2b_00_install_dev.sql` từ thư mục migrations.  
-3. Deploy API kèm `ExpTo154Only`.  
-4. Seed/confirm alloc G-K kỳ thử → chạy T1–T6.  
-5. Gửi lại kết quả test thực tế để duyệt trước production / API costing.
+**Không triển khai production. Không chuyển 2C** cho đến khi bạn duyệt kết quả test 2B trên DEV.

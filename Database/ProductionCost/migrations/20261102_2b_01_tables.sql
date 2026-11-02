@@ -7,9 +7,8 @@
 
 SET NAMES utf8;
 
--- Guard: dừng nếu schema tên gợi ý production công khai (điều chỉnh theo quy ước nội bộ).
--- Người vận hành phải USE đúng DB DEV trước khi SOURCE file này.
-
+-- Hard-stop: bắt buộc đã SOURCE 00_preflight (có sp_pc_2b_require_allowed_db + @GK_2B_ALLOW_DB)
+CALL sp_pc_2b_require_allowed_db();
 
 -- -----------------------------------------------------------------------------
 -- 1) Kỳ G-K (1 dòng / công ty / kỳ) — trỏ RUN hiện hành
