@@ -40,4 +40,16 @@ public interface IProductionCostWriteService
         string? userId,
         ProductionCostWriteRequest request,
         string? databaseName = null);
+
+    Task<ProductionCostValuationWriteResponse> PreviewValuationAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null);
+
+    Task<ProductionCostValuationWriteResponse> ConfirmValuationAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null);
 }

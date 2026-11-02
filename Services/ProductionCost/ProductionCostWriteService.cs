@@ -2,6 +2,7 @@ using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Services.ProductionCost.Allocation;
 using API_AMNOTE_WEB.Services.ProductionCost.Transfer;
+using API_AMNOTE_WEB.Services.ProductionCost.Valuation;
 using API_AMNOTE_WEB.Services.ProductionCost.Wip;
 
 namespace API_AMNOTE_WEB.Services.ProductionCost;
@@ -181,6 +182,55 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             "Confirm COST_CALC DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-03.");
     }
 
+    public Task<ProductionCostValuationWriteResponse> PreviewValuationAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null)
+    {
+        EnsureAuth(companyCd);
+        ValidatePeriod(request);
+
+        if (request.ValuationDryRun == null)
+        {
+            _gate.EnsureWritable();
+            throw new InvalidOperationException(
+                "Preview VALUATION từ DB chưa kích hoạt trong 2C-04. Gửi ValuationDryRun payload.");
+        }
+
+        var response = RunDryValuation(companyCd, request);
+        response.WriteEnabled = _gate.IsWriteEnabled;
+        response.Persisted = false;
+        response.PeriodYm = request.PeriodYm;
+        response.RunId = request.RunId;
+        response.RunVersion = request.RunVersion;
+        response.InventoryPriceApplied = false;
+        response.CogsVoucherPosted = false;
+        response.Message =
+            "Preview VALUATION dry-run — không ghi kho / không post 632 / không đụng phiên CONFIRMED cũ.";
+        return Task.FromResult(response);
+    }
+
+    public Task<ProductionCostValuationWriteResponse> ConfirmValuationAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null)
+    {
+        EnsureAuth(companyCd);
+        ValidatePeriod(request);
+        _gate.EnsureWritable();
+
+        // Skeleton (TX owner = C#):
+        // 1) Assert B2/B3/B4 DONE + RUN_ID+VERSION; cấm SUPERSEDED
+        // 2) ReadyToApply reconcile → apply_inventory_update_in_price theo INPUT_ID (COMPANY_CD)
+        // 3) Tính lại xuất (BQGQ) + post/UPDATE VALUATION_COGS theo STABLE_KEY — atomic với (2)
+        // 4) VALUATION=DONE; không tự RUN.STATUS=CONFIRMED toàn kỳ
+        // 5) RollbackRestoreLines nếu fail giữa chừng
+        throw new InvalidOperationException(
+            "Confirm VALUATION DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-04.");
+    }
+
     /// <summary>Tính phân bổ thuần — dùng unit test / dry-run API.</summary>
     public static AllocationComputeResult RunDryAllocation(string companyCd, AllocationDryRunPayload dryRun)
     {
@@ -229,7 +279,7 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             : Array.Empty<ReceiptPricePrepLine>();
 
         if (receipts.Count > 0)
-            ReceiptReconcile.AssertMatches(items, receipts);
+            ReceiptReconcile.AssertMatches(items, receipts, ReceiptReconcileMode.Preview);
 
         return new ProductionCostWipWriteResponse
         {
@@ -240,6 +290,72 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             ReceiptPreps = receipts,
             TotalCostPriceSum = items.Sum(i => i.TotalCostPrice),
             InventoryPriceApplied = false
+        };
+    }
+
+    /// <summary>Preview VALUATION thuần — unit test / dry-run API.</summary>
+    public static ProductionCostValuationWriteResponse RunDryValuation(
+        string companyCd,
+        ProductionCostWriteRequest request)
+    {
+        var dry = request.ValuationDryRun
+            ?? throw new ArgumentException("ValuationDryRun is required.");
+
+        ValuationPrerequisite.AssertReady(
+            companyCd,
+            request.PeriodYm,
+            request.RunId,
+            request.RunVersion,
+            dry.RunStatus,
+            dry.AllocationStepStatus,
+            dry.ExpTo154StepStatus,
+            dry.CostCalcStepStatus);
+
+        if (dry.ConfirmedWip.Count == 0)
+            throw new ArgumentException("ValuationDryRun.ConfirmedWip không được rỗng.");
+
+        var receiptPreps = ReceiptPricePrep.Build(dry.ConfirmedWip, dry.Receipts);
+        var reconcile = ReceiptReconcile.Check(
+            dry.ConfirmedWip, receiptPreps, ReceiptReconcileMode.Preview);
+
+        if (!reconcile.Ok)
+            throw new InvalidOperationException(reconcile.Errors[0]);
+
+        var before = dry.Movements.Count > 0
+            ? ValuationAverageCost.Compute(dry.Movements, dry.ValuationMethod)
+            : null;
+        var afterMovements = dry.Movements.Count > 0
+            ? ValuationAverageCost.ApplyReceiptPrices(dry.Movements, receiptPreps)
+            : Array.Empty<ValuationMovementInput>();
+        var after = afterMovements.Count > 0
+            ? ValuationAverageCost.Compute(afterMovements, dry.ValuationMethod)
+            : null;
+
+        var cogs = before != null && after != null
+            ? Cogs632PreviewRules.BuildPreview(before, after)
+            : Array.Empty<Cogs632PreviewLine>();
+
+        var plan = ValuationApplyPlan.Build(
+            companyCd,
+            request.PeriodYm,
+            receiptPreps,
+            dry.ExistingValuationChitId,
+            writeEnabled: false);
+
+        return new ProductionCostValuationWriteResponse
+        {
+            StepCode = ProductionCostStepCode.Valuation,
+            ValuationMethod = dry.ValuationMethod,
+            ReceiptPreps = receiptPreps,
+            ReconcileWarnings = reconcile.Warnings,
+            ReconcileErrors = reconcile.Errors,
+            ReadyToApply = reconcile.ReadyToApply,
+            AverageBefore = before,
+            AverageAfter = after,
+            Cogs632Preview = cogs,
+            TransactionPlan = plan,
+            InventoryPriceApplied = false,
+            CogsVoucherPosted = false
         };
     }
 

@@ -10,6 +10,8 @@ public sealed class ProductionCostWriteRequest
     public AllocationDryRunPayload? DryRun { get; set; }
     /// <summary>Tùy chọn — dry-run tính dở dang / giá thành (2C-03).</summary>
     public WipDryRunPayload? WipDryRun { get; set; }
+    /// <summary>Tùy chọn — dry-run VALUATION Bước 5 (2C-04).</summary>
+    public ValuationDryRunPayload? ValuationDryRun { get; set; }
 }
 
 public sealed class AllocationDryRunPayload
