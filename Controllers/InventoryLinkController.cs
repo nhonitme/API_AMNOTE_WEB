@@ -15,7 +15,7 @@ namespace API_AMNOTE_WEB.Controllers
             ["AP:PO"] = "AP_PURCHASE_GOODS",
             ["AP:PD"] = "AP_PURCHASE_DISCOUNT",
             ["AP:PR"] = "AP_RETURN_GOODS",
-            ["AR:SO"] = "AR_SALES",
+            ["AR:SO"] = "GL_VOUCHER_SALE",
             ["AR:SD"] = "AR_SALE_DISCOUNT",
             ["AR:SR"] = "AR_SALE_RETURN",
             ["AP:IR"] = "INV_RECEIPT",
