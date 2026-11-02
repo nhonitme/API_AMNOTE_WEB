@@ -40,9 +40,11 @@ Phạm vi: Engine C#, quy tắc Bước 3, script SQL, API POST **gate chặn gh
 - C# `ConfirmIdempotency.PlanConfirm` / `ShouldWriteSuccessHistory` map hành vi trên (unit test, chưa đường DB).
 
 ### 1.3 Bảo vệ load_pool
-- `sp_pc_alloc_load_pool` SIGNAL nếu `ALLOC_CONFIRMED|CONFIRMED` + step DONE.
+- `sp_pc_alloc_load_pool` SIGNAL tuyệt đối nếu `RUN.STATUS ∈ {ALLOC_CONFIRMED, CONFIRMED}` — **không phụ thuộc STEP** (thiếu / chưa DONE vẫn chặn DELETE).
 - Chỉ DRAFT/PREVIEWED/REOPENED (và version khớp header) được tính lại.
-- Unit: `AllocLoadGuard` — mid-fail không DELETE → pool cũ còn.
+- Unit: `AllocLoadGuard` — mid-fail / STEP null không DELETE → pool cũ còn.
+- PeriodLock canonical: `migrations/20261102_2b_04_…` **và** `StoredProcedures/PeriodLock/CogsSummary/01_sp_period_lock_cogs.sql` đồng bộ.
+- DDL UNIQUE: chỉ cần khi schema cũ thiếu cột — xem `2c02_README.md`.
 
 ### 1.4 Khóa phân bổ C# ↔ MySQL
 - UNIQUE: `(RUN_ID, RUN_VERSION, PRODUCT_ID, DEPARTMENT_ID, ACCOUNT_CD, POOL_DEPARTMENT_ID)`.

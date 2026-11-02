@@ -169,6 +169,24 @@ public sealed class ProductionCostController : BaseApiController
             CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
     }
 
+    // ---- 2C-03 write (mặc định chặn ghi DB / không cập nhật giá kho) ----
+
+    /// <summary>POST /api/production-cost/cost-calc/preview</summary>
+    [HttpPost("cost-calc/preview")]
+    public async Task<IActionResult> PreviewCostCalc([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.PreviewCostCalcAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
+    /// <summary>POST /api/production-cost/cost-calc/confirm</summary>
+    [HttpPost("cost-calc/confirm")]
+    public async Task<IActionResult> ConfirmCostCalc([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.ConfirmCostCalcAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
     private static ProductionCostQuery Query(string? periodYm, long? runId, int? runVersion) =>
         new()
         {

@@ -2,6 +2,7 @@ using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Services.ProductionCost.Allocation;
 using API_AMNOTE_WEB.Services.ProductionCost.Transfer;
+using API_AMNOTE_WEB.Services.ProductionCost.Wip;
 
 namespace API_AMNOTE_WEB.Services.ProductionCost;
 
@@ -131,6 +132,54 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             "Confirm transfer DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-02.");
     }
 
+    public Task<ProductionCostWipWriteResponse> PreviewCostCalcAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null)
+    {
+        EnsureAuth(companyCd);
+        ValidatePeriod(request);
+
+        if (request.WipDryRun == null)
+        {
+            _gate.EnsureWritable();
+            throw new InvalidOperationException(
+                "Preview COST_CALC từ DB chưa kích hoạt trong 2C-03. " +
+                "Gửi WipDryRun payload để tính thử thuần.");
+        }
+
+        var response = RunDryWip(request);
+        response.WriteEnabled = _gate.IsWriteEnabled;
+        response.Persisted = false;
+        response.PeriodYm = request.PeriodYm;
+        response.RunId = request.RunId;
+        response.RunVersion = request.RunVersion;
+        response.InventoryPriceApplied = false;
+        response.Message =
+            "Preview COST_CALC dry-run — không ghi production_cost_wip / không cập nhật giá nhập kho.";
+        return Task.FromResult(response);
+    }
+
+    public Task<ProductionCostWipWriteResponse> ConfirmCostCalcAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null)
+    {
+        EnsureAuth(companyCd);
+        ValidatePeriod(request);
+        _gate.EnsureWritable();
+
+        // Skeleton sau gate:
+        // 1) C# TX owner → sp_pc_source_rebuild (loại XFER) → sp_pc_wip_calculate
+        // 2) Không DELETE version CONFIRMED cũ; chỉ ghi RUN_VERSION hiện tại
+        // 3) Receipt prep theo INPUT_ID — chưa apply inventory khi 2C-03
+        // 4) Confirm → step COST_CALC=DONE; RUN.STATUS=CONFIRMED (toàn kỳ) sau nghiệm thu
+        throw new InvalidOperationException(
+            "Confirm COST_CALC DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-03.");
+    }
+
     /// <summary>Tính phân bổ thuần — dùng unit test / dry-run API.</summary>
     public static AllocationComputeResult RunDryAllocation(string companyCd, AllocationDryRunPayload dryRun)
     {
@@ -152,6 +201,42 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                 NumberDigit = dryRun.NumberDigit,
                 CompanyCd = companyCd
             });
+    }
+
+    /// <summary>Tính dở dang / GT thuần — unit test / dry-run API.</summary>
+    public static ProductionCostWipWriteResponse RunDryWip(ProductionCostWriteRequest request)
+    {
+        var dry = request.WipDryRun
+            ?? throw new ArgumentException("WipDryRun is required.");
+
+        if (dry.Products.Count == 0)
+            throw new ArgumentException("WipDryRun.Products không được rỗng.");
+
+        var items = WipCostEngine.Run(dry.Products, dry.WipMethod, dry.Config, dry.Sources);
+        if (items.Any(i => i.HasErrors))
+        {
+            var first = items.First(i => i.HasErrors).Errors[0];
+            throw new InvalidOperationException(first);
+        }
+
+        var compare = dry.ConfirmedBaseline != null && dry.ConfirmedBaseline.Count > 0
+            ? CostRunCompare.Compare(dry.ConfirmedBaseline, items)
+            : Array.Empty<CostCompareLine>();
+
+        var receipts = dry.Receipts.Count > 0
+            ? ReceiptPricePrep.Build(items, dry.Receipts)
+            : Array.Empty<ReceiptPricePrepLine>();
+
+        return new ProductionCostWipWriteResponse
+        {
+            WipMethod = dry.WipMethod,
+            IncompleteMode = dry.Config.Mode,
+            Items = items,
+            Compare = compare,
+            ReceiptPreps = receipts,
+            TotalCostPriceSum = items.Sum(i => i.TotalCostPrice),
+            InventoryPriceApplied = false
+        };
     }
 
     private static void EnsureAuth(string companyCd)

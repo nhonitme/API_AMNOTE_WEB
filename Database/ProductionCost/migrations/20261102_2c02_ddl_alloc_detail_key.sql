@@ -1,8 +1,14 @@
 -- =============================================================================
 -- G-K 2C-02 — DDL điều chỉnh UNIQUE production_cost_alloc_detail
--- BÀN GIAO — user tự SOURCE trên DEV/TEST sau 2B tables.
+-- BÀN GIAO — user tự SOURCE trên DEV/TEST khi schema CŨ thiếu cột/UNIQUE.
 -- Đồng bộ khóa C#: (PRODUCT_ID, DEPARTMENT_ID, ACCOUNT_CD, POOL_DEPARTMENT_ID)
 -- CẤM production.
+--
+-- ĐIỀU KIỆN SỬ DỤNG (tránh chạy không cần thiết):
+--   CHẠY khi bảng đã tạo từ bản 2B cũ (UNIQUE chỉ RUN_ID+VERSION+PRODUCT+ACCOUNT,
+--   hoặc thiếu POOL_DEPARTMENT_ID).
+--   KHÔNG CẦN khi cài mới từ 01_production_cost_tables.sql / 2b_01_tables.sql
+--   bản repo hiện tại (đã có POOL_DEPARTMENT_ID + UNIQUE đủ khóa).
 -- =============================================================================
 
 SOURCE 20261102_2b_00_guard_inline.sql;

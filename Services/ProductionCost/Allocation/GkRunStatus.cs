@@ -23,10 +23,15 @@ public static class GkRunStatus
         string.Equals(runStatus, AllocConfirmed, StringComparison.OrdinalIgnoreCase)
         || string.Equals(runStatus, Confirmed, StringComparison.OrdinalIgnoreCase);
 
-    public static bool AllowsPoolRecalc(string? runStatus, string? allocationStepStatus)
+    /// <summary>
+    /// Cho phép tính lại pool chỉ khi RUN ∈ DRAFT|PREVIEWED|REOPENED (hoặc trống).
+    /// ALLOC_CONFIRMED/CONFIRMED chặn tuyệt đối — không phụ thuộc STEP (thiếu/chưa DONE).
+    /// </summary>
+    public static bool AllowsPoolRecalc(string? runStatus, string? allocationStepStatus = null)
     {
-        if (IsAllocationLocked(runStatus) &&
-            string.Equals(allocationStepStatus, "DONE", StringComparison.OrdinalIgnoreCase))
+        _ = allocationStepStatus; // giữ chữ ký tương thích; không nới chặn theo STEP
+
+        if (IsAllocationLocked(runStatus))
             return false;
 
         if (string.Equals(runStatus, Reopened, StringComparison.OrdinalIgnoreCase))
@@ -87,8 +92,8 @@ public static class AllocLoadGuard
         if (!GkRunStatus.AllowsPoolRecalc(runStatus, allocationStepStatus))
         {
             throw new InvalidOperationException(
-                "Không được xóa/ghi đè pool đã xác nhận (ALLOC_CONFIRMED/CONFIRMED + COST_ALLOCATION=DONE). " +
-                "Phải mở lại (REOPEN) trước khi tính lại.");
+                "Không được xóa/ghi đè pool khi RUN.STATUS=ALLOC_CONFIRMED/CONFIRMED " +
+                "(không phụ thuộc STEP). Phải mở lại (REOPEN) trước khi tính lại.");
         }
     }
 
@@ -96,6 +101,6 @@ public static class AllocLoadGuard
     /// Mô phỏng lỗi giữa chừng: nếu overwrite bị chặn, dữ liệu cũ phải còn nguyên
     /// (caller không gọi DELETE).
     /// </summary>
-    public static bool WouldDeleteConfirmedData(string? runStatus, string? allocationStepStatus) =>
+    public static bool WouldDeleteConfirmedData(string? runStatus, string? allocationStepStatus = null) =>
         !GkRunStatus.AllowsPoolRecalc(runStatus, allocationStepStatus);
 }

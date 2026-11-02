@@ -11,7 +11,8 @@ SOURCE 20261102_2b_00_guard_inline.sql;
 DELIMITER $$
 
 -- -----------------------------------------------------------------------------
--- 1) Load pool — không DELETE khi đã ALLOC_CONFIRMED/CONFIRMED + step DONE
+-- 1) Load pool — chặn tuyệt đối DELETE khi RUN = ALLOC_CONFIRMED/CONFIRMED
+--    (kể cả STEP thiếu / chưa DONE). Chỉ DRAFT|PREVIEWED|REOPENED + đúng VERSION.
 -- -----------------------------------------------------------------------------
 DROP PROCEDURE IF EXISTS `sp_pc_alloc_load_pool`$$
 CREATE PROCEDURE `sp_pc_alloc_load_pool`(
@@ -28,7 +29,6 @@ proc: BEGIN
     DECLARE v_tbl INT DEFAULT 0;
     DECLARE v_header_ver INT;
     DECLARE v_run_status VARCHAR(20);
-    DECLARE v_step_status VARCHAR(20);
 
     SELECT COUNT(*) INTO v_tbl
     FROM information_schema.TABLES
@@ -48,27 +48,20 @@ proc: BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'RUN_ID khong thuoc COMPANY_CD';
     END IF;
 
-    IF p_RUN_VERSION <> v_header_ver THEN
+    IF IFNULL(p_RUN_VERSION, 0) <= 0 OR p_RUN_VERSION <> v_header_ver THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'Chi duoc load pool dung RUN_VERSION hien tai tren header';
     END IF;
 
-    SELECT STATUS INTO v_step_status
-    FROM production_cost_step
-    WHERE COMPANY_CD = p_COMPANY_CD AND RUN_ID = p_RUN_ID AND STEP_INDEX = 2 AND ISDEL = '0'
-    LIMIT 1;
-
-    -- Bảo vệ số liệu đã xác nhận phân bổ
-    IF IFNULL(v_run_status, '') IN ('ALLOC_CONFIRMED', 'CONFIRMED')
-       AND IFNULL(v_step_status, '') = 'DONE' THEN
+    -- Chặn tuyệt đối theo RUN.STATUS — không phụ thuộc STEP (thiếu / chưa DONE)
+    IF IFNULL(v_run_status, '') IN ('ALLOC_CONFIRMED', 'CONFIRMED') THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Khong xoa pool da xac nhan — REOPEN truoc khi tinh lai';
+            SET MESSAGE_TEXT = 'Khong xoa pool khi RUN ALLOC_CONFIRMED/CONFIRMED — REOPEN truoc khi tinh lai';
     END IF;
 
-    IF IFNULL(v_run_status, '') NOT IN ('DRAFT', 'PREVIEWED', 'REOPENED', '')
-       AND IFNULL(v_step_status, '') = 'DONE' THEN
+    IF IFNULL(v_run_status, '') NOT IN ('DRAFT', 'PREVIEWED', 'REOPENED', '') THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Trang thai RUN/STEP khong cho phep ghi de pool';
+            SET MESSAGE_TEXT = 'Trang thai RUN khong cho phep ghi de pool';
     END IF;
 
     DELETE FROM production_cost_alloc_pool

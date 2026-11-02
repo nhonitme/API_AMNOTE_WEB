@@ -1,13 +1,15 @@
 namespace API_AMNOTE_WEB.Models;
 
-/// <summary>Request chung cho POST G-K 2C-02.</summary>
+/// <summary>Request chung cho POST G-K 2C-02 / 2C-03.</summary>
 public sealed class ProductionCostWriteRequest
 {
     public string PeriodYm { get; set; } = string.Empty;
     public long? RunId { get; set; }
     public int? RunVersion { get; set; }
-    /// <summary>Tùy chọn — client gửi để dry-run tính thử khi chưa bật ghi DB.</summary>
+    /// <summary>Tùy chọn — client gửi để dry-run phân bổ (2C-02).</summary>
     public AllocationDryRunPayload? DryRun { get; set; }
+    /// <summary>Tùy chọn — dry-run tính dở dang / giá thành (2C-03).</summary>
+    public WipDryRunPayload? WipDryRun { get; set; }
 }
 
 public sealed class AllocationDryRunPayload

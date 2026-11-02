@@ -1,13 +1,18 @@
--- G-K 2B — PeriodLock COGS: EXP_TO_154_ONLY + 3 rule B-I (an toàn exclusive)
--- Đồng bộ: Database/StoredProcedures/PeriodLock/CogsSummary/01_sp_period_lock_cogs.sql
--- DEV/TEST only. CẤM production.
+-- PeriodLock COGS: EXP_TO_154_ONLY + 3 rule B-I (an toàn exclusive)
+-- Đồng bộ nội dung logic với:
+--   Database/ProductionCost/migrations/20261102_2b_04_sp_period_lock_cogs.sql
+-- B3 G-K: nhận RUN.STATUS=ALLOC_CONFIRMED (sau B2) qua sp_pc_assert_allocation_ready_for_exp.
+-- Ba rule B-I không đổi hành vi.
+--
+-- Cài từ PeriodLock/00_install_all.sql — KHÔNG SOURCE guard migration 2B
+-- (guard chỉ dùng khi SOURCE file trong ProductionCost/migrations).
 --
 -- Transaction owner: caller (API/job). SP này không COMMIT.
 -- validate/calculate = check only (không claim, không xóa CT).
 -- create_voucher = claim → build → (chỉ khi build OK) xóa CT cũ + post.
 -- Exclusive fail / validate fail: handler KHÔNG xóa chứng từ hiện có.
-
-SOURCE 20261102_2b_00_guard_inline.sql;
+--
+-- Yêu cầu (G-K EXP): đã cài sp_pc_assert_allocation_ready_for_exp (2c02_sp_alloc.sql).
 
 DELIMITER $$
 
@@ -64,7 +69,11 @@ proc: BEGIN
                 SET MESSAGE_TEXT = 'EXP_TO_154_ONLY can bang production_cost_alloc_detail';
         END IF;
 
-        -- Preview được chạy trước claim: không yêu cầu COST_ENGINE=GK tại đây
+        -- Preview được chạy trước claim: không yêu cầu COST_ENGINE=GK tại đây.
+        -- B2 Confirm → ALLOC_CONFIRMED + COST_ALLOCATION=DONE (khác CONFIRMED toàn kỳ).
+        -- Ba rule B-I không đi nhánh này — không đổi hành vi.
+        CALL sp_pc_assert_allocation_ready_for_exp(p_COMPANY_CD, p_PERIOD_YM);
+
         SELECT p.CURRENT_RUN_ID, r.RUN_VERSION, r.STATUS
           INTO v_run_id, v_run_ver, v_run_status
         FROM production_cost_period p
@@ -79,12 +88,7 @@ proc: BEGIN
 
         IF v_run_id IS NULL OR v_run_ver IS NULL THEN
             SIGNAL SQLSTATE '45000'
-                SET MESSAGE_TEXT = 'EXP_TO_154_ONLY can CURRENT_RUN_ID G-K CONFIRMED';
-        END IF;
-
-        IF IFNULL(v_run_status, '') <> 'CONFIRMED' THEN
-            SIGNAL SQLSTATE '45000'
-                SET MESSAGE_TEXT = 'EXP_TO_154_ONLY chi dung RUN STATUS=CONFIRMED';
+                SET MESSAGE_TEXT = 'EXP_TO_154_ONLY can CURRENT_RUN_ID G-K';
         END IF;
 
         SELECT IFNULL(SUM(ad.ALLOCATED_AMOUNT), 0)
