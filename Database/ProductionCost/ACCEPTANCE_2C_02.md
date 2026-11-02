@@ -1,119 +1,106 @@
-# Nghiệm thu Giai đoạn 2C-02 — Phân bổ 622/627 + kết chuyển EXP_TO_154_ONLY
+# Nghiệm thu Giai đoạn 2C-02 — Phân bổ 622/627 + EXP_TO_154_ONLY
 
-Ngày: 2026-11-02  
-Phạm vi: Engine phân bổ thuần C#, API POST Bước 2/3 (chặn ghi), quy tắc exclusive, script SQL bổ sung.  
-**Không** kết nối DB · **Không** chạy migration · **Không** đụng production · **Không** đổi FE · **Không** Bước 4/5/reopen.
-
----
-
-## 1. File tạo mới / chỉnh sửa
-
-### Mới
-| File |
-|------|
-| `Services/ProductionCost/Allocation/AllocationMath.cs` |
-| `Services/ProductionCost/Allocation/AllocationEngine.cs` |
-| `Services/ProductionCost/Allocation/NvlBasisCalculator.cs` |
-| `Services/ProductionCost/Allocation/PoolAccountRules.cs` |
-| `Services/ProductionCost/Transfer/CostEngineExclusive.cs` |
-| `Services/ProductionCost/Transfer/ExpTo154Rules.cs` |
-| `Services/ProductionCost/ConfirmIdempotency.cs` |
-| `Services/ProductionCost/ProductionCostWriteGate.cs` |
-| `Services/ProductionCost/ProductionCostWriteService.cs` |
-| `Models/AllocationEngineModels.cs` |
-| `Models/ProductionCostWriteModels.cs` |
-| `Interfaces/IProductionCostWriteService.cs` |
-| `API_AMNOTE_WEB.Tests/ProductionCostAllocationEngineTests.cs` |
-| `Database/ProductionCost/migrations/20261102_2c02_sp_alloc.sql` |
-| `Database/ProductionCost/migrations/20261102_2c02_verify_readonly.sql` |
-| `Database/ProductionCost/migrations/20261102_2c02_README.md` |
-| `Database/ProductionCost/ACCEPTANCE_2C_02.md` |
-
-### Chỉnh
-| File | Thay đổi |
-|------|----------|
-| `Controllers/ProductionCostController.cs` | 4 POST endpoint + write error handling |
-| `Program.cs` | Đăng ký WriteGate (mặc định OFF) + WriteService |
-| `API_AMNOTE_WEB.Tests.csproj` | Link source 2C-02 cho unit test |
+Ngày: 2026-11-02 (cập nhật sau rà soát fix logic)  
+Phạm vi: Engine phân bổ thuần C#, quy tắc Bước 3, script SQL bổ sung, API POST **có gate chặn ghi**.  
+**Không** kết nối DB · **Không** chạy migration · **Không** bật `EnableWrites` · **Không** 2C-03.
 
 ---
 
-## 2. API / DTO mới
+## 0. Phân biệt trạng thái triển khai (bắt buộc)
 
-| Method | Path | Hành vi 2C-02 |
-|--------|------|----------------|
-| POST | `/api/production-cost/allocation/preview` | Dry-run nếu có `DryRun` payload → `Persisted=false`. Không DryRun + gate OFF → BusinessError chặn. |
-| POST | `/api/production-cost/allocation/confirm` | **Luôn chặn** khi `EnableWrites=false` (mặc định). |
-| POST | `/api/production-cost/transfer/preview` | Kiểm tra quy tắc EXP_TO_154_ONLY; `Persisted=false`; không tạo CT. |
-| POST | `/api/production-cost/transfer/confirm` | **Luôn chặn** khi gate OFF. |
+| Hạng mục | Trạng thái thật |
+|----------|----------------|
+| `AllocationEngine` C# (type 0/1, byDepartment, REDUCTION, làm tròn, Σ=P_A) | **Đã implement** + unit test |
+| `ExpTo154Rules` (cấm N155/C154, N632/C155, N632/C154; cho N154/C621–627) | **Đã implement** + unit test |
+| `CostEngineExclusive` / `ConfirmIdempotency` | **Đã implement** (logic thuần) |
+| API `POST .../allocation/preview` | **Chỉ DryRun payload** — `Persisted=false`; chưa đọc/ghi DB |
+| API `POST .../allocation/confirm` | **Chặn gate** — chưa có luồng ghi DB hoàn chỉnh |
+| API `POST .../transfer/preview\|confirm` | Preview: kiểm tra rule; Confirm: **chặn gate** |
+| `sp_pc_alloc_load_pool` / `load_basis_qty` / `alloc_confirm` | **Script bàn giao** — chưa coi là đã chạy DEV |
+| `sp_pc_alloc_calculate` | **Skeleton SIGNAL** — chưa body SQL |
+| PeriodLock `EXP_TO_154_ONLY` (2B) | **Có trong migration 2B** — phụ thuộc user tự cài DEV |
 
-DTO chính: `ProductionCostWriteRequest`, `AllocationDryRunPayload`, `ProductionCostAllocationWriteResponse`, `ProductionCostTransferWriteResponse`.
-
-Cấu hình chặn: `ProductionCost:EnableWrites` (default `false`; production luôn OFF dù flag=true).
-
----
-
-## 3. Stored procedure — đã có vs cần bổ sung
-
-### Đã implement ở 2B (không tạo lại)
-- `sp_pc_engine_check` / `claim` / `claim_for_cogs` / `assert_for_cogs` / `release_cogs`
-- `sp_pc_nvl_basis_build` (allocate_type=0, chống nhân đôi CHITDETAIL / orphan)
-- PeriodLock COGS nhận `EXP_TO_154_ONLY` + giữ 3 rule B-I
-
-### Đặc tả 2A chưa có body ở 2B → script bàn giao 2C-02
-| SP | File | Ghi chú |
-|----|------|---------|
-| `sp_pc_alloc_load_pool` | `20261102_2c02_sp_alloc.sql` | Aggregate pool; 1 CHITDETAIL_ID / 1 lần |
-| `sp_pc_alloc_load_basis_qty` | idem | Basis type=1 (N155/C154) |
-| `sp_pc_alloc_calculate` | idem | Skeleton SIGNAL — engine chính = C# đến khi bật ghi |
-| `sp_pc_alloc_confirm` | idem | Idempotent `STABLE_KEY=ALLOC:{COMPANY}:{PERIOD}` |
-
-User tự SOURCE sau nghiệm thu 2B DEV. Verify: `20261102_2c02_verify_readonly.sql`.
-
-Bước 3: **tái sử dụng** PeriodLock 2B — không SP 154→155/632 mới.
+**Không báo cáo** Preview/Confirm DB hay `sp_pc_alloc_calculate` là đã vận hành thật.
 
 ---
 
-## 4. Build & unit test (không DB)
+## 1. File tạo mới / chỉnh sửa (sau fix)
+
+### Logic C#
+- `Services/ProductionCost/Allocation/AllocationEngine.cs` — **sửa** RunByDepartment (shared pool 1 lần), Σ=P_A, lỗi ΣT=0
+- `Services/ProductionCost/Transfer/ExpTo154Rules.cs` — **sửa** downstream Nợ/Có
+- `Models/AllocationEngineModels.cs` — thêm `PoolDepartmentId`
+- Tests: `ProductionCostAllocationEngineTests.cs`
+
+### SQL bàn giao
+- `migrations/20261102_2c02_sp_alloc.sql` — **viết lại** pool (ext.DEPARTMENT_ID, 3619), basis qty, confirm idempotent
+- `migrations/20261102_2c02_README.md` — trạng thái rõ
+- `migrations/20261102_2c02_verify_readonly.sql`
+
+### API (không kích hoạt ghi)
+- Controller 4 POST + `ProductionCostWriteGate` mặc định OFF
+
+---
+
+## 2. Fix nghiệp vụ đã làm
+
+### 2.1 AllocationEngine.RunByDepartment
+- Pool `DEPARTMENT_ID=0` phân bổ **một lần** trên toàn bộ đối tượng (không lặp theo từng phòng).
+- Pool `DEPARTMENT_ID>0` chỉ phân bổ trong đúng phòng đó.
+- Giữ dòng theo `(ProductId, DepartmentId, AccountCd, PoolDepartmentId)`.
+- Sau làm tròn: Σ allocated từng pool = `ALLOCATION_COSTS` (assert).
+- Σ tiêu thức = 0 nhưng còn `ALLOCATION_COSTS` → **InvalidOperationException** (không âm thầm 0).
+
+### 2.2 ExpTo154Rules
+Cấm Step 3 (kể cả TK chi tiết): `N155/C154`, `N632/C155`, `N632/C154`, `N154/C155|C632`, `N155/C632`.  
+Cho phép: `N154*/C621*|622*|623*|627*`.
+
+### 2.3 sp_pc_alloc_confirm (script)
+- Tham số `p_RUN_VERSION`; khớp header RUN.
+- Chỉ confirm khi có đủ pool + detail cùng version.
+- Upsert `production_cost_step` step 2.
+- Confirm lặp cùng version + ref → `NOOP_ALREADY_CONFIRMED`, không thêm history.
+- Không dùng `CHIT_ID IS NULL` làm điều kiện “chưa confirm”.
+- `START TRANSACTION` + `EXIT HANDLER` rollback.
+
+### 2.4 Đồng bộ SQL ↔ C#
+- REDUCTION / ALLOCATION_COSTS / company **3619** giống `AllocationMath`.
+- `DEPARTMENT_ID` từ `chitdetailinfo_ext` (JOIN `COMPANY_CD` + `CHITDETAIL_ID`).
+- Load pool / basis tránh nhân dòng JOIN object.
+
+---
+
+## 3. Build & unit test
 
 ```text
-dotnet build API_AMNOTE_WEB.csproj -o _build_2c02_out
+dotnet build API_AMNOTE_WEB.csproj -o _build_2c02_fix_out
 → Build succeeded. 0 Error(s)
 
 dotnet test --filter FullyQualifiedName~ProductionCost
-→ Passed: 42, Failed: 0
-  (2C-01: 30 + 2C-02 AllocationEngine/WriteGate: 12)
+→ Passed: 45, Failed: 0
 ```
 
-### Checklist test 2C-02
+Checklist bổ sung sau fix:
 | Case | Kết quả |
 |------|---------|
-| ALLOCATE_TYPE=0 (NVL) ví dụ tài liệu | PASS |
-| ALLOCATE_TYPE=1 (SL TP) ví dụ tài liệu | PASS |
-| Chi phí theo phòng ban + fallback dùng chung | PASS |
-| REDUCTION + làm tròn + dòng cuối phần dư | PASS |
-| NVL orphan NO_BOM / SPLIT_QTY_ZERO | PASS |
-| Không nhân đôi CHITDETAIL → nhiều OUTPUT | PASS |
-| Không đếm trùng 6212 khi flag off | PASS |
-| RUN_VERSION không hợp lệ | PASS |
-| Exclusive B-I / G-K conflict | PASS |
-| Confirm lặp → UPDATE, không INSERT mới | PASS |
-| Preview `Persisted=false` | PASS |
-| Confirm bị chặn gate | PASS |
-| Bước 3 không 154→155/632 | PASS |
+| Shared pool không nhân theo số phòng ban | PASS |
+| Cùng PRODUCT_ID khác DEPARTMENT_ID không mất dòng | PASS |
+| ΣT=0 + P_A>0 → lỗi | PASS |
+| Σ allocated = ALLOCATION_COSTS | PASS (assert trong Run) |
+| Downstream N155/C154, N632/C155, N632/C154 (+ chi tiết) | PASS |
+| N154/C6221 hợp lệ | PASS |
+| Company 3619 REDUCTION = CREDIT | PASS |
 
 ---
 
-## 5. Quy tắc đã chốt trong code
+## 4. Script user tự chạy (sau 2B DEV)
 
-- JOIN/_ID: engine thuần không SQL; script SP JOIN `COMPANY_CD` + `*_ID`.
-- Bước 3: `StepCode=EXP_TO_154_ONLY`, `BiStepCode=COGS_SUMMARY`, `CogsRule=EXP_TO_154_ONLY`.
-- Exclusive `COST_ENGINE` GK ↔ BI.
-- Preview không ghi đè CONFIRMED; Confirm idempotent theo `STABLE_KEY`.
+1. `SOURCE 20261102_2c02_sp_alloc.sql`
+2. `SOURCE 20261102_2c02_verify_readonly.sql`
 
 ---
 
-## 6. Dừng
+## 5. Dừng
 
-Hoàn thành **2C-02**.  
-**Không** tự chuyển 2C-03 · **Không** bật `EnableWrites` · **Không** thực thi SQL trên DEV/TEST/production.
+Fix logic **2C-02** xong để duyệt.  
+Không tự chuyển 2C-03 · không bật ghi DB · không thực thi SQL trên môi trường thật.

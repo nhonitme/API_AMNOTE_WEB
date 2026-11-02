@@ -36,7 +36,9 @@ public static class AllocationEngine
         var normalizedPool = RecalculateFromReduction(pool);
         var details = options.ByDepartment
             ? RunByDepartment(normalizedPool, products, options)
-            : AllocateGroup(normalizedPool, products, options.AllocateType, options.NumberDigit);
+            : AllocateGroup(normalizedPool, products, options.AllocateType, options.NumberDigit, poolDepartmentId: null);
+
+        AssertPoolTotalsMatch(normalizedPool, details, options.NumberDigit);
 
         return new AllocationComputeResult
         {
@@ -47,54 +49,98 @@ public static class AllocationEngine
         };
     }
 
+    /// <summary>
+    /// byDepartment:
+    /// - Pool DEPARTMENT_ID &gt; 0: phân bổ một lần trong đúng phòng ban đó.
+    /// - Pool DEPARTMENT_ID = 0 (dùng chung): phân bổ đúng một lần trên toàn bộ đối tượng.
+    /// Không fallback shared-pool theo từng phòng (tránh nhân nhiều lần P_A).
+    /// </summary>
     private static IReadOnlyList<AllocationLineResult> RunByDepartment(
         IReadOnlyList<AllocationPoolInput> pool,
         IReadOnlyList<AllocationProductInput> products,
         AllocationEngineOptions options)
     {
         var outLines = new List<AllocationLineResult>();
-        foreach (var deptGroup in products.GroupBy(p => p.DepartmentId))
-        {
-            var prodGroup = deptGroup.ToList();
-            var deptId = deptGroup.Key;
-            var poolGroup = pool.Where(r => r.DepartmentId == deptId).ToList();
-            if (poolGroup.Count == 0)
-                poolGroup = pool.Where(r => r.DepartmentId == 0).ToList();
 
-            outLines.AddRange(AllocateGroup(poolGroup, prodGroup, options.AllocateType, options.NumberDigit));
+        var deptPools = pool.Where(r => r.DepartmentId > 0).ToList();
+        var sharedPools = pool.Where(r => r.DepartmentId == 0).ToList();
+
+        foreach (var deptPoolGroup in deptPools.GroupBy(r => r.DepartmentId))
+        {
+            var deptId = deptPoolGroup.Key;
+            var prodGroup = products.Where(p => p.DepartmentId == deptId).ToList();
+            if (prodGroup.Count == 0)
+                throw new InvalidOperationException(
+                    $"Pool DEPARTMENT_ID={deptId} không có đối tượng cùng phòng ban để phân bổ.");
+
+            outLines.AddRange(AllocateGroup(
+                deptPoolGroup.ToList(),
+                prodGroup,
+                options.AllocateType,
+                options.NumberDigit,
+                poolDepartmentId: deptId));
         }
 
-        // Giữ thứ tự sản phẩm gốc
-        var lookup = outLines
-            .GroupBy(x => (x.ProductId, x.AccountCd))
-            .ToDictionary(g => g.Key, g => g.First());
+        if (sharedPools.Count > 0)
+        {
+            if (products.Count == 0)
+                throw new InvalidOperationException("Pool dùng chung (DEPARTMENT_ID=0) cần ít nhất một đối tượng.");
+
+            // Đúng một lần — không lặp theo từng phòng ban.
+            outLines.AddRange(AllocateGroup(
+                sharedPools,
+                products.ToList(),
+                options.AllocateType,
+                options.NumberDigit,
+                poolDepartmentId: 0));
+        }
+
+        // Giữ thứ tự sản phẩm gốc; khóa (ProductId, DepartmentId, AccountCd, PoolDepartmentId)
+        // để không mất dòng khi cùng PRODUCT+ACCOUNT ở nhiều DEPARTMENT.
+        var seen = new HashSet<(long ProductId, long DepartmentId, string AccountCd, long PoolDepartmentId)>();
         var ordered = new List<AllocationLineResult>();
         foreach (var p in products)
         {
-            foreach (var acc in pool.Select(x => x.AccountCd).Distinct(StringComparer.OrdinalIgnoreCase))
+            foreach (var line in outLines.Where(l => l.ProductId == p.ProductId && l.DepartmentId == p.DepartmentId))
             {
-                if (lookup.TryGetValue((p.ProductId, acc), out var line))
+                var key = (line.ProductId, line.DepartmentId, line.AccountCd, line.PoolDepartmentId);
+                if (seen.Add(key))
                     ordered.Add(line);
             }
         }
 
-        return ordered.Count > 0 ? ordered : outLines;
+        // Dòng còn lại (nếu có) — không drop
+        foreach (var line in outLines)
+        {
+            var key = (line.ProductId, line.DepartmentId, line.AccountCd, line.PoolDepartmentId);
+            if (seen.Add(key))
+                ordered.Add(line);
+        }
+
+        return ordered;
     }
 
     private static IReadOnlyList<AllocationLineResult> AllocateGroup(
         IReadOnlyList<AllocationPoolInput> pool,
         IReadOnlyList<AllocationProductInput> products,
         int allocateType,
-        int numberDigit)
+        int numberDigit,
+        long? poolDepartmentId)
     {
         if (products.Count == 0)
             return Array.Empty<AllocationLineResult>();
 
         var bases = products.Select(p => BasisOf(p, allocateType)).ToArray();
         var totalBasis = bases.Sum();
-        var lines = new List<AllocationLineResult>();
 
-        // Map product → allocated by account
+        // ΣT = 0 nhưng còn chi phí cần phân bổ → lỗi rõ, không âm thầm = 0.
+        if (totalBasis == 0m && pool.Any(p => p.AllocationCosts != 0m))
+        {
+            throw new InvalidOperationException(
+                "Tổng tiêu thức phân bổ = 0 trong khi ALLOCATION_COSTS > 0 — không thể phân bổ. " +
+                "Kiểm tra basis NVL/SL hoặc đối tượng được chọn.");
+        }
+
         var allocated = products
             .Select(_ => new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase))
             .ToArray();
@@ -105,12 +151,13 @@ public static class AllocationEngine
         foreach (var poolRow in pool)
         {
             var pA = poolRow.AllocationCosts;
+            var key = PoolLineKey(poolRow);
             if (totalBasis == 0m)
             {
                 for (var i = 0; i < products.Count; i++)
                 {
-                    allocated[i][poolRow.AccountCd] = 0m;
-                    lastFlags[i][poolRow.AccountCd] = i == products.Count - 1;
+                    allocated[i][key] = 0m;
+                    lastFlags[i][key] = i == products.Count - 1;
                 }
                 continue;
             }
@@ -121,40 +168,43 @@ public static class AllocationEngine
                 if (i == products.Count - 1)
                 {
                     var remainder = AllocationMath.RoundDigit(pA - allocatedSum, numberDigit);
-                    allocated[i][poolRow.AccountCd] = remainder;
-                    lastFlags[i][poolRow.AccountCd] = true;
+                    allocated[i][key] = remainder;
+                    lastFlags[i][key] = true;
                 }
                 else
                 {
                     var share = AllocationMath.RoundDigit(pA * bases[i] / totalBasis, numberDigit);
-                    allocated[i][poolRow.AccountCd] = share;
-                    lastFlags[i][poolRow.AccountCd] = false;
+                    allocated[i][key] = share;
+                    lastFlags[i][key] = false;
                     allocatedSum += share;
                 }
             }
         }
 
+        var lines = new List<AllocationLineResult>();
         for (var i = 0; i < products.Count; i++)
         {
             var p = products[i];
             var map = allocated[i];
             var sum622 = AllocationMath.RoundDigit(
-                map.Where(kv => kv.Key.StartsWith("622", StringComparison.Ordinal)).Sum(kv => kv.Value),
+                map.Where(kv => AccountOfKey(kv.Key).StartsWith("622", StringComparison.Ordinal)).Sum(kv => kv.Value),
                 numberDigit);
             var sum627 = AllocationMath.RoundDigit(
-                map.Where(kv => kv.Key.StartsWith("627", StringComparison.Ordinal)).Sum(kv => kv.Value),
+                map.Where(kv => AccountOfKey(kv.Key).StartsWith("627", StringComparison.Ordinal)).Sum(kv => kv.Value),
                 numberDigit);
 
             foreach (var poolRow in pool)
             {
-                map.TryGetValue(poolRow.AccountCd, out var amt);
-                lastFlags[i].TryGetValue(poolRow.AccountCd, out var isLast);
+                var key = PoolLineKey(poolRow);
+                map.TryGetValue(key, out var amt);
+                lastFlags[i].TryGetValue(key, out var isLast);
                 lines.Add(new AllocationLineResult
                 {
                     ProductId = p.ProductId,
                     ProductCd = p.ProductCd,
                     DepartmentId = p.DepartmentId,
                     DepartmentCd = p.DepartmentCd,
+                    PoolDepartmentId = poolDepartmentId ?? poolRow.DepartmentId,
                     AmountQuantity = p.AmountQuantity,
                     Quantity = p.Quantity,
                     Amount6211 = p.Amount6211,
@@ -169,6 +219,39 @@ public static class AllocationEngine
         }
 
         return lines;
+    }
+
+    /// <summary>Mỗi dòng pool: Σ ALLOCATED_AMOUNT (sau làm tròn) = ALLOCATION_COSTS.</summary>
+    public static void AssertPoolTotalsMatch(
+        IReadOnlyList<AllocationPoolInput> pool,
+        IReadOnlyList<AllocationLineResult> details,
+        int numberDigit)
+    {
+        foreach (var poolRow in pool)
+        {
+            var sum = details
+                .Where(d =>
+                    string.Equals(d.AccountCd, poolRow.AccountCd, StringComparison.OrdinalIgnoreCase)
+                    && d.PoolDepartmentId == poolRow.DepartmentId)
+                .Sum(d => d.AllocatedAmount);
+            var rounded = AllocationMath.RoundDigit(sum, numberDigit);
+            var expected = AllocationMath.RoundDigit(poolRow.AllocationCosts, numberDigit);
+            if (rounded != expected)
+            {
+                throw new InvalidOperationException(
+                    $"Tổng phân bổ TK {poolRow.AccountCd} (pool DEPT={poolRow.DepartmentId}) = {rounded} " +
+                    $"không khớp ALLOCATION_COSTS={expected}.");
+            }
+        }
+    }
+
+    private static string PoolLineKey(AllocationPoolInput row) =>
+        $"{row.AccountCd}#{row.DepartmentId}";
+
+    private static string AccountOfKey(string key)
+    {
+        var idx = key.IndexOf('#');
+        return idx < 0 ? key : key[..idx];
     }
 
     private static decimal BasisOf(AllocationProductInput row, int allocateType) =>

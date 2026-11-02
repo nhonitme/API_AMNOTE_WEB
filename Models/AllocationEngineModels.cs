@@ -39,8 +39,11 @@ public sealed class AllocationLineResult
 {
     public long ProductId { get; set; }
     public string? ProductCd { get; set; }
+    /// <summary>DEPARTMENT_ID của đối tượng / thành phẩm.</summary>
     public long DepartmentId { get; set; }
     public string? DepartmentCd { get; set; }
+    /// <summary>DEPARTMENT_ID của dòng pool nguồn (0 = dùng chung).</summary>
+    public long PoolDepartmentId { get; set; }
     public decimal AmountQuantity { get; set; }
     public decimal Quantity { get; set; }
     public decimal Amount6211 { get; set; }
