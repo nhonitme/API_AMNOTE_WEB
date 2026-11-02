@@ -15,6 +15,23 @@ foreach ($f in @("20261102_2b_00_preflight_dev.sql", "20261102_2b_00_guard_inlin
     }
 }
 
+# Guard must fail with a real SQL error (division-by-zero SELECT/SET may only warn).
+foreach ($f in @("20261102_2b_00_preflight_dev.sql", "20261102_2b_00_guard_inline.sql")) {
+    $c = Get-Content -Raw (Join-Path $here $f)
+    if ($c -match '1\s*/\s*@gk_2b_ok') {
+        Add-Fail "$f uses unreliable division-by-zero preflight"
+    }
+    if ($c -notmatch 'PREPARE\s+gk2b_stop_stmt\s+FROM\s+@gk_2b_stop_sql' -or
+        $c -notmatch 'GK2B_PREFLIGHT_FAILED__STOP_BEFORE_ANY_DDL') {
+        Add-Fail "$f missing SQL ERROR 1064 hard-stop"
+    }
+}
+
+$runner = Get-Content -Raw (Join-Path $here "Invoke-Gk2bInstall.ps1")
+if ($runner -notmatch '--abort-source-on-error' -or $runner -notmatch 'forbiddenForce') {
+    Add-Fail "Installer must enforce abort-on-error and reject mysql --force"
+}
+
 $install = Get-Content -Raw (Join-Path $here "20261102_2b_00_install_dev.sql")
 if ($install -notmatch 'SOURCE\s+20261102_2b_00_preflight_dev\.sql') {
     Add-Fail "install missing SOURCE preflight"
