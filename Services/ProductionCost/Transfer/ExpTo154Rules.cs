@@ -80,12 +80,26 @@ public static class ExpTo154Rules
         }
     }
 
-    public static void AssertAllocationConfirmed(string? allocationStepStatus, decimal confirmedAllocTotal)
+    public static void AssertAllocationConfirmed(
+        string? allocationStepStatus,
+        decimal confirmedAllocTotal,
+        string? runStatus = null)
     {
         if (!string.Equals(allocationStepStatus, ProductionCostStepStatus.Done, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Bước 3 yêu cầu phân bổ 622/627 đã CONFIRMED (COST_ALLOCATION=DONE).");
+            throw new InvalidOperationException(
+                "Bước 3 yêu cầu COST_ALLOCATION=DONE (xác nhận phân bổ Bước 2).");
+
+        if (runStatus != null &&
+            !Allocation.GkRunStatus.IsReadyForExpTo154(runStatus))
+        {
+            throw new InvalidOperationException(
+                "Bước 3 yêu cầu RUN.STATUS=ALLOC_CONFIRMED (sau B2) hoặc CONFIRMED — " +
+                "không dùng DRAFT/PREVIEWED.");
+        }
+
         if (confirmedAllocTotal <= 0m)
-            throw new InvalidOperationException("Chưa có kết quả phân bổ 622/627 CONFIRMED để đối chiếu nguồn.");
+            throw new InvalidOperationException(
+                "Chưa có kết quả phân bổ 622/627 theo RUN_ID+RUN_VERSION hiện tại.");
     }
 
     public static string StableKey(string companyCd, string periodYm) =>

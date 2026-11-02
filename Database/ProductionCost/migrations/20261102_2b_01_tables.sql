@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS `production_cost_run` (
   `COMPANY_CD` varchar(20) NOT NULL,
   `PERIOD_YM` char(6) NOT NULL,
   `RUN_VERSION` int(11) NOT NULL DEFAULT '1' COMMENT 'Tăng khi xác nhận ghi đè (FE-04)',
-  `STATUS` varchar(20) NOT NULL DEFAULT 'DRAFT' COMMENT 'DRAFT, PREVIEWED, CONFIRMED, REOPENED, SUPERSEDED',
+  `STATUS` varchar(20) NOT NULL DEFAULT 'DRAFT' COMMENT 'DRAFT, PREVIEWED, ALLOC_CONFIRMED (B2), CONFIRMED (toan ky), REOPENED, SUPERSEDED',
   `WIP_METHOD` varchar(40) NOT NULL DEFAULT 'PERCENT_COMPLETED' COMMENT 'PERCENT_COMPLETED | CLOSING_WIP_QUANTITY',
   `ALLOCATE_TYPE` tinyint(4) NOT NULL DEFAULT '0' COMMENT '0=NVL N621/C152, 1=SL N155/C154, 2=doanh thu (ẩn)',
   `IS_622_627_BY_DEPARTMENT` char(1) NOT NULL DEFAULT '0' COMMENT 'is622_627_byDepartment',
@@ -161,7 +161,8 @@ CREATE TABLE IF NOT EXISTS `production_cost_alloc_detail` (
   `RUN_VERSION` int(11) NOT NULL DEFAULT '1',
   `COMPANY_CD` varchar(20) NOT NULL,
   `PRODUCT_ID` bigint(20) NOT NULL COMMENT 'FK logic → product_info',
-  `DEPARTMENT_ID` bigint(20) NOT NULL COMMENT 'FK logic → department_info',
+  `DEPARTMENT_ID` bigint(20) NOT NULL COMMENT 'FK logic → department_info (đối tượng)',
+  `POOL_DEPARTMENT_ID` bigint(20) NOT NULL DEFAULT '0' COMMENT 'DEPARTMENT_ID dòng pool; 0 = dùng chung',
   `PRODUCT_CD` varchar(50) DEFAULT NULL,
   `DEPARTMENT_CD` varchar(20) DEFAULT NULL,
   `AMOUNT_QUANTITY` decimal(18,2) NOT NULL DEFAULT '0.00' COMMENT 'Tiêu thức NVL: Σ N621/C152 theo TP',
@@ -179,12 +180,12 @@ CREATE TABLE IF NOT EXISTS `production_cost_alloc_detail` (
   `UPDATE_BY` varchar(50) DEFAULT NULL,
   `UPDATE_AT` datetime DEFAULT NULL,
   PRIMARY KEY (`ALLOC_DETAIL_ID`),
-  UNIQUE KEY `uk_pc_alloc_detail` (`RUN_ID`,`RUN_VERSION`,`PRODUCT_ID`,`ACCOUNT_CD`),
+  UNIQUE KEY `uk_pc_alloc_detail` (`RUN_ID`,`RUN_VERSION`,`PRODUCT_ID`,`DEPARTMENT_ID`,`ACCOUNT_CD`,`POOL_DEPARTMENT_ID`),
   KEY `idx_pc_alloc_prod` (`COMPANY_CD`,`PRODUCT_ID`),
   KEY `idx_pc_alloc_dept` (`COMPANY_CD`,`DEPARTMENT_ID`),
   KEY `idx_pc_alloc_acc` (`COMPANY_CD`,`ACCOUNT_CD`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
-  COMMENT='Chi tiết phân bổ 622/627 về từng PRODUCT_ID theo tài khoản';
+  COMMENT='Chi tiết phân bổ 622/627 — khóa gồm DEPT đối tượng + POOL_DEPARTMENT_ID';
 
 -- -----------------------------------------------------------------------------
 -- 6b) Tiêu thức NVL (allocate_type=0) — tổng theo FINISHED_PRODUCT_ID

@@ -457,6 +457,7 @@ SELECT
     RUN_VERSION AS RunVersion,
     PRODUCT_ID AS ProductId,
     DEPARTMENT_ID AS DepartmentId,
+    POOL_DEPARTMENT_ID AS PoolDepartmentId,
     PRODUCT_CD AS ProductCd,
     DEPARTMENT_CD AS DepartmentCd,
     AMOUNT_QUANTITY AS AmountQuantity,
@@ -473,7 +474,7 @@ WHERE COMPANY_CD = @CompanyCd
   AND RUN_ID = @RunId
   AND RUN_VERSION = @RunVersion
   AND ISDEL = '0'
-ORDER BY PRODUCT_ID, ACCOUNT_CD";
+ORDER BY PRODUCT_ID, DEPARTMENT_ID, POOL_DEPARTMENT_ID, ACCOUNT_CD";
 
         var rows = await _db.QueryAsync<ProductionCostAllocDetailDto>(
             Net_DB.Net_DB_Company,

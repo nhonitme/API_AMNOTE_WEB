@@ -1,7 +1,7 @@
 # Nghiệm thu Giai đoạn 2C-02 — Phân bổ 622/627 + EXP_TO_154_ONLY
 
-Ngày: 2026-11-02 (cập nhật sau rà soát fix logic)  
-Phạm vi: Engine phân bổ thuần C#, quy tắc Bước 3, script SQL bổ sung, API POST **có gate chặn ghi**.  
+Ngày: 2026-11-02 (tích hợp engine/DB — 4 mục review)  
+Phạm vi: Engine C#, quy tắc Bước 3, script SQL, API POST **gate chặn ghi**.  
 **Không** kết nối DB · **Không** chạy migration · **Không** bật `EnableWrites` · **Không** 2C-03.
 
 ---
@@ -11,62 +11,65 @@ Phạm vi: Engine phân bổ thuần C#, quy tắc Bước 3, script SQL bổ su
 | Hạng mục | Trạng thái thật |
 |----------|----------------|
 | `AllocationEngine` C# (type 0/1, byDepartment, REDUCTION, làm tròn, Σ=P_A) | **Đã implement** + unit test |
+| `GkRunStatus` / `AllocLoadGuard` / `AllocDetailKey` | **Đã implement** + unit test |
 | `ExpTo154Rules` (cấm N155/C154, N632/C155, N632/C154; cho N154/C621–627) | **Đã implement** + unit test |
-| `CostEngineExclusive` / `ConfirmIdempotency` | **Đã implement** (logic thuần) |
+| `CostEngineExclusive` / `ConfirmIdempotency` (NOOP + atomic history) | **Đã implement** (logic thuần) |
 | API `POST .../allocation/preview` | **Chỉ DryRun payload** — `Persisted=false`; chưa đọc/ghi DB |
-| API `POST .../allocation/confirm` | **Chặn gate** — chưa có luồng ghi DB hoàn chỉnh |
+| API `POST .../allocation/confirm` | **Chặn gate** — skeleton TX owner / SP call (chưa thực thi DB) |
 | API `POST .../transfer/preview\|confirm` | Preview: kiểm tra rule; Confirm: **chặn gate** |
-| `sp_pc_alloc_load_pool` / `load_basis_qty` / `alloc_confirm` | **Script bàn giao** — chưa coi là đã chạy DEV |
+| `sp_pc_alloc_load_pool` / `load_basis_qty` / `alloc_confirm` / `assert_…_exp` | **Script bàn giao** — chưa coi là đã chạy DEV |
 | `sp_pc_alloc_calculate` | **Skeleton SIGNAL** — chưa body SQL |
-| PeriodLock `EXP_TO_154_ONLY` (2B) | **Có trong migration 2B** — phụ thuộc user tự cài DEV |
+| PeriodLock `EXP_TO_154_ONLY` (nhận `ALLOC_CONFIRMED`) | **Đã vá nguồn 2b_04** — user tự cài / patch DEV |
+| DDL `POOL_DEPARTMENT_ID` + UNIQUE mới | **Script bàn giao** `20261102_2c02_ddl_alloc_detail_key.sql` |
 
 **Không báo cáo** Preview/Confirm DB hay `sp_pc_alloc_calculate` là đã vận hành thật.
 
 ---
 
-## 1. File tạo mới / chỉnh sửa (sau fix)
+## 1. Bốn mục tích hợp (review)
 
-### Logic C#
-- `Services/ProductionCost/Allocation/AllocationEngine.cs` — **sửa** RunByDepartment (shared pool 1 lần), Σ=P_A, lỗi ΣT=0
-- `Services/ProductionCost/Transfer/ExpTo154Rules.cs` — **sửa** downstream Nợ/Có
-- `Models/AllocationEngineModels.cs` — thêm `PoolDepartmentId`
-- Tests: `ProductionCostAllocationEngineTests.cs`
+### 1.1 Đồng bộ Confirm B2 ↔ B3
+- B2 Confirm → `RUN.STATUS=ALLOC_CONFIRMED` + `COST_ALLOCATION=DONE` (không nhảy `CONFIRMED` toàn kỳ).
+- B3 `EXP_TO_154_ONLY` gọi `sp_pc_assert_allocation_ready_for_exp` — chấp nhận `ALLOC_CONFIRMED` hoặc `CONFIRMED`, đúng `RUN_ID+RUN_VERSION`, step DONE, có tổng phân bổ.
+- Ba rule B-I **không đổi**.
 
-### SQL bàn giao
-- `migrations/20261102_2c02_sp_alloc.sql` — **viết lại** pool (ext.DEPARTMENT_ID, 3619), basis qty, confirm idempotent
-- `migrations/20261102_2c02_README.md` — trạng thái rõ
-- `migrations/20261102_2c02_verify_readonly.sql`
+### 1.2 Transaction owner
+- `sp_pc_alloc_confirm` **không** `START TRANSACTION/COMMIT` — C# caller sở hữu TX.
+- Idempotent: `NOOP_ALREADY_CONFIRMED` khi DONE + khóa phân bổ + cùng version (không history).
+- History chỉ khi step thực sự đổi; fail giữa chừng → caller ROLLBACK giữ số liệu/status cũ.
+- C# `ConfirmIdempotency.PlanConfirm` / `ShouldWriteSuccessHistory` map hành vi trên (unit test, chưa đường DB).
 
-### API (không kích hoạt ghi)
-- Controller 4 POST + `ProductionCostWriteGate` mặc định OFF
+### 1.3 Bảo vệ load_pool
+- `sp_pc_alloc_load_pool` SIGNAL nếu `ALLOC_CONFIRMED|CONFIRMED` + step DONE.
+- Chỉ DRAFT/PREVIEWED/REOPENED (và version khớp header) được tính lại.
+- Unit: `AllocLoadGuard` — mid-fail không DELETE → pool cũ còn.
+
+### 1.4 Khóa phân bổ C# ↔ MySQL
+- UNIQUE: `(RUN_ID, RUN_VERSION, PRODUCT_ID, DEPARTMENT_ID, ACCOUNT_CD, POOL_DEPARTMENT_ID)`.
+- DTO/Repository đọc `PoolDepartmentId`; không `MIN(DEPARTMENT_ID)`.
+- Cùng `PRODUCT_ID` nhiều `DEPARTMENT_ID` + shared/dept pool giữ đủ dòng.
 
 ---
 
-## 2. Fix nghiệp vụ đã làm
+## 2. File tạo mới / chỉnh sửa
 
-### 2.1 AllocationEngine.RunByDepartment
-- Pool `DEPARTMENT_ID=0` phân bổ **một lần** trên toàn bộ đối tượng (không lặp theo từng phòng).
-- Pool `DEPARTMENT_ID>0` chỉ phân bổ trong đúng phòng đó.
-- Giữ dòng theo `(ProductId, DepartmentId, AccountCd, PoolDepartmentId)`.
-- Sau làm tròn: Σ allocated từng pool = `ALLOCATION_COSTS` (assert).
-- Σ tiêu thức = 0 nhưng còn `ALLOCATION_COSTS` → **InvalidOperationException** (không âm thầm 0).
+### Logic C#
+- `Services/ProductionCost/Allocation/GkRunStatus.cs` — **mới**
+- `Services/ProductionCost/ConfirmIdempotency.cs` — NOOP / atomic history
+- `Services/ProductionCost/Transfer/ExpTo154Rules.cs` — assert theo `ALLOC_CONFIRMED`
+- `Models/ProductionCostModels.cs` — `PoolDepartmentId` trên DTO
+- `Repositories/ProductionCostRepository.cs` — SELECT + ORDER BY khóa mới
+- `ProductionCostWriteService` — comment skeleton TX owner (Confirm vẫn gate)
 
-### 2.2 ExpTo154Rules
-Cấm Step 3 (kể cả TK chi tiết): `N155/C154`, `N632/C155`, `N632/C154`, `N154/C155|C632`, `N155/C632`.  
-Cho phép: `N154*/C621*|622*|623*|627*`.
-
-### 2.3 sp_pc_alloc_confirm (script)
-- Tham số `p_RUN_VERSION`; khớp header RUN.
-- Chỉ confirm khi có đủ pool + detail cùng version.
-- Upsert `production_cost_step` step 2.
-- Confirm lặp cùng version + ref → `NOOP_ALREADY_CONFIRMED`, không thêm history.
-- Không dùng `CHIT_ID IS NULL` làm điều kiện “chưa confirm”.
-- `START TRANSACTION` + `EXIT HANDLER` rollback.
-
-### 2.4 Đồng bộ SQL ↔ C#
-- REDUCTION / ALLOCATION_COSTS / company **3619** giống `AllocationMath`.
-- `DEPARTMENT_ID` từ `chitdetailinfo_ext` (JOIN `COMPANY_CD` + `CHITDETAIL_ID`).
-- Load pool / basis tránh nhân dòng JOIN object.
+### SQL bàn giao
+| File | Vai trò |
+|------|---------|
+| `migrations/20261102_2c02_ddl_alloc_detail_key.sql` | **DDL migration** — cột + UNIQUE |
+| `migrations/20261102_2c02_sp_alloc.sql` | load_pool bảo vệ, confirm→ALLOC_CONFIRMED, assert EXP, calculate skeleton |
+| `migrations/20261102_2c02_patch_period_lock_exp_status.sql` | Ghi chú patch nếu 2b_04 cũ đã cài |
+| `migrations/20261102_2b_04_sp_period_lock_cogs.sql` | **Đã vá** nhánh EXP (B-I nguyên) |
+| `01_production_cost_tables.sql` / `2b_01_tables.sql` | Schema chuẩn mới |
+| `migrations/20261102_2c02_verify_readonly.sql` | SELECT kiểm tra |
 
 ---
 
@@ -77,30 +80,31 @@ dotnet build API_AMNOTE_WEB.csproj -o _build_2c02_fix_out
 → Build succeeded. 0 Error(s)
 
 dotnet test --filter FullyQualifiedName~ProductionCost
-→ Passed: 45, Failed: 0
+→ Passed: 49, Failed: 0
 ```
 
-Checklist bổ sung sau fix:
+Checklist tích hợp (không DB):
 | Case | Kết quả |
 |------|---------|
-| Shared pool không nhân theo số phòng ban | PASS |
-| Cùng PRODUCT_ID khác DEPARTMENT_ID không mất dòng | PASS |
-| ΣT=0 + P_A>0 → lỗi | PASS |
-| Σ allocated = ALLOCATION_COSTS | PASS (assert trong Run) |
-| Downstream N155/C154, N632/C155, N632/C154 (+ chi tiết) | PASS |
-| N154/C6221 hợp lệ | PASS |
-| Company 3619 REDUCTION = CREDIT | PASS |
+| B2 → ALLOC_CONFIRMED; B3 nhận ALLOC_CONFIRMED; không hạ CONFIRMED | PASS |
+| Confirm trùng version → NOOP; history chỉ khi voucher+step OK | PASS |
+| load_pool / guard chặn CONFIRMED; mid-fail giữ pool cũ | PASS |
+| UNIQUE key shared+dept; cùng PRODUCT nhiều DEPT | PASS |
+| Ba rule B-I / ExpTo154 forbid matrix (giữ nguyên) | PASS |
 
 ---
 
-## 4. Script user tự chạy (sau 2B DEV)
+## 4. Script user tự chạy (DEV/TEST — sau 2B)
 
-1. `SOURCE 20261102_2c02_sp_alloc.sql`
-2. `SOURCE 20261102_2c02_verify_readonly.sql`
+Thứ tự đề xuất:
+1. `SOURCE 20261102_2c02_ddl_alloc_detail_key.sql` *(nếu bảng đã tạo theo UNIQUE cũ)*
+2. `SOURCE 20261102_2c02_sp_alloc.sql` *(gồm `sp_pc_assert_allocation_ready_for_exp`)*
+3. Cài lại `20261102_2b_04_sp_period_lock_cogs.sql` bản đã vá **hoặc** làm theo `20261102_2c02_patch_period_lock_exp_status.sql`
+4. `SOURCE 20261102_2c02_verify_readonly.sql`
 
 ---
 
 ## 5. Dừng
 
-Fix logic **2C-02** xong để duyệt.  
+Tích hợp 2C-02 xong để duyệt trước 2C-03.  
 Không tự chuyển 2C-03 · không bật ghi DB · không thực thi SQL trên môi trường thật.

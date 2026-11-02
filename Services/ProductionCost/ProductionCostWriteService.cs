@@ -69,7 +69,12 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         ValidatePeriod(request);
         _gate.EnsureWritable();
 
-        // Placeholder sau gate: khi mở sẽ gọi sp_pc_alloc_confirm + STABLE_KEY ALLOC:...
+        // Skeleton sau gate (chưa kích hoạt):
+        // 1) C# BEGIN TRANSACTION (owner) — SP confirm KHÔNG START/COMMIT
+        // 2) SELECT RUN FOR UPDATE (RUN_ID+RUN_VERSION+COMPANY_CD)
+        // 3) CALL sp_pc_alloc_confirm → STATUS=ALLOC_CONFIRMED (không CONFIRMED toàn kỳ)
+        // 4) Idempotent: PlanConfirm → NoopAlreadyConfirmed thì không history
+        // 5) Exception → ROLLBACK: giữ số liệu/status trước Confirm
         throw new InvalidOperationException(
             "Confirm allocation DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-02.");
     }

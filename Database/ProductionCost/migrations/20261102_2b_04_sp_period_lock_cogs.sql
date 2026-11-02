@@ -64,7 +64,11 @@ proc: BEGIN
                 SET MESSAGE_TEXT = 'EXP_TO_154_ONLY can bang production_cost_alloc_detail';
         END IF;
 
-        -- Preview được chạy trước claim: không yêu cầu COST_ENGINE=GK tại đây
+        -- Preview được chạy trước claim: không yêu cầu COST_ENGINE=GK tại đây.
+        -- B2 Confirm → ALLOC_CONFIRMED + COST_ALLOCATION=DONE (khác CONFIRMED toàn kỳ).
+        -- Ba rule B-I không đi nhánh này — không đổi hành vi.
+        CALL sp_pc_assert_allocation_ready_for_exp(p_COMPANY_CD, p_PERIOD_YM);
+
         SELECT p.CURRENT_RUN_ID, r.RUN_VERSION, r.STATUS
           INTO v_run_id, v_run_ver, v_run_status
         FROM production_cost_period p
@@ -79,12 +83,7 @@ proc: BEGIN
 
         IF v_run_id IS NULL OR v_run_ver IS NULL THEN
             SIGNAL SQLSTATE '45000'
-                SET MESSAGE_TEXT = 'EXP_TO_154_ONLY can CURRENT_RUN_ID G-K CONFIRMED';
-        END IF;
-
-        IF IFNULL(v_run_status, '') <> 'CONFIRMED' THEN
-            SIGNAL SQLSTATE '45000'
-                SET MESSAGE_TEXT = 'EXP_TO_154_ONLY chi dung RUN STATUS=CONFIRMED';
+                SET MESSAGE_TEXT = 'EXP_TO_154_ONLY can CURRENT_RUN_ID G-K';
         END IF;
 
         SELECT IFNULL(SUM(ad.ALLOCATED_AMOUNT), 0)

@@ -305,6 +305,8 @@ public sealed class ProductionCostAllocDetailDto
     public int RunVersion { get; set; }
     public long ProductId { get; set; }
     public long DepartmentId { get; set; }
+    /// <summary>DEPARTMENT_ID của dòng pool nguồn; 0 = dùng chung. Khớp UNIQUE DDL 2C-02.</summary>
+    public long PoolDepartmentId { get; set; }
     public string? ProductCd { get; set; }
     public string? DepartmentCd { get; set; }
     public decimal AmountQuantity { get; set; }
