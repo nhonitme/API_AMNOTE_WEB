@@ -347,7 +347,7 @@ WHERE COMPANY_CD = @companyCd
   AND CHIT_CD = @chitCd
   AND INPUT_TYPE = @expectedInputType
   AND IFNULL(ISDEL, '') != '1'
-LIMIT 1",
+LIMIT 1 FOR UPDATE",
                         new { companyCd, chitCd, expectedInputType },
                         commandTimeout: 15);
                     if (!voucherExists.HasValue)
