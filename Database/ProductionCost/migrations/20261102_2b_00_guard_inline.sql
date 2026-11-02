@@ -30,4 +30,14 @@ SET @gk_2b_ok := IF(
     @gk_2b_placeholder = 0 AND @gk_2b_db_ok = 1 AND @gk_2b_host_ok = 1
     AND @gk_2b_user_ok = 1 AND @gk_2b_env_ok = 1, 1, 0
 );
-SET @gk_2b_preflight_guard := (1 / @gk_2b_ok);
+-- Hard-stop không DDL: PREPARE câu SQL không hợp lệ khi FAIL.
+-- MySQL sẽ trả ERROR 1064 (không phải warning/NULL như phép chia cho 0).
+-- BẮT BUỘC chạy bằng mysql --abort-source-on-error, không dùng --force.
+SET @gk_2b_stop_sql := IF(
+    @gk_2b_ok = 1,
+    'SELECT ''GK2B PREFLIGHT PASS'' AS gate_status',
+    'GK2B_PREFLIGHT_FAILED__STOP_BEFORE_ANY_DDL'
+);
+PREPARE gk2b_stop_stmt FROM @gk_2b_stop_sql;
+EXECUTE gk2b_stop_stmt;
+DEALLOCATE PREPARE gk2b_stop_stmt;
