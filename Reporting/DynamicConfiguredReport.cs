@@ -1691,7 +1691,9 @@ namespace API_AMNOTE_WEB.Reporting
         {
             var isBalanceSheet = IsBalanceSheetReportCode(_reportCode);
             var useComparativeYearPeriod = IsComparativeYearPeriodReportCode(_reportCode);
-            if (!isBalanceSheet && !useComparativeYearPeriod)
+            var isCostList = IsCostListReportCode(_reportCode);
+            // Cost list uses CURRENT_YEAR / PREVIOUS_YEAR like FS: kỳ chọn + ngày trước fromDate.
+            if (!isBalanceSheet && !useComparativeYearPeriod && !isCostList)
             {
                 return (layout, columns, false);
             }
@@ -1816,6 +1818,12 @@ namespace API_AMNOTE_WEB.Reporting
         private static bool IsComparativeYearPeriodReportCode(string? reportCode)
         {
             return IsProfitLossReportCode(reportCode) || IsCashflowReportCode(reportCode);
+        }
+
+        private static bool IsCostListReportCode(string? reportCode)
+        {
+            var normalized = Common.NormalizeToken(reportCode);
+            return normalized is "glcostlist" or "costlist";
         }
 
         private static string? ResolveFinancialStatementHeaderPeriod(

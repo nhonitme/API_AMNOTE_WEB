@@ -91,9 +91,9 @@ if (!string.IsNullOrEmpty(configOrigin))
     allowedOrigins.Add(configOrigin);
 }
 
-// Production web host (http + https).
 allowedOrigins.Add("https://app.amnote.com.vn");
 allowedOrigins.Add("http://app.amnote.com.vn");
+allowedOrigins.Add("https://app.ameinvoice.vn");
 
 if (builder.Environment.IsDevelopment())
 {

@@ -139,8 +139,17 @@ public static class TaxReductionAppendixCalculator
         if (!decimal.TryParse(text.TrimEnd('%'), NumberStyles.Float, Invariant, out var rate)) return -1;
         return text.EndsWith('%') || rate > 1 ? rate / 100 : rate;
     }
+    /// <summary>
+    /// Same message keys as VatInOut / toolbar status combobox (eInvoice_AdjustType_NM_*).
+    /// UI localizes TThai_TEXT from these keys when the report language changes.
+    /// </summary>
     private static string StatusText(string status) => status switch {
-        "1" => "Hóa đơn mới", "2" => "Hóa đơn thay thế", "3" => "Hóa đơn điều chỉnh",
-        "4" => "Hóa đơn bị thay thế", "5" => "Hóa đơn bị điều chỉnh", "6" => "Hóa đơn hủy",
-        "998" => "Chưa có JSON", _ => status };
+        "1" => "eInvoice_AdjustType_NM_1",
+        "2" => "eInvoice_AdjustType_NM_3",
+        "3" => "eInvoice_AdjustType_NM_5",
+        "4" => "eInvoice_AdjustType_NM_2",
+        "5" => "eInvoice_AdjustType_NM_4",
+        "6" => "eInvoice_AdjustType_NM_6",
+        "998" => "eInvoice_AdjustType_NM_998",
+        _ => status };
 }

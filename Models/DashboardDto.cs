@@ -81,6 +81,7 @@ namespace API_AMNOTE_WEB.Models
 
     public class DashboardRecentVoucherDto
     {
+        public long ChitId { get; set; }
         public string ChitYmd { get; set; } = "";
         public string ChitNo { get; set; } = "";
         public string ChitCd { get; set; } = "";

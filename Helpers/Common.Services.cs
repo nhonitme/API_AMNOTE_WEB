@@ -463,14 +463,7 @@ namespace API_AMNOTE_WEB.Helpers
                 ?? throw new InvalidOperationException("ISystemService not registered in DI container");
 
             var columns = await systemService.GetExcelTemplateColumnInfosAsync(companyCd, moduleCd) ?? new List<ExcelTemplateColumnInfo>();
-            var normalized = NormalizeTemplateColumnInfos(columns);
-            if (normalized.Count > 0)
-            {
-                return normalized;
-            }
-
-            // Fallback when excel_template_column is not seeded for the module yet.
-            return NormalizeTemplateColumnInfos(ExcelTemplateDefaults.GetColumns(moduleCd));
+            return NormalizeTemplateColumnInfos(columns);
         }
 
         public static string GetCompanyCode()

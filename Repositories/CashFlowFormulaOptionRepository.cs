@@ -37,6 +37,8 @@ namespace API_AMNOTE_WEB.Repositories
                 ["B02_DN"] = new("B02_DN", "report_b02dn", "GL_FS_PL", HasCashAccountConfig: false, HasDirectRules: false, HasDualFormulas: false),
                 ["GL_PROFIT_LOSS_B02DN"] = new("B02_DN", "report_b02dn", "GL_FS_PL", HasCashAccountConfig: false, HasDirectRules: false, HasDualFormulas: false),
                 ["GL_PROFIT_LOSS_B02DNTT"] = new("B02_DN", "report_b02dn", "GL_FS_PL", HasCashAccountConfig: false, HasDirectRules: false, HasDualFormulas: false),
+                ["COST_LIST"] = new("COST_LIST", "report_cost_list", "GL_BOOK_COST_LIST", HasCashAccountConfig: false, HasDirectRules: false, HasDualFormulas: false),
+                ["GL_COST_LIST"] = new("COST_LIST", "report_cost_list", "GL_BOOK_COST_LIST", HasCashAccountConfig: false, HasDirectRules: false, HasDualFormulas: false),
                 ["GTGT_01"] = new("GTGT_01", "report_gtgt01", "VAT_DECLARATION", HasCashAccountConfig: false, HasDirectRules: false, HasDualFormulas: true),
                 ["TAX_VAT_DECLARATION"] = new("GTGT_01", "report_gtgt01", "VAT_DECLARATION", HasCashAccountConfig: false, HasDirectRules: false, HasDualFormulas: true),
             };
@@ -1856,7 +1858,7 @@ namespace API_AMNOTE_WEB.Repositories
                 !TemplateDefinitions.TryGetValue(normalizedReportCode, out var definition))
             {
                 throw new ArgumentException(
-                    "REPORT_CODE must be a supported formula template: B03_DN_TT, B03_DN_GT, B01_DN, B02_DN, GTGT_01, TAX_VAT_DECLARATION, GL_CASHFLOW_B03DN_TT, GL_CASHFLOW_B03DN_GT, GL_BALANCE_SHEET_B01DN, GL_PROFIT_LOSS_B02DN, or GL_PROFIT_LOSS_B02DNTT.");
+                    "REPORT_CODE must be a supported formula template: B03_DN_TT, B03_DN_GT, B01_DN, B02_DN, COST_LIST, GTGT_01, TAX_VAT_DECLARATION, GL_CASHFLOW_B03DN_TT, GL_CASHFLOW_B03DN_GT, GL_BALANCE_SHEET_B01DN, GL_PROFIT_LOSS_B02DN, GL_PROFIT_LOSS_B02DNTT, or GL_COST_LIST.");
             }
 
             return definition;
@@ -1865,7 +1867,8 @@ namespace API_AMNOTE_WEB.Repositories
         private static bool IsAccountRuleReport(string? reportCode)
         {
             return string.Equals(reportCode, "B01_DN", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(reportCode, "B02_DN", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(reportCode, "B02_DN", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(reportCode, "COST_LIST", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsStructuralElementType(string? elementType)

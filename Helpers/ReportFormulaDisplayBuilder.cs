@@ -65,6 +65,11 @@ namespace API_AMNOTE_WEB.Helpers
                 return BuildProfitLossDisplay(row);
             }
 
+            if (string.Equals(reportCode, "COST_LIST", StringComparison.OrdinalIgnoreCase))
+            {
+                return BuildCostListDisplay(row);
+            }
+
             if (!string.IsNullOrWhiteSpace(row.ACCOUNT_RULE))
             {
                 return row.ACCOUNT_RULE.Trim();
@@ -254,6 +259,34 @@ namespace API_AMNOTE_WEB.Helpers
             };
         }
 
+        private static string BuildCostListDisplay(CashFlowFormulaOptionRowDto row)
+        {
+            var sourceType = (row.DATA_SOURCE_TYPE ?? string.Empty).Trim().ToUpperInvariant();
+            if (sourceType == "FORMULA")
+            {
+                return NormalizeFormulaExpression(row.FORMULA_EXPR, row.ITEM_CODE ?? string.Empty);
+            }
+
+            if (sourceType == "ACCOUNT_RULE" || sourceType == "PROCEDURE")
+            {
+                if (string.IsNullOrWhiteSpace(row.ACCOUNT_RULE))
+                {
+                    return "Lấy số từ sổ cái theo tài khoản";
+                }
+
+                var calcMethodLabel = FormatCostListCalcMethodLabel(row.CALC_METHOD);
+                return string.IsNullOrWhiteSpace(calcMethodLabel)
+                    ? row.ACCOUNT_RULE.Trim()
+                    : $"{row.ACCOUNT_RULE.Trim()} ({calcMethodLabel})";
+            }
+
+            return sourceType switch
+            {
+                "PROCEDURE" or "ACCOUNT_RULE" => "Lấy số từ sổ cái theo tài khoản",
+                _ => sourceType
+            };
+        }
+
         private static string FormatCalcMethodLabel(string? calcMethod, bool isProfitLoss)
         {
             var normalized = (calcMethod ?? string.Empty).Trim().ToUpperInvariant();
@@ -280,6 +313,26 @@ namespace API_AMNOTE_WEB.Helpers
                 "CREDIT_MINUS_DEBIT" => "Dư Có (Có − Nợ)",
                 "DEBIT_ONLY" => "Chỉ lấy dư Nợ",
                 "CREDIT_ONLY" => "Chỉ lấy dư Có",
+                _ => normalized
+            };
+        }
+
+        private static string FormatCostListCalcMethodLabel(string? calcMethod)
+        {
+            var normalized = (calcMethod ?? string.Empty).Trim().ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return string.Empty;
+            }
+
+            return normalized switch
+            {
+                "CREDIT_MINUS_DEBIT" => "Phát sinh Có − Nợ",
+                "DEBIT_MINUS_CREDIT" => "Phát sinh Nợ − Có",
+                "CREDIT_ONLY" => "Chỉ lấy phát sinh Có",
+                "DEBIT_ONLY" => "Chỉ lấy phát sinh Nợ",
+                "OPENING_BALANCE" => "Số dư đầu kỳ",
+                "CLOSING_BALANCE" => "Số dư cuối kỳ",
                 _ => normalized
             };
         }

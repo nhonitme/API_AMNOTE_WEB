@@ -145,6 +145,7 @@ namespace API_AMNOTE_WEB.Repositories
             }, commandTimeout: DashboardCommandTimeoutSeconds);
             return rows.Select(r => new DashboardRecentVoucherDto
             {
+                ChitId = Convert.ToInt64(r.CHIT_ID ?? 0L),
                 ChitYmd = (string)(r.CHIT_YMD ?? ""),
                 ChitNo = (string)(r.CHIT_NO ?? ""),
                 ChitCd = (string)(r.CHIT_CD ?? ""),
