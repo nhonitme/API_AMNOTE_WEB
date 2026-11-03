@@ -52,4 +52,28 @@ public interface IProductionCostWriteService
         string? userId,
         ProductionCostWriteRequest request,
         string? databaseName = null);
+
+    Task<ProductionCostLifecycleWriteResponse> PreviewReopenAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null);
+
+    Task<ProductionCostLifecycleWriteResponse> ConfirmReopenAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null);
+
+    Task<ProductionCostLifecycleWriteResponse> PreviewRecalculateAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null);
+
+    Task<ProductionCostLifecycleWriteResponse> PreviewCompareAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null);
 }

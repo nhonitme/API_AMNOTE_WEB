@@ -1,6 +1,7 @@
 using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Services.ProductionCost.Allocation;
+using API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
 using API_AMNOTE_WEB.Services.ProductionCost.Transfer;
 using API_AMNOTE_WEB.Services.ProductionCost.Valuation;
 using API_AMNOTE_WEB.Services.ProductionCost.Wip;
@@ -362,6 +363,121 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             CogsVoucherPosted = false,
             StepStatusesAreClientSimulated = true
         };
+    }
+
+    public Task<ProductionCostLifecycleWriteResponse> PreviewReopenAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null)
+    {
+        EnsureAuth(companyCd);
+        ValidatePeriod(request);
+        if (request.ReopenDryRun == null)
+        {
+            _gate.EnsureWritable();
+            throw new InvalidOperationException(
+                "Preview REOPEN từ DB chưa kích hoạt trong 2C-05. Gửi ReopenDryRun payload.");
+        }
+
+        var plan = ReopenRules.Build(request.ReopenDryRun, companyCd);
+        RunVersionRules.AssertConfirmedSnapshotIntact(
+            plan.WouldDeleteConfirmedData,
+            wouldOverwriteConfirmedUniqueKey: false);
+
+        return Task.FromResult(new ProductionCostLifecycleWriteResponse
+        {
+            WriteEnabled = _gate.IsWriteEnabled,
+            Persisted = false,
+            PeriodYm = request.PeriodYm,
+            RunId = plan.RunId,
+            RunVersion = plan.NewWorkingRunVersion,
+            Action = HistoryActionCode.Reopen,
+            Reopen = plan,
+            StepStatusesAreClientSimulated = true,
+            Message =
+                "Preview REOPEN dry-run — không ghi DB. " +
+                "Quyền/B2–B6 trong DryRun chỉ mô phỏng; Confirm phải đọc lại từ DB. " + plan.Message
+        });
+    }
+
+    public Task<ProductionCostLifecycleWriteResponse> ConfirmReopenAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null)
+    {
+        EnsureAuth(companyCd);
+        ValidatePeriod(request);
+        _gate.EnsureWritable();
+
+        // Skeleton (TX owner = C#):
+        // 1) Đọc quyền + RUN FOR UPDATE (COMPANY_CD, RUN_ID, RUN_VERSION)
+        // 2) ReopenRules cascade B6→target; bump RUN_VERSION; không DELETE snapshot cũ
+        // 3) HistoryPlan idempotent theo STABLE_KEY
+        // 4) Không CONFIRMED toàn kỳ; không apply kho / 632
+        throw new InvalidOperationException(
+            "Confirm REOPEN DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-05. " +
+            "Confirm bắt buộc kiểm tra quyền và trạng thái bước từ database.");
+    }
+
+    public Task<ProductionCostLifecycleWriteResponse> PreviewRecalculateAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null)
+    {
+        EnsureAuth(companyCd);
+        ValidatePeriod(request);
+        if (request.RecalcDryRun == null)
+        {
+            _gate.EnsureWritable();
+            throw new InvalidOperationException(
+                "Preview RECALCULATE từ DB chưa kích hoạt trong 2C-05. Gửi RecalcDryRun payload.");
+        }
+
+        var plan = RecalcRules.Build(request.RecalcDryRun, companyCd);
+        return Task.FromResult(new ProductionCostLifecycleWriteResponse
+        {
+            WriteEnabled = _gate.IsWriteEnabled,
+            Persisted = false,
+            PeriodYm = request.PeriodYm,
+            RunId = plan.RunId,
+            RunVersion = plan.WorkingRunVersion,
+            Action = HistoryActionCode.Recalculate,
+            Recalc = plan,
+            StepStatusesAreClientSimulated = true,
+            Message =
+                "Preview RECALCULATE dry-run — không đổi chứng từ KT / kho. " + plan.Message
+        });
+    }
+
+    public Task<ProductionCostLifecycleWriteResponse> PreviewCompareAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null)
+    {
+        EnsureAuth(companyCd);
+        ValidatePeriod(request);
+        if (request.CompareDryRun == null)
+        {
+            throw new ArgumentException("CompareDryRun is required.");
+        }
+
+        var compare = SessionCompare.Compare(request.CompareDryRun);
+        return Task.FromResult(new ProductionCostLifecycleWriteResponse
+        {
+            WriteEnabled = _gate.IsWriteEnabled,
+            Persisted = false,
+            PeriodYm = request.PeriodYm,
+            RunId = request.RunId,
+            RunVersion = request.RunVersion,
+            Action = HistoryActionCode.Compare,
+            Compare = compare,
+            StepStatusesAreClientSimulated = true,
+            Message = compare.Message
+        });
     }
 
     private static void EnsureAuth(string companyCd)

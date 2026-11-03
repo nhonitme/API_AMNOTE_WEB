@@ -12,6 +12,12 @@ public sealed class ProductionCostWriteRequest
     public WipDryRunPayload? WipDryRun { get; set; }
     /// <summary>Tùy chọn — dry-run VALUATION Bước 5 (2C-04).</summary>
     public ValuationDryRunPayload? ValuationDryRun { get; set; }
+    /// <summary>Tùy chọn — dry-run REOPEN (2C-05).</summary>
+    public ReopenDryRunPayload? ReopenDryRun { get; set; }
+    /// <summary>Tùy chọn — dry-run RECALCULATE (2C-05).</summary>
+    public RecalcDryRunPayload? RecalcDryRun { get; set; }
+    /// <summary>Tùy chọn — so sánh CONFIRMED vs PREVIEW/REOPENED (2C-05).</summary>
+    public SessionCompareDryRunPayload? CompareDryRun { get; set; }
 }
 
 public sealed class AllocationDryRunPayload

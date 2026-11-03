@@ -205,6 +205,40 @@ public sealed class ProductionCostController : BaseApiController
             CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
     }
 
+    // ---- 2C-05 REOPEN / RECALCULATE / COMPARE (WriteGate OFF trên Confirm) ----
+
+    /// <summary>POST /api/production-cost/reopen/preview</summary>
+    [HttpPost("reopen/preview")]
+    public async Task<IActionResult> PreviewReopen([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.PreviewReopenAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
+    /// <summary>POST /api/production-cost/reopen/confirm</summary>
+    [HttpPost("reopen/confirm")]
+    public async Task<IActionResult> ConfirmReopen([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.ConfirmReopenAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
+    /// <summary>POST /api/production-cost/recalculate/preview</summary>
+    [HttpPost("recalculate/preview")]
+    public async Task<IActionResult> PreviewRecalculate([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.PreviewRecalculateAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
+    /// <summary>POST /api/production-cost/compare/preview</summary>
+    [HttpPost("compare/preview")]
+    public async Task<IActionResult> PreviewCompare([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.PreviewCompareAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
     private static ProductionCostQuery Query(string? periodYm, long? runId, int? runVersion) =>
         new()
         {
