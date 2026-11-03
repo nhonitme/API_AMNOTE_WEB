@@ -23,9 +23,21 @@ public sealed class ReopenDryRunPayload
     public IReadOnlyDictionary<string, string> StepStatuses { get; set; }
         = new Dictionary<string, string>();
     /// <summary>
-    /// OperationId đã persist (mô phỏng đọc DB). Không dùng client hint làm bằng chứng Confirm.
+    /// OperationId đã persist (legacy dry-run). Confirm phải dùng <see cref="PersistedHistoryFromDb"/>.
     /// </summary>
     public IReadOnlyList<string>? PersistedOperationIdsFromDb { get; set; }
+    /// <summary>Hàng history từ DB — OperationId + StableKey (+ fingerprint). Không tin client hint.</summary>
+    public IReadOnlyList<PersistedHistoryRef>? PersistedHistoryFromDb { get; set; }
+}
+
+/// <summary>Tham chiếu history đã persist — nguồn tin cậy idempotency (COMPANY_CD scope).</summary>
+public sealed class PersistedHistoryRef
+{
+    public string OperationId { get; set; } = string.Empty;
+    /// <summary>Null = chỉ biết OpId (legacy dry-run) → Noop khi trùng OpId.</summary>
+    public string? StableKey { get; set; }
+    /// <summary>Tuỳ chọn — hash nội dung nghiệp vụ; khác → Conflict dù cùng StableKey.</summary>
+    public string? ContentFingerprint { get; set; }
 }
 
 public sealed class HistoryEntryPlan
@@ -82,6 +94,7 @@ public sealed class RecalcDryRunPayload
     public IReadOnlyDictionary<string, string> StepStatuses { get; set; }
         = new Dictionary<string, string>();
     public IReadOnlyList<string>? PersistedOperationIdsFromDb { get; set; }
+    public IReadOnlyList<PersistedHistoryRef>? PersistedHistoryFromDb { get; set; }
 }
 
 public sealed class RecalcEngineBinding

@@ -36,15 +36,19 @@ public static class ReopenRules
         }
 
         var operationId = HistoryPlan.RequireOperationId(dry.OperationId);
-        // Confirm DB: chỉ tin PersistedOperationIds từ DB — không tin client history hint.
-        var isRetry = dry.PersistedOperationIdsFromDb?.Any(id =>
-            string.Equals((id ?? string.Empty).Trim(), operationId, StringComparison.OrdinalIgnoreCase)) == true;
-        var mode = RunVersionRules.ResolveReopenMode(dry.RunStatus, isRetry);
-
         var target = GkStepOrder.Normalize(dry.TargetStepCode);
         var statuses = NormalizeStatuses(dry.StepStatuses);
         var cascade = BuildCascadeReverse(target, statuses);
         AssertNoSkippedDownstream(target, statuses, cascade);
+
+        // Confirm DB: chỉ tin PersistedHistoryFromDb / OperationIds từ DB — không tin client hint.
+        var historyKey = HistoryPlan.StableKey(
+            companyCd, dry.RunId, dry.CurrentRunVersion, target, HistoryActionCode.Reopen, operationId);
+        var persisted = HistoryPlan.NormalizePersisted(
+            dry.PersistedHistoryFromDb, dry.PersistedOperationIdsFromDb);
+        var idem = HistoryPlan.PlanWrite(historyKey, operationId, persisted);
+        var isRetry = idem.Action == HistoryPlan.WriteAction.NoopAlreadyWritten;
+        var mode = RunVersionRules.ResolveReopenMode(dry.RunStatus, isRetry);
 
         var workingVersion = RunVersionRules.ResolveWorkingVersion(dry.CurrentRunVersion, mode);
         var markSuperseded = RunVersionRules.ShouldMarkPriorVersionSuperseded(mode);
@@ -52,9 +56,6 @@ public static class ReopenRules
             ? dry.CurrentRunVersion
             : dry.CurrentRunVersion;
 
-        var historyKey = HistoryPlan.StableKey(
-            companyCd, dry.RunId, dry.CurrentRunVersion, target, HistoryActionCode.Reopen, operationId);
-        var idem = HistoryPlan.PlanWrite(historyKey, operationId, dry.PersistedOperationIdsFromDb);
         var actionAt = dry.ActionAtUtc ?? DateTime.UtcNow;
 
         return new ReopenPlan

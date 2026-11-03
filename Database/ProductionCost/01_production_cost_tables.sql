@@ -402,8 +402,8 @@ CREATE TABLE IF NOT EXISTS `production_cost_history` (
   `STEP_INDEX` tinyint(4) NOT NULL,
   `STEP_CODE` varchar(40) DEFAULT NULL COMMENT 'STEP_CODE G-K (COST_ALLOCATION, …)',
   `ACTION_CODE` varchar(30) NOT NULL COMMENT 'REOPEN, PREVIEW, CONFIRM, RECALCULATE, ERROR',
-  `OPERATION_ID` varchar(64) DEFAULT NULL COMMENT 'Idempotency — retry cùng OperationId → Noop',
-  `STABLE_KEY` varchar(160) DEFAULT NULL COMMENT 'PC_HIST:{COMPANY}:{RUN}:v{VER}:{STEP}:{ACTION}:op:{OperationId}',
+  `OPERATION_ID` varchar(64) DEFAULT NULL COMMENT 'Idempotency — Noop cùng OpId+StableKey; Conflict nếu khác; UNIQUE(COMPANY_CD,OPERATION_ID)',
+  `STABLE_KEY` varchar(255) DEFAULT NULL COMMENT 'PC_HIST:… hoặc PC_HIST_H:{sha256} — UNIQUE(COMPANY_CD,STABLE_KEY)',
   `STATUS_AFTER` varchar(20) DEFAULT NULL,
   `RUN_VERSION` int(11) DEFAULT NULL,
   `RESULT_BEFORE` varchar(1000) DEFAULT NULL,
@@ -415,9 +415,9 @@ CREATE TABLE IF NOT EXISTS `production_cost_history` (
   `ISDEL` char(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`HISTORY_ID`),
   UNIQUE KEY `uk_pc_hist_stable` (`COMPANY_CD`,`STABLE_KEY`),
+  UNIQUE KEY `uk_pc_hist_operation` (`COMPANY_CD`,`OPERATION_ID`),
   KEY `idx_pc_hist_run` (`RUN_ID`,`STEP_INDEX`),
-  KEY `idx_pc_hist_company` (`COMPANY_CD`,`PERIOD_YM`,`ACTION_AT`),
-  KEY `idx_pc_hist_operation` (`COMPANY_CD`,`OPERATION_ID`,`RUN_ID`)
+  KEY `idx_pc_hist_company` (`COMPANY_CD`,`PERIOD_YM`,`ACTION_AT`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
   COMMENT='Nhật ký mở lại / tính thử / ghi đè G-K';
 

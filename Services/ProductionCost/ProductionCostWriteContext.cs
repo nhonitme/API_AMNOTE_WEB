@@ -19,7 +19,7 @@ public static class ProductionCostWriteContext
     public static readonly string[] RequiredHistoryWriteIndexes =
     {
         "uk_pc_hist_stable",
-        "idx_pc_hist_operation"
+        "uk_pc_hist_operation"
     };
 
     public static void EnsureCompany(string? companyCd)
@@ -104,8 +104,7 @@ public static class ProductionCostWriteContext
             throw new ArgumentException("PERIOD_YM phải 6 ký tự.");
 
         var operationId = RequireOperationId(plan.OperationId);
-        if (string.IsNullOrWhiteSpace(plan.StableKey))
-            throw new ArgumentException("History STABLE_KEY bắt buộc.");
+        HistoryPlan.EnsureStableKeyLength(plan.StableKey);
 
         return new ProductionCostHistoryInsert
         {

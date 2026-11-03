@@ -362,7 +362,7 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 
 | ID | Mức | Nội dung |
 |----|-----|----------|
-| O-01 | **Process** | DDL history 2C-06A đã có script — **chưa SOURCE DEV**; GET `/history` cần cột mới sau khi SOURCE hoặc cài mới |
+| O-01 | **Process** | DDL history 2C-06A đã có script — **chưa SOURCE DEV**; GET `/history` tương thích schema cũ (probe); ghi history cần SOURCE |
 | O-02 | **Blocker Confirm** | Write repository/TX infra **đã có (2C-06A)** — Confirm B2–B5 vẫn placeholder (2C-06B+) |
 | O-03 | High | `apply_inventory_update_*` theo PRODUCT_CD ≠ plan B5 theo INPUT_ID — cần SP/wrapper riêng |
 | O-04 | High | SP calculate/wip/valuation/reopen còn skeleton hoặc pending — quyết định C#-persist vs hoàn thiện SQL trước EnableWrites |
@@ -391,49 +391,58 @@ Sau 2C-06F + DEV SOURCE + verify → mới xét `EnableWrites=true` (DEV/TEST on
 
 ---
 
-## 8. 2C-06A Implementation
+## 8. 2C-06A Implementation (+ Final Safety Review)
 
 Ngày: 2026-11-03  
-Phạm vi: History DDL, Write Repository, TX ownership C#.  
+Phạm vi: History DDL, Write Repository, TX ownership C#, final safety (idempotency / key length / GET History tương thích).  
 **Không** Confirm thật · **Không** EnableWrites · **Không** SOURCE · **Không** kết nối DB · **Không** đổi KT/kho.
 
 ### 8.1 Deliverables
 
 | Hạng mục | File / ghi chú |
 |----------|----------------|
-| DDL migration (MySQL 5.6/8.0) | `migrations/20261103_2c06a_ddl_history_operation.sql` — ADD `OPERATION_ID`, `STABLE_KEY`, `STEP_CODE`; UNIQUE `uk_pc_hist_stable`; INDEX `idx_pc_hist_operation` |
-| Verify readonly | `migrations/20261103_2c06a_verify_readonly.sql` |
-| README bàn giao | `migrations/20261103_2c06a_README.md` |
-| Schema cài mới | `01_production_cost_tables.sql`, `migrations/20261102_2b_01_tables.sql` đồng bộ cột/index |
-| DTO | `ProductionCostHistoryDto` (+ OperationId/StableKey/StepCode); `ProductionCostHistoryInsert` / `WriteResult` / schema probe; `WriteRequest.OperationId` |
-| Context / TX | `ProductionCostWriteContext.cs`, `ProductionCostWriteTransaction.cs` (pure), `ProductionCostWriteSession.cs` (`DapperSession`) |
-| Interface + repo | `IProductionCostWriteRepository`, `ProductionCostWriteRepository` — BeginSession, LockRun FOR UPDATE, step statuses, persisted OperationIds, TryInsertHistory idempotent |
-| DI | `Program.cs` đăng ký `IProductionCostWriteRepository` |
-| Read history | `GetHistoryAsync` SELECT cột mới (cần DDL 2C-06A trên DB cũ) |
-| Unit test | `ProductionCostWriteInfrastructureTests.cs` |
+| DDL migration (MySQL 5.6/8.0) | `20261103_2c06a_ddl_history_operation.sql` — `OPERATION_ID` VARCHAR(64), `STABLE_KEY` VARCHAR(255), `STEP_CODE`; **UNIQUE** `uk_pc_hist_stable` + `uk_pc_hist_operation` |
+| Verify / README | `20261103_2c06a_verify_readonly.sql`, `20261103_2c06a_README.md` |
+| Schema cài mới | `01_production_cost_tables.sql`, `2b_01_tables.sql` đồng bộ |
+| Idempotency C# | `HistoryPlan` — Noop / Conflict / ResolveAfterDuplicateKey; `PersistedHistoryRef` |
+| Key length | OpId 8–64; StableKey ≤255 (hash `PC_HIST_H:` nếu canonical dài) |
+| Write repo | `TryInsertHistoryAsync` — schema READY bắt buộc; PlanWrite từ DB; catch UNIQUE race |
+| GET History | `ProductionCostHistorySql` + probe cột — schema cũ không SELECT cột mới |
+| Unit test | `ProductionCostWriteInfrastructureTests` + lifecycle Conflict/Noop |
 
-### 8.2 TX ownership (giữ nguyên rule)
+### 8.2 Idempotency (final)
 
-1. Caller C# mở `BeginWriteSessionAsync` → `DapperExecutor.CreateSessionAsync` (BEGIN).  
-2. Work: SQL / CALL SP — SP **không** START/COMMIT.  
-3. `ProductionCostWriteSession.ExecuteAsync` → `CompleteAsync` Commit hoặc Rollback.  
-4. Trước ghi history: `ProbeHistoryWriteSchemaAsync` + `AssertHistoryWriteSchemaReady`.  
-5. Idempotency: `HistoryStableKeyExists` + `HistoryPlan.PlanWrite(OperationId)` — không tin client hint.
+| Tình huống | Kết quả |
+|------------|---------|
+| Cùng `OPERATION_ID` + cùng `STABLE_KEY` (+ cùng fingerprint nếu có) | **Noop** |
+| Cùng `OPERATION_ID` khác RUN/STEP/ACTION (`STABLE_KEY`) hoặc fingerprint | **Conflict** |
+| Hai request song song cùng OpId | UNIQUE `(COMPANY_CD, OPERATION_ID)` → 1062 → đọc lại → Noop/Conflict |
+| Client tự khai “đã có history” | **Không** tin — chỉ DB |
 
-### 8.3 Không làm trong 2C-06A
+### 8.3 Backward compatibility GET History
 
-- Confirm B2–B5 / Reopen persist  
-- Bật `EnableWrites`  
-- Đổi `AllocationEngine` / WIP / Valuation / PeriodLock / menu Kho  
-- SOURCE migration hoặc gọi DB  
+- Schema **trước** 2C-06A: SQL legacy (không `OPERATION_ID`/`STABLE_KEY`/`STEP_CODE`) → API không lỗi.  
+- Schema **sau** migration / cài mới: SQL đầy đủ.  
+- Write path vẫn **từ chối** nếu probe history chưa READY.
 
-### 8.4 Kiểm thử
+### 8.4 TX ownership
 
-#### Host build (output riêng — tránh DLL lock)
+1. `BeginWriteSessionAsync` → `DapperExecutor.CreateSessionAsync` (BEGIN).  
+2. SP **không** START/COMMIT.  
+3. `ProductionCostWriteSession` → `CompleteAsync` Commit/Rollback.  
+4. History insert: PlanWrite từ DB **trước** INSERT; race dựa UNIQUE, không chỉ SELECT-before-INSERT.
+
+### 8.5 Không làm trong 2C-06A
+
+- Confirm B2–B5 / Reopen persist · EnableWrites · SOURCE SQL · apply kho / 632 · sửa B-I  
+
+### 8.6 Kiểm thử
+
+#### Host build
 
 ```text
 dotnet build API_AMNOTE_WEB.csproj -o artifacts/host-2c06a-check
-→ 0 Error(s)  (warnings sẵn có / nullable / CA1416 — không lỗi biên dịch mới chặn)
+→ 0 Error(s)
 HOST_EXIT=0
 ```
 
@@ -441,13 +450,12 @@ HOST_EXIT=0
 
 ```text
 dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
-→ Passed: 97, Failed: 0
+→ Passed: 101, Failed: 0
 TEST_EXIT=0
 ```
 
-Gồm thêm: WriteContext COMPANY/RUN/OperationId · locked run version · history schema gate · HistoryPlan noop · TX CompleteAsync commit/rollback · WriteGate vẫn OFF.
+Cases: OpId/StableKey length · Noop · Conflict payload · race ResolveAfterDuplicateKey · fingerprint Conflict · History SQL legacy vs mới · WriteGate OFF · schema READY gate.
 
-### 8.5 Dừng 2C-06A
+### 8.7 Dừng 2C-06A
 
-Hạ tầng 2C-06A xong trong source — **chờ nghiệm thu trước 2C-06B (Allocation Confirm).**
-)
+Final safety 2C-06A xong — **chờ nghiệm thu trước 2C-06B**.

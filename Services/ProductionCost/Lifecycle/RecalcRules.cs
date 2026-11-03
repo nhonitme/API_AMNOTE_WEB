@@ -73,7 +73,9 @@ public static class RecalcRules
         var historyKey = HistoryPlan.StableKey(
             companyCd, dry.RunId, dry.WorkingRunVersion, fromStep,
             HistoryActionCode.Recalculate, operationId);
-        var idem = HistoryPlan.PlanWrite(historyKey, operationId, dry.PersistedOperationIdsFromDb);
+        var persisted = HistoryPlan.NormalizePersisted(
+            dry.PersistedHistoryFromDb, dry.PersistedOperationIdsFromDb);
+        var idem = HistoryPlan.PlanWrite(historyKey, operationId, persisted);
         var actionAt = dry.ActionAtUtc ?? DateTime.UtcNow;
 
         return new RecalcPlan

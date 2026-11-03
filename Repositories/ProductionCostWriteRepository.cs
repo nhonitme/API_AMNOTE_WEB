@@ -42,7 +42,7 @@ SELECT DISTINCT INDEX_NAME
 FROM information_schema.STATISTICS
 WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'production_cost_history'
-  AND INDEX_NAME IN ('uk_pc_hist_stable', 'idx_pc_hist_operation')";
+  AND INDEX_NAME IN ('uk_pc_hist_stable', 'uk_pc_hist_operation')";
 
         var cols = (await _db.QueryAsync<string>(Net_DB.Net_DB_Company, colSql, new { }, databaseName))
             .Where(c => !string.IsNullOrWhiteSpace(c))
@@ -183,14 +183,38 @@ WHERE COMPANY_CD = @CompanyCd
             .ToList();
     }
 
+    public async Task<PersistedHistoryRef?> GetPersistedHistoryByOperationIdAsync(
+        DapperSession session,
+        string companyCd,
+        string operationId)
+    {
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        var op = HistoryPlan.RequireOperationId(operationId);
+        ArgumentNullException.ThrowIfNull(session);
+
+        const string sql = @"
+SELECT
+    OPERATION_ID AS OperationId,
+    STABLE_KEY AS StableKey,
+    NULL AS ContentFingerprint
+FROM production_cost_history
+WHERE COMPANY_CD = @CompanyCd
+  AND OPERATION_ID = @OperationId
+  AND ISDEL = '0'
+LIMIT 1";
+
+        return await session.QueryFirstOrDefaultAsync<PersistedHistoryRef>(
+            sql,
+            new { CompanyCd = companyCd.Trim(), OperationId = op });
+    }
+
     public async Task<bool> HistoryStableKeyExistsAsync(
         DapperSession session,
         string companyCd,
         string stableKey)
     {
         ProductionCostWriteContext.EnsureCompany(companyCd);
-        if (string.IsNullOrWhiteSpace(stableKey))
-            throw new ArgumentException("History STABLE_KEY bắt buộc.");
+        HistoryPlan.EnsureStableKeyLength(stableKey);
         ArgumentNullException.ThrowIfNull(session);
 
         const string sql = @"
@@ -209,10 +233,14 @@ LIMIT 1";
 
     public async Task<ProductionCostHistoryWriteResult> TryInsertHistoryAsync(
         DapperSession session,
-        ProductionCostHistoryInsert insert)
+        ProductionCostHistoryInsert insert,
+        string databaseName)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(insert);
+
+        var probe = await ProbeHistoryWriteSchemaAsync(databaseName);
+        ProductionCostWriteContext.AssertHistoryWriteSchemaReady(probe);
 
         ProductionCostWriteContext.EnsureCompany(insert.CompanyCd);
         ProductionCostWriteContext.EnsureRunIdentity(insert.RunId, insert.RunVersion ?? 0);
@@ -222,39 +250,24 @@ LIMIT 1";
             throw new ArgumentException("ACTION_CODE bắt buộc.");
 
         var operationId = ProductionCostWriteContext.RequireOperationId(insert.OperationId);
-        if (string.IsNullOrWhiteSpace(insert.StableKey))
-            throw new ArgumentException("History STABLE_KEY bắt buộc.");
+        HistoryPlan.EnsureStableKeyLength(insert.StableKey);
 
         var companyCd = insert.CompanyCd.Trim();
         var stableKey = insert.StableKey.Trim();
+        var fingerprint = string.IsNullOrWhiteSpace(insert.ContentFingerprint)
+            ? null
+            : insert.ContentFingerprint.Trim();
 
-        // Idempotency: ưu tiên UNIQUE STABLE_KEY đã persist trong DB (không tin client).
-        if (await HistoryStableKeyExistsAsync(session, companyCd, stableKey))
-        {
-            return new ProductionCostHistoryWriteResult
-            {
-                Inserted = false,
-                IdempotencyAction = HistoryPlan.WriteAction.NoopAlreadyWritten.ToString(),
-                OperationId = operationId,
-                StableKey = stableKey,
-                Message = "History STABLE_KEY đã tồn tại — Noop."
-            };
-        }
+        // 1) Đọc authoritative theo COMPANY_CD + OPERATION_ID (không tin client).
+        var existing = await GetPersistedHistoryByOperationIdAsync(session, companyCd, operationId);
+        var plan = HistoryPlan.PlanWrite(
+            stableKey,
+            operationId,
+            existing == null ? Array.Empty<PersistedHistoryRef>() : new[] { existing },
+            fingerprint);
 
-        var persistedOps = await GetPersistedOperationIdsAsync(
-            session, companyCd, insert.RunId, insert.RunVersion);
-        var plan = HistoryPlan.PlanWrite(stableKey, operationId, persistedOps);
         if (!plan.WritesHistory)
-        {
-            return new ProductionCostHistoryWriteResult
-            {
-                Inserted = false,
-                IdempotencyAction = plan.Action.ToString(),
-                OperationId = operationId,
-                StableKey = stableKey,
-                Message = "OperationId đã persist — Noop."
-            };
-        }
+            return HistoryPlan.ToWriteResult(plan);
 
         const string insertSql = @"
 INSERT INTO production_cost_history (
@@ -269,37 +282,49 @@ INSERT INTO production_cost_history (
     @UserName, @ActionAt, '0'
 )";
 
-        await session.ExecuteAsync(insertSql, new
+        try
         {
-            insert.RunId,
-            CompanyCd = companyCd,
-            PeriodYm = insert.PeriodYm.Trim(),
-            insert.StepIndex,
-            StepCode = string.IsNullOrWhiteSpace(insert.StepCode) ? null : insert.StepCode.Trim(),
-            ActionCode = insert.ActionCode.Trim(),
-            OperationId = operationId,
-            StableKey = stableKey,
-            insert.StatusAfter,
-            insert.RunVersion,
-            insert.ResultBefore,
-            insert.ResultAfter,
-            insert.DifferenceText,
-            insert.Reason,
-            insert.UserName,
-            ActionAt = insert.ActionAt ?? DateTime.UtcNow
-        });
+            await session.ExecuteAsync(insertSql, new
+            {
+                insert.RunId,
+                CompanyCd = companyCd,
+                PeriodYm = insert.PeriodYm.Trim(),
+                insert.StepIndex,
+                StepCode = string.IsNullOrWhiteSpace(insert.StepCode) ? null : insert.StepCode.Trim(),
+                ActionCode = insert.ActionCode.Trim(),
+                OperationId = operationId,
+                StableKey = stableKey,
+                insert.StatusAfter,
+                insert.RunVersion,
+                insert.ResultBefore,
+                insert.ResultAfter,
+                DifferenceText = BuildDifferenceText(insert.DifferenceText, fingerprint),
+                insert.Reason,
+                insert.UserName,
+                ActionAt = insert.ActionAt ?? DateTime.UtcNow
+            });
+        }
+        catch (Exception ex) when (HistoryPlan.IsDuplicateKeyException(ex))
+        {
+            // 2) Race: UNIQUE (COMPANY_CD, OPERATION_ID) hoặc STABLE_KEY — đọc lại, không INSERT lần 2.
+            var again = await GetPersistedHistoryByOperationIdAsync(session, companyCd, operationId);
+            var resolved = HistoryPlan.ResolveAfterDuplicateKey(
+                stableKey, operationId, again, fingerprint);
+            return HistoryPlan.ToWriteResult(resolved);
+        }
 
         var historyId = await session.QueryFirstOrDefaultAsync<long?>("SELECT LAST_INSERT_ID()");
+        return HistoryPlan.ToWriteResult(plan, historyId);
+    }
 
-        return new ProductionCostHistoryWriteResult
-        {
-            Inserted = true,
-            IdempotencyAction = HistoryPlan.WriteAction.InsertOnce.ToString(),
-            HistoryId = historyId,
-            OperationId = operationId,
-            StableKey = stableKey,
-            Message = "History inserted."
-        };
+    private static string? BuildDifferenceText(string? differenceText, string? fingerprint)
+    {
+        if (string.IsNullOrWhiteSpace(fingerprint))
+            return differenceText;
+        var marker = "FP:" + fingerprint.Trim();
+        if (string.IsNullOrWhiteSpace(differenceText))
+            return marker;
+        return marker + "|" + differenceText.Trim();
     }
 
     private sealed class StepStatusRow

@@ -2,6 +2,7 @@ using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Models;
+using API_AMNOTE_WEB.Services.ProductionCost;
 
 namespace API_AMNOTE_WEB.Repositories;
 
@@ -592,31 +593,10 @@ ORDER BY PRODUCT_ID, DEPARTMENT_ID, INPUT_ID";
 
     public async Task<IReadOnlyList<ProductionCostHistoryDto>> GetHistoryAsync(string companyCd, string periodYm, long? runId, string? databaseName = null)
     {
-        // STEP_CODE / OPERATION_ID / STABLE_KEY: có sau DDL 2C-06A (cài mới hoặc migration).
-        const string sql = @"
-SELECT
-    HISTORY_ID AS HistoryId,
-    RUN_ID AS RunId,
-    PERIOD_YM AS PeriodYm,
-    STEP_INDEX AS StepIndex,
-    STEP_CODE AS StepCode,
-    ACTION_CODE AS ActionCode,
-    OPERATION_ID AS OperationId,
-    STABLE_KEY AS StableKey,
-    STATUS_AFTER AS StatusAfter,
-    RUN_VERSION AS RunVersion,
-    RESULT_BEFORE AS ResultBefore,
-    RESULT_AFTER AS ResultAfter,
-    DIFFERENCE_TEXT AS DifferenceText,
-    REASON AS Reason,
-    USER_NAME AS UserName,
-    ACTION_AT AS ActionAt
-FROM production_cost_history
-WHERE COMPANY_CD = @CompanyCd
-  AND PERIOD_YM = @PeriodYm
-  AND ISDEL = '0'
-  AND (@RunId IS NULL OR RUN_ID = @RunId)
-ORDER BY ACTION_AT DESC, HISTORY_ID DESC";
+        // Schema cũ (trước 2C-06A): không SELECT cột mới → GET History không lỗi.
+        // Schema mới: trả thêm STEP_CODE / OPERATION_ID / STABLE_KEY.
+        var hasIdempotency = await HistoryHasIdempotencyColumnsAsync(databaseName);
+        var sql = ProductionCostHistorySql.SelectHistory(hasIdempotency);
 
         var rows = await _db.QueryAsync<ProductionCostHistoryDto>(
             Net_DB.Net_DB_Company,
@@ -624,6 +604,17 @@ ORDER BY ACTION_AT DESC, HISTORY_ID DESC";
             new { CompanyCd = companyCd, PeriodYm = periodYm, RunId = runId },
             databaseName);
         return rows.ToList();
+    }
+
+    private async Task<bool> HistoryHasIdempotencyColumnsAsync(string? databaseName)
+    {
+        EnsureDatabase(databaseName);
+        var count = await _db.QueryFirstOrDefaultAsync<int>(
+            Net_DB.Net_DB_Company,
+            ProductionCostHistorySql.ProbeIdempotencyColumns,
+            new { },
+            databaseName);
+        return ProductionCostHistorySql.ProbeCountMeansReady(count);
     }
 
     public async Task<IReadOnlyList<ProductionCostComparisonLineDto>> GetComparisonLinesAsync(

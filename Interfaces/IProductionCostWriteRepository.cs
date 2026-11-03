@@ -11,7 +11,7 @@ public interface IProductionCostWriteRepository
 {
     /// <summary>
     /// Mở kết nối DB công ty + BEGIN TRANSACTION.
-    /// Caller phải Commit hoặc Rollback (hoặc dùng <c>ProductionCostWriteTransaction</c>).
+    /// Caller phải Commit hoặc Rollback (hoặc dùng <c>ProductionCostWriteSession</c>).
     /// </summary>
     Task<DapperSession> BeginWriteSessionAsync(string databaseName);
 
@@ -32,12 +32,20 @@ public interface IProductionCostWriteRepository
         string companyCd,
         long runId);
 
-    /// <summary>OperationId đã persist (ISDEL=0) — nguồn tin cậy cho idempotency.</summary>
+    /// <summary>OperationId đã persist (ISDEL=0) theo RUN — tiện cho dry-run.</summary>
     Task<IReadOnlyList<string>> GetPersistedOperationIdsAsync(
         DapperSession session,
         string companyCd,
         long runId,
         int? runVersion = null);
+
+    /// <summary>
+    /// Hàng history theo COMPANY_CD + OPERATION_ID (phạm vi idempotency).
+    /// </summary>
+    Task<PersistedHistoryRef?> GetPersistedHistoryByOperationIdAsync(
+        DapperSession session,
+        string companyCd,
+        string operationId);
 
     Task<bool> HistoryStableKeyExistsAsync(
         DapperSession session,
@@ -45,10 +53,12 @@ public interface IProductionCostWriteRepository
         string stableKey);
 
     /// <summary>
-    /// INSERT history nếu chưa có STABLE_KEY / OperationId — idempotent trong cùng TX.
-    /// Không Commit.
+    /// INSERT history idempotent: Noop cùng OpId+StableKey; Conflict nếu khác;
+    /// race UNIQUE → đọc lại DB (không chỉ SELECT trước INSERT).
+    /// Từ chối nếu schema history chưa READY. Không Commit.
     /// </summary>
     Task<ProductionCostHistoryWriteResult> TryInsertHistoryAsync(
         DapperSession session,
-        ProductionCostHistoryInsert insert);
+        ProductionCostHistoryInsert insert,
+        string databaseName);
 }

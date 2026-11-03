@@ -468,6 +468,8 @@ public sealed class ProductionCostHistoryInsert
     public string ActionCode { get; set; } = string.Empty;
     public string OperationId { get; set; } = string.Empty;
     public string StableKey { get; set; } = string.Empty;
+    /// <summary>Tuỳ chọn — lưu trong DIFFERENCE_TEXT prefix hoặc cột mở rộng sau; dùng cho Conflict nội dung.</summary>
+    public string? ContentFingerprint { get; set; }
     public string? StatusAfter { get; set; }
     public string? ResultBefore { get; set; }
     public string? ResultAfter { get; set; }
