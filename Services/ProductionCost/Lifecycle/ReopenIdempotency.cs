@@ -6,16 +6,26 @@ namespace API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
 /// <summary>
 /// Nhận diện retry REOPEN khi RUN_VERSION đã đổi sau lần persist thành công —
 /// không thực hiện REOPEN lần hai; không Conflict chỉ vì StableKey gắn version cũ.
+/// Chỉ Noop khi fingerprint request khớp history authoritative (DB).
 /// </summary>
 public static class ReopenIdempotency
 {
+    /// <summary>
+    /// Nhận diện REOPEN đã hoàn tất theo COMPANY_CD + OperationId (history DB).
+    /// <paramref name="requestFingerprint"/> phải xây từ COMPANY_CD, RUN_ID,
+    /// original RUN_VERSION, TargetStepCode, Reason — không tin client history.
+    /// </summary>
     public static ReopenConfirmPlanner.Plan? TryRecognizeCompleted(
         string companyCd,
         long runId,
         int lockedRunVersion,
         string? lockedRunStatus,
         string operationId,
-        PersistedHistoryRef? persisted)
+        PersistedHistoryRef? persisted,
+        string requestFingerprint,
+        int requestOriginalRunVersion,
+        string targetStepCode,
+        string reason)
     {
         if (persisted == null || string.IsNullOrWhiteSpace(persisted.OperationId))
             return null;
@@ -39,7 +49,7 @@ public static class ReopenIdempotency
         }
 
         // StableKey REOPEN gắn version tại thời điểm mở lại (trước bump).
-        // Sau bump: header version mới + STATUS=REOPENED → coi là hoàn tất.
+        // Sau bump: header version mới + STATUS=REOPENED → coi là hoàn tất về mặt lifecycle.
         var looksLikeCompletedReopen =
             string.Equals(lockedRunStatus, GkRunStatus.Reopened, StringComparison.OrdinalIgnoreCase)
             && !string.IsNullOrWhiteSpace(persisted.StableKey)
@@ -59,8 +69,34 @@ public static class ReopenIdempotency
         if (!looksLikeCompletedReopen)
             return null;
 
-        // Payload Conflict: cùng OpId nhưng fingerprint khác (nếu cả hai có).
-        // Soft: thiếu fingerprint một phía vẫn Noop (REOPEN không bắt buộc FP trên hàng cũ).
+        // Strict fingerprint — history REOPEN mới phải có FP; thiếu ≠ khớp → Conflict.
+        var reqFp = HistoryPlan.NormalizeContentFingerprint(requestFingerprint, required: true)!;
+        if (string.IsNullOrWhiteSpace(persisted.ContentFingerprint))
+        {
+            throw new InvalidOperationException(
+                $"OperationId '{op}' đã REOPEN nhưng DB thiếu CONTENT_FINGERPRINT — Conflict " +
+                "(không Noop khi thiếu fingerprint đối với history REOPEN mới).");
+        }
+
+        var gotFp = HistoryPlan.NormalizeContentFingerprint(persisted.ContentFingerprint, required: true)!;
+        if (!string.Equals(reqFp, gotFp, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"OperationId '{op}' đã REOPEN nhưng request khác nội dung " +
+                $"(TargetStepCode/Reason/original RUN_VERSION) — Conflict CONTENT_FINGERPRINT.");
+        }
+
+        // Đối chiếu bất biến từ request vs history step (khi DB có StepCode).
+        var target = GkStepOrder.Normalize(targetStepCode);
+        if (!string.IsNullOrWhiteSpace(persisted.StepCode)
+            && !string.Equals(GkStepOrder.Normalize(persisted.StepCode), target, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"OperationId '{op}' đã REOPEN TargetStep={persisted.StepCode} — Conflict với request {target}.");
+        }
+
+        _ = reason; // fingerprint đã bao Reason; không tin Reason từ client history.
+        _ = requestOriginalRunVersion; // fingerprint đã bao original RUN_VERSION.
 
         var reopen = new ReopenPlan
         {
@@ -69,27 +105,26 @@ public static class ReopenIdempotency
             PreservedRunVersion = lockedRunVersion,
             NewWorkingRunVersion = lockedRunVersion,
             VersionMode = RunVersionRules.ReopenVersionMode.IdempotentRetry.ToString(),
-            TargetStepCode = string.IsNullOrWhiteSpace(persisted.StepCode)
-                ? string.Empty
-                : persisted.StepCode!,
+            TargetStepCode = target,
             CascadeReverse = Array.Empty<string>(),
             PriorRunStatus = lockedRunStatus ?? string.Empty,
             NewRunStatus = GkRunStatus.Reopened,
             MarkPriorVersionSuperseded = false,
             PreserveConfirmedSnapshots = true,
             WouldDeleteConfirmedData = false,
-            Reason = "(idempotent retry — recognized from history)",
+            Reason = reason.Trim(),
             History = new HistoryEntryPlan
             {
                 StableKey = persisted.StableKey ?? string.Empty,
                 OperationId = op,
                 ActionCode = HistoryActionCode.Reopen,
-                StepCode = persisted.StepCode ?? string.Empty,
+                StepCode = target,
                 RunId = runId,
                 RunVersionBefore = lockedRunVersion,
                 RunVersionAfter = lockedRunVersion,
                 StatusBefore = lockedRunStatus,
                 StatusAfter = GkRunStatus.Reopened,
+                Reason = reason.Trim(),
                 IdempotencyAction = HistoryPlan.WriteAction.NoopAlreadyWritten.ToString(),
                 WritesHistory = false,
                 ClientHistoryHintIsNotAuthoritative = true
@@ -101,7 +136,7 @@ public static class ReopenIdempotency
         return new ReopenConfirmPlanner.Plan
         {
             Reopen = reopen,
-            ContentFingerprint = persisted.ContentFingerprint ?? string.Empty,
+            ContentFingerprint = gotFp,
             IsNoop = true,
             WouldPersist = false,
             WouldBumpVersion = false,

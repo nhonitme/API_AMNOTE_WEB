@@ -28,25 +28,25 @@ public static class ReopenConfirmPlanner
         public bool RecognizedCompletedReopenFromHistory { get; init; }
     }
 
+    /// <summary>
+    /// Fingerprint deterministic từ thông tin bất biến của request REOPEN.
+    /// COMPANY_CD + RUN_ID + original RUN_VERSION + TargetStepCode + Reason.
+    /// Không gồm STATUS/cascade (phụ thuộc DB tại thời điểm persist).
+    /// </summary>
     public static string BuildContentFingerprint(
         string companyCd,
         long runId,
-        int currentRunVersion,
+        int originalRunVersion,
         string targetStepCode,
-        string reason,
-        string priorStatus,
-        IReadOnlyList<string> cascadeReverse)
+        string reason)
     {
         var inv = CultureInfo.InvariantCulture;
         var target = GkStepOrder.Normalize(targetStepCode);
-        var cascade = string.Join(">", cascadeReverse.Select(GkStepOrder.Normalize));
         var sb = new StringBuilder();
         sb.Append("REOPEN|c").Append(companyCd.Trim())
             .Append("|r").Append(runId.ToString(inv))
-            .Append("|v").Append(currentRunVersion.ToString(inv))
+            .Append("|v").Append(originalRunVersion.ToString(inv))
             .Append("|t").Append(target)
-            .Append("|st").Append((priorStatus ?? string.Empty).Trim().ToUpperInvariant())
-            .Append("|cas").Append(cascade)
             .Append("|why").Append((reason ?? string.Empty).Trim());
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())))
@@ -66,14 +66,34 @@ public static class ReopenConfirmPlanner
         IReadOnlyDictionary<string, string> stepStatusesFromDb,
         PersistedHistoryRef? persistedHistoryFromDb,
         string? clientFingerprint = null,
-        DateTime? actionAtUtc = null)
+        DateTime? actionAtUtc = null,
+        int? requestOriginalRunVersion = null)
     {
         ProductionCostWriteContext.EnsureCompany(companyCd);
         ProductionCostWriteContext.EnsureRunIdentity(runId, lockedRunVersion);
 
-        // 1) Retry sau bump version: cùng OpId đã REOPEN thành công → Noop từ history.
+        var originalVersion = requestOriginalRunVersion is > 0
+            ? requestOriginalRunVersion.Value
+            : lockedRunVersion;
+        ProductionCostWriteContext.EnsureRunIdentity(runId, originalVersion);
+
+        var fp = string.IsNullOrWhiteSpace(clientFingerprint)
+            ? BuildContentFingerprint(companyCd, runId, originalVersion, targetStepCode, reason)
+            : HistoryPlan.NormalizeContentFingerprint(clientFingerprint, required: true)!;
+
+        // 1) Retry sau bump version: cùng OpId + cùng fingerprint đã REOPEN thành công → Noop từ history.
+        //    Cho phép request original RUN_VERSION ≠ header khi đã chứng minh khớp history.
         var completed = ReopenIdempotency.TryRecognizeCompleted(
-            companyCd, runId, lockedRunVersion, lockedRunStatus, operationId, persistedHistoryFromDb);
+            companyCd,
+            runId,
+            lockedRunVersion,
+            lockedRunStatus,
+            operationId,
+            persistedHistoryFromDb,
+            fp,
+            originalVersion,
+            targetStepCode,
+            reason);
         if (completed != null)
             return completed;
 
@@ -99,13 +119,8 @@ public static class ReopenConfirmPlanner
             reopen.WouldDeleteConfirmedData,
             wouldOverwriteConfirmedUniqueKey: false);
 
-        var fp = string.IsNullOrWhiteSpace(clientFingerprint)
-            ? BuildContentFingerprint(
-                companyCd, runId, lockedRunVersion, targetStepCode, reason,
-                lockedRunStatus ?? string.Empty, reopen.CascadeReverse)
-            : HistoryPlan.NormalizeContentFingerprint(clientFingerprint, required: true)!;
-
         // Confirm: luôn đối chiếu fingerprint từ DB — Conflict nếu khác / thiếu khi require.
+        // StableKey gắn locked version (version đang mở lại); FP gắn original request version.
         var idem = HistoryPlan.PlanWrite(
             reopen.History!.StableKey,
             operationId,

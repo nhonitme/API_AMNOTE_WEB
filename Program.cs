@@ -208,7 +208,14 @@ builder.Services.AddSingleton<API_AMNOTE_WEB.Services.ProductionCost.IProduction
     var enabled = flag && !env.IsProduction();
     return new API_AMNOTE_WEB.Services.ProductionCost.ProductionCostWriteGate(enabled);
 });
-builder.Services.AddScoped<IProductionCostWriteService, API_AMNOTE_WEB.Services.ProductionCost.ProductionCostWriteService>();
+builder.Services.AddScoped<API_AMNOTE_WEB.Services.ProductionCost.Lifecycle.IProductionCostReopenAuthority,
+    API_AMNOTE_WEB.Services.ProductionCost.Lifecycle.ProductionCostReopenAuthority>();
+builder.Services.AddScoped<IProductionCostWriteService>(sp =>
+    new API_AMNOTE_WEB.Services.ProductionCost.ProductionCostWriteService(
+        sp.GetRequiredService<API_AMNOTE_WEB.Services.ProductionCost.IProductionCostWriteGate>(),
+        sp.GetRequiredService<IProductionCostWriteRepository>(),
+        allowNonAuthoritativeFinancialPersistForTests: false,
+        reopenAuthority: sp.GetRequiredService<API_AMNOTE_WEB.Services.ProductionCost.Lifecycle.IProductionCostReopenAuthority>()));
 
 builder.Services.AddSingleton<IPeriodLockJobQueue, PeriodLockJobQueue>();
 builder.Services.AddHostedService<PeriodLockBackgroundService>();

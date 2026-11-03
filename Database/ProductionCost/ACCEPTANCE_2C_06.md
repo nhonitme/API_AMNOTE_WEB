@@ -23,7 +23,7 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# + DDL script 2C-06A** — Confirm B2–B5 + REOPEN ghi history từ C#; chưa SOURCE DEV |
 | Tái sử dụng kho / PeriodLock | **B3 gắn PeriodLock** — B5 apply kho/632 **capability-gated** (production OFF); REOPEN block side-effect |
 
-**Kết luận (cập nhật 2C-06F):** REOPEN + history + integration readiness source-tested; WriteGate OFF; không DB. Dừng nghiệm thu source toàn đoạn 2C-06 — chưa EnableWrites / production.
+**Kết luận (cập nhật 2C-06F final reopen safety):** REOPEN idempotent/fingerprint/auth hardened; WriteGate OFF; không DB. Dừng nghiệm thu source toàn đoạn 2C-06 — chưa EnableWrites / production.
 
 ---
 
@@ -850,21 +850,24 @@ TEST_EXIT=0
 
 ---
 
-## 13. 2C-06F — REOPEN / History / Integration readiness (+ tổng kết source 2C-06)
+## 13. 2C-06F — REOPEN / History / Integration readiness (+ final reopen safety)
 
-Ngày: 2026-11-03  
+Ngày: 2026-11-03 (final reopen safety hardening)  
 Phạm vi: Persist REOPEN trên hạ tầng 2C-06A; impact B3/B5; history/idempotency; harden RECALCULATE; bộ integration readiness (không chạy DB).  
+**Final safety (chỉ 3 blocker):** idempotent retry sau version bump · strict fingerprint · authorization AMnote.  
 **Không** EnableWrites · **Không** SOURCE · **Không** kết nối DB · **Không** Confirm/REOPEN thật · **Không** cập nhật CT/giá kho · **Không** deploy · **Không** đổi engine công thức / B-I / Kho cũ.
 
 ### 13.1 Deliverables 2C-06F
 
 | Hạng mục | Chi tiết |
 |----------|----------|
-| Confirm REOPEN | Gate → TX C# → lock RUN+PERIOD → CURRENT_RUN_ID/PERIOD_COST_ID → VERSION/PeriodYm → steps+history DB → planner → impact guard → PersistReopen → history → Commit/Rollback |
+| Confirm REOPEN | Gate → **auth REOPEN** → TX C# → lock RUN → **history OpId** → (Noop nếu FP khớp) / else **AssertLockedRunMatches** → PERIOD/CURRENT_RUN_ID → steps → planner → impact → PersistReopen → history → Commit/Rollback |
 | Version lifecycle | CONFIRMED/ALLOC_CONFIRMED → version+1 + SUPERSEDED (bất biến snapshot cũ); đã REOPENED → giữ version; không DELETE history/version cũ |
 | Side-effect B3/B5 | Probe EXP_TO_154 voucher, PeriodLock claim, IS_APPLIED, VALUATION_COGS, giá kho — **block** nếu `SupportsSafeReopenSideEffectReverse=false` |
-| Idempotency | Cùng OpId+FP → Noop; khác FP → Conflict; retry sau bump version nhận từ history — không REOPEN lần hai |
-| History | PREVIEW/CONFIRM/REOPEN/RECALC theo thiết kế; đọc COMPANY_CD+RUN_ID+RUN_VERSION; C# sở hữu INSERT; không trùng SP |
+| Idempotency | Cùng OpId+FP → Noop (kể cả request original version sau bump); khác Target/Reason/version → Conflict; thiếu FP history REOPEN mới → Conflict; request mới version cũ → Reject |
+| Fingerprint | Deterministic: `COMPANY_CD\|RUN_ID\|original RUN_VERSION\|TargetStepCode\|Reason` — lưu/đọc `CONTENT_FINGERPRINT` từ history DB; không tin client history |
+| Authorization | `IProductionCostReopenAuthority` → menu `/cost/simple-costing` + `EDIT` qua `Common.HasPermissionAsync`; không tin `ReopenDryRun.HasPermission`; thiếu MENU_CODE → block |
+| History | PREVIEW/CONFIRM/REOPEN/RECALC theo thiết kế; đọc COMPANY_CD+OperationId trong TX; C# sở hữu INSERT; không trùng SP |
 | RECALCULATE | Preview-only + `RecalcPersistGuard`; không Confirm B2–B5 tự động; không DryRun tài chính ghi thật; không overwrite CONFIRMED |
 | Integration readiness | Catalog IT-01…IT-14 trong `ProductionCostConfirmIntegrationReadinessTests` — **Skip MySQL** |
 | Gate | `ProductionCost:EnableWrites` mặc định **OFF**; `SupportsSafeReopenSideEffectReverse=false` |
@@ -878,7 +881,7 @@ Phạm vi: Persist REOPEN trên hạ tầng 2C-06A; impact B3/B5; history/idempo
 | 2C-06C EXP_TO_154 Confirm B3 | **Implemented (source-tested)** — PeriodLock shared-session |
 | 2C-06D CostCalc Confirm B4 | **Implemented (source-tested)** — không apply kho |
 | 2C-06E Valuation Confirm B5 | **Implemented (source-tested)** — INPUT_ID capability OFF |
-| 2C-06F REOPEN / History / Integration readiness | **Implemented (source-tested)** |
+| 2C-06F REOPEN / History / Integration readiness | **Implemented (source-tested)** + **final reopen safety hardened** |
 
 ### 13.3 Skeleton còn tồn tại
 
@@ -922,16 +925,18 @@ Phạm vi: Persist REOPEN trên hạ tầng 2C-06A; impact B3/B5; history/idempo
 | IT-13 | REOPEN blocked khi thiếu reverse B3/B5 |
 | IT-14 | History PREVIEW/CONFIRM/REOPEN/RECALC |
 
-### 13.6 Files changed (2C-06F)
+### 13.6 Files changed (2C-06F + final reopen safety)
 
-- `Lifecycle/ReopenImpactGuard.cs`, `ReopenConfirmPlanner.cs`, `ReopenIdempotency.cs`, `RecalcPersistGuard.cs` — mới
-- `ProductionCostWriteService.cs` — `ConfirmReopenAsync` + harden `PreviewRecalculateAsync`
-- `IProductionCostWriteRepository.cs` / `ProductionCostWriteRepository.cs` — probe + PersistReopen + history SELECT mở rộng
-- `FakeProductionCostWriteRepository.cs` — REOPEN fake
-- `LifecycleModels.cs` / `ProductionCostModels.cs` — PersistedHistoryRef + IdempotencyAction + ReopenedBy
+- `Lifecycle/ReopenImpactGuard.cs`, `ReopenConfirmPlanner.cs`, `ReopenIdempotency.cs`, `RecalcPersistGuard.cs`
+- `Lifecycle/IProductionCostReopenAuthority.cs`, `ProductionCostReopenAuthority.cs` — auth EDIT `/cost/simple-costing`
+- `ProductionCostWriteService.cs` — `ConfirmReopenAsync` (OpId trước version assert; FP; authority)
+- `IProductionCostWriteRepository.cs` / `ProductionCostWriteRepository.cs` — probe + PersistReopen + history SELECT
+- `FakeProductionCostWriteRepository.cs` / `StubProductionCostReopenAuthority.cs` / stub `DapperSession` undo
 - `ProductionCostReopenConfirmTests.cs` / `ProductionCostConfirmIntegrationReadinessTests.cs`
+- `Program.cs` — DI `IProductionCostReopenAuthority`
 - `migrations/20261103_2c06f_README.md`
-- `ACCEPTANCE_2C_06.md` — mục này
+- `ACCEPTANCE_2C_06.md` — mục này  
+- **Không** SOURCE migration mới (CONTENT_FINGERPRINT đã có từ 2C-06A)
 
 ### 13.7 Build / test
 
@@ -947,32 +952,47 @@ HOST_EXIT=0
 
 ```text
 dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
-→ Passed: 212, Failed: 0, Skipped: 1 (integration readiness MySQL)
+→ Passed: 221, Failed: 0, Skipped: 1 (integration readiness MySQL)
 TEST_EXIT=0
 ```
 
-### 13.8 Quy tắc REOPEN đã giữ
+### 13.8 Quy tắc REOPEN đã giữ (+ final safety)
 
-1. Xác thực COMPANY_CD, database, RUN_ID, RUN_VERSION, PERIOD_YM, quyền (userId).  
-2. Khóa RUN + PERIOD cùng DapperSession; CURRENT_RUN_ID + PERIOD_COST_ID.  
-3. REOPEN từ CONFIRMED/ALLOC_CONFIRMED → version+1; từ REOPENED → không tăng.  
+1. Quyền REOPEN thật qua AMnote (`EDIT` menu `/cost/simple-costing`) + COMPANY_CD/database tenant phiên; không tin DryRun.HasPermission.  
+2. Khóa RUN; đọc history `COMPANY_CD + OperationId` trước AssertLockedRunMatches.  
+3. REOPEN từ CONFIRMED/ALLOC_CONFIRMED → version+1; từ REOPENED → không tăng; Noop không bump lần hai.  
 4. Snapshot version đã xác nhận bất biến — không xóa/ghi đè.  
-5. Ghi REOPEN_REASON / BY / AT + history cùng TX.  
-6. Cùng OperationId → Noop sau kiểm DB; khác payload/FP → Conflict.  
-7. Retry sau đổi version nhận từ history — không REOPEN lần hai.  
+5. Ghi REOPEN_REASON / BY / AT + history + CONTENT_FINGERPRINT cùng TX.  
+6. Cùng OpId + cùng FP (company/run/original version/target/reason) → Noop; khác → Conflict; thiếu FP → Conflict.  
+7. Retry sau bump với original RUN_VERSION + cùng OpId/FP → Noop; request mới version cũ → Reject.  
 8. Không tự hủy CT EXP_TO_154 / VALUATION_COGS / giá kho; thiếu reverse → block.  
-9. Không trả REOPEN success khi chứng từ/giá kho chưa nhất quán (block trước persist).  
+9. Failure giữa version bump và history → Rollback (không commit side-effect).  
 10. WriteGate OFF; không SOURCE; không DB thật trong slice này.
+
+### 13.10 Final reopen safety — test matrix
+
+| Case | Kỳ vọng |
+|------|---------|
+| REOPEN v3→4, retry OpId + request v3 cùng FP | **Noop** |
+| Cùng OpId, khác Reason | **Conflict** |
+| Cùng OpId, khác TargetStepCode | **Conflict** |
+| Request mới OpId khác, version 3 khi header 4 | **Reject** RUN_VERSION |
+| User login không quyền EDIT G-K | **Reject** |
+| User có quyền hợp lệ | Đi tiếp planner/persist |
+| Side-effect B3/B5 chưa reverse | **Blocked** |
+| Snapshot version cũ | **Không xóa** |
+| Fail giữa bump và history | **Rollback** |
 
 ### 13.9 Verdict / dừng toàn 2C-06 (source)
 
 | Phần | Trạng thái |
 |------|------------|
-| Confirm B2–B5 + REOPEN (source) | **Implemented (source-tested)** |
+| Confirm B2–B5 + REOPEN (source) | **Implemented (source-tested)** + **final reopen safety** |
 | WriteGate | **OFF** |
 | Preview-from-DB / SQL INPUT_ID / reverse REOPEN | **Skeleton / Pending** |
 | SOURCE + integration MySQL | **Pending DEV/TEST** |
+| Auth REOPEN (menu EDIT simple-costing) | **Wired** — cần MENU_CODE route trên từng tenant |
 | EnableWrites | **OFF — chưa đủ điều kiện** |
 | Engine công thức / B-I / Kho cũ | **Không đổi** |
 
-**Dừng sau 2C-06F để nghiệm thu source toàn đoạn.** Chưa chuyển triển khai production / EnableWrites / SOURCE / Confirm thật.
+**Dừng sau 2C-06F final reopen safety để nghiệm thu source toàn đoạn.** Chưa chuyển triển khai production / EnableWrites / SOURCE / Confirm thật.

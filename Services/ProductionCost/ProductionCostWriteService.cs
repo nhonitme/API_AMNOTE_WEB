@@ -17,6 +17,7 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
 {
     private readonly IProductionCostWriteGate _gate;
     private readonly IProductionCostWriteRepository _writeRepo;
+    private readonly IProductionCostReopenAuthority _reopenAuthority;
     /// <summary>
     /// Chỉ unit test B2/B4/B5 orchestration: cho phép DryRun / WipDryRun / ValuationDryRun khi Preview-from-DB chưa có.
     /// Production / DI luôn false — source guard chặn ghi thật.
@@ -26,11 +27,14 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
     public ProductionCostWriteService(
         IProductionCostWriteGate gate,
         IProductionCostWriteRepository writeRepo,
-        bool allowNonAuthoritativeFinancialPersistForTests = false)
+        bool allowNonAuthoritativeFinancialPersistForTests = false,
+        IProductionCostReopenAuthority? reopenAuthority = null)
     {
         _gate = gate;
         _writeRepo = writeRepo;
         _allowNonAuthoritativeFinancialPersistForTests = allowNonAuthoritativeFinancialPersistForTests;
+        // Thiếu authority → chặn Confirm REOPEN (không mặc định mọi user login đều được).
+        _reopenAuthority = reopenAuthority ?? new BlockedProductionCostReopenAuthority();
     }
 
     public Task<ProductionCostAllocationWriteResponse> PreviewAllocationAsync(
@@ -1124,6 +1128,9 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         _gate.EnsureWritable();
         ProductionCostWriteContext.EnsureDatabase(databaseName);
 
+        // Quyền REOPEN thật (AMnote menu EDIT) — không tin ReopenDryRun.HasPermission.
+        await _reopenAuthority.AssertCanConfirmReopenAsync(companyCd, userId, databaseName);
+
         ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
         var operationId = ProductionCostWriteContext.RequireOperationId(
             request.OperationId ?? request.ReopenDryRun?.OperationId);
@@ -1143,9 +1150,6 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
 
         LifecycleRequestGuard.AssertAlignedWithReopen(request, dryHint);
 
-        // Quyền: Confirm không tin DryRun.HasPermission — yêu cầu userId từ auth.
-        var hasPermission = !string.IsNullOrWhiteSpace(userId);
-
         return await ProductionCostWriteSession.ExecuteAsync(
             _writeRepo,
             databaseName!,
@@ -1153,8 +1157,48 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             {
                 var locked = await _writeRepo.LockRunForUpdateAsync(session, companyCd, runId)
                     ?? throw new InvalidOperationException("RUN không tồn tại hoặc không thuộc COMPANY_CD.");
-                ProductionCostWriteContext.AssertLockedRunMatches(locked, companyCd, runId, runVersion);
                 AllocationRunConfig.AssertPeriodYmMatches(locked, requestPeriodYm);
+
+                // History authoritative theo COMPANY_CD + OperationId TRƯỚC AssertLockedRunMatches —
+                // cho phép nhận diện retry REOPEN đã commit sau khi RUN_VERSION tăng.
+                var persisted = await _writeRepo.GetPersistedHistoryByOperationIdAsync(
+                    session, companyCd, operationId);
+
+                var requestFingerprint = ReopenConfirmPlanner.BuildContentFingerprint(
+                    companyCd, runId, runVersion, dryHint.TargetStepCode, dryHint.Reason);
+
+                var completedRetry = ReopenIdempotency.TryRecognizeCompleted(
+                    companyCd,
+                    runId,
+                    locked.RunVersion,
+                    locked.Status,
+                    operationId,
+                    persisted,
+                    requestFingerprint,
+                    runVersion,
+                    dryHint.TargetStepCode,
+                    dryHint.Reason);
+
+                if (completedRetry != null)
+                {
+                    return new ProductionCostLifecycleWriteResponse
+                    {
+                        WriteEnabled = true,
+                        Persisted = false,
+                        PeriodYm = locked.PeriodYm.Trim(),
+                        RunId = runId,
+                        RunVersion = locked.RunVersion,
+                        Action = HistoryActionCode.Reopen,
+                        Reopen = completedRetry.Reopen,
+                        StepStatusesAreClientSimulated = false,
+                        IdempotencyAction = completedRetry.IdempotencyAction,
+                        Message = completedRetry.Message
+                    };
+                }
+
+                // Request mới (hoặc chưa chứng minh Noop) — bắt buộc khớp RUN_VERSION header.
+                // Không bỏ qua kiểm tra version cho mọi request; không tăng version lần hai qua nhánh Noop.
+                ProductionCostWriteContext.AssertLockedRunMatches(locked, companyCd, runId, runVersion);
 
                 var period = await _writeRepo.LockPeriodEngineForUpdateAsync(
                         session, companyCd, locked.PeriodYm.Trim())
@@ -1165,8 +1209,6 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
 
                 var periodYm = locked.PeriodYm.Trim();
                 var steps = await _writeRepo.GetStepStatusesForUpdateAsync(session, companyCd, runId);
-                var persisted = await _writeRepo.GetPersistedHistoryByOperationIdAsync(
-                    session, companyCd, operationId);
 
                 var plan = ReopenConfirmPlanner.BuildFromDb(
                     companyCd,
@@ -1176,12 +1218,13 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     locked.Status,
                     dryHint.TargetStepCode,
                     dryHint.Reason,
-                    hasPermission,
+                    hasPermission: true,
                     operationId,
                     steps,
                     persisted,
-                    clientFingerprint: null,
-                    actionAtUtc: dryHint.ActionAtUtc);
+                    clientFingerprint: requestFingerprint,
+                    actionAtUtc: dryHint.ActionAtUtc,
+                    requestOriginalRunVersion: runVersion);
 
                 if (plan.IsNoop)
                 {
@@ -1349,5 +1392,19 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         var err = ProductionCostValidation.ValidateQuery(request.PeriodYm, request.RunId, request.RunVersion);
         if (err != null)
             throw new ArgumentException(err);
+    }
+
+    /// <summary>
+    /// Fallback an toàn khi DI thiếu authority — Confirm REOPEN luôn bị chặn
+    /// (không mặc định user login = có quyền REOPEN).
+    /// </summary>
+    private sealed class BlockedProductionCostReopenAuthority : IProductionCostReopenAuthority
+    {
+        public Task AssertCanConfirmReopenAsync(string companyCd, string? userId, string? databaseName)
+        {
+            throw new InvalidOperationException(
+                "Confirm REOPEN bị chặn: thiếu IProductionCostReopenAuthority trong DI " +
+                "(không mặc định mọi user đăng nhập đều có quyền REOPEN).");
+        }
     }
 }
