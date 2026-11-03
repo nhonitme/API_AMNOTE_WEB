@@ -173,6 +173,10 @@ public sealed class ProductionCostWipWriteResponse
     public IReadOnlyList<CostCompareLine> Compare { get; set; } = Array.Empty<CostCompareLine>();
     public IReadOnlyList<ReceiptPricePrepLine> ReceiptPreps { get; set; } = Array.Empty<ReceiptPricePrepLine>();
     public decimal TotalCostPriceSum { get; set; }
+    /// <summary>B4 luôn false — apply giá kho chỉ ở B5.</summary>
     public bool InventoryPriceApplied { get; set; }
+    /// <summary>B4 luôn false — post 632 chỉ ở B5.</summary>
+    public bool Cogs632Posted { get; set; }
+    public string? IdempotencyAction { get; set; }
     public string? Message { get; set; }
 }

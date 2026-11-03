@@ -5,7 +5,7 @@ namespace API_AMNOTE_WEB.Interfaces;
 
 /// <summary>
 /// Ghi G-K trong transaction do C# sở hữu (<see cref="DapperSession"/>).
-/// SP không START/COMMIT. Confirm B2/B3 gọi qua service; B4–B5 chưa.
+/// SP không START/COMMIT. Confirm B2–B4 gọi qua service; B5 chưa.
 /// </summary>
 public interface IProductionCostWriteRepository
 {
@@ -173,4 +173,57 @@ public interface IProductionCostWriteRepository
         string refRole,
         string stableKey,
         string? userId);
+
+    // ---- 2C-06D Cost Calc Confirm (B4) ----
+
+    /// <summary>
+    /// true nếu đã có history CONFIRM B4 (STEP_CODE=COST_CALC) ISDEL=0 cho RUN+VERSION.
+    /// </summary>
+    Task<bool> HasB4ConfirmHistoryAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion);
+
+    /// <summary>
+    /// UPSERT production_cost_source theo UNIQUE (RUN_ID, RUN_VERSION, PRODUCT_ID, DEPARTMENT_ID, SOURCE_KIND).
+    /// Soft-delete khóa thiếu. Không ghi XFER. Không Commit.
+    /// </summary>
+    Task ReplaceCostSourcesAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<CostSourceLine> sources,
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion);
+
+    /// <summary>
+    /// UPSERT production_cost_wip theo UNIQUE (RUN_ID, RUN_VERSION, PRODUCT_ID, DEPARTMENT_ID).
+    /// Soft-delete khóa thiếu. Không đụng RUN_VERSION khác. Không Commit.
+    /// </summary>
+    Task ReplaceWipAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<WipCalcResult> wip,
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion);
+
+    /// <summary>
+    /// UPSERT production_cost_receipt theo UNIQUE (RUN_ID, RUN_VERSION, INPUT_ID).
+    /// IS_APPLIED luôn '0' ở B4. Không UPDATE chit_inventory_input. Không Commit.
+    /// </summary>
+    Task ReplaceReceiptsAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<ReceiptPricePrepLine> receipts,
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion);
 }

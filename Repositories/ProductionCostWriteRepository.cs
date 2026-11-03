@@ -5,6 +5,7 @@ using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Services.ProductionCost;
 using API_AMNOTE_WEB.Services.ProductionCost.Allocation;
 using API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
+using API_AMNOTE_WEB.Services.ProductionCost.Wip;
 
 namespace API_AMNOTE_WEB.Repositories;
 
@@ -819,6 +820,370 @@ ON DUPLICATE KEY UPDATE
             RunVersion = runVersion,
             UserId = userId
         });
+    }
+
+    public async Task<bool> HasB4ConfirmHistoryAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+
+        const string sql = @"
+SELECT 1
+FROM production_cost_history
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND STEP_CODE = @StepCode
+  AND ACTION_CODE = @ActionCode
+  AND ISDEL = '0'
+LIMIT 1";
+
+        var row = await session.QueryFirstOrDefaultAsync<int?>(
+            sql,
+            new
+            {
+                CompanyCd = companyCd.Trim(),
+                RunId = runId,
+                RunVersion = runVersion,
+                StepCode = ProductionCostStepCode.CostCalc,
+                ActionCode = HistoryActionCode.Confirm
+            });
+        return row is > 0;
+    }
+
+    public async Task ReplaceCostSourcesAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<CostSourceLine> sources,
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(sources);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+        WipUpsertRules.EnsureCanPersist(
+            companyCd, runId, runVersion, lockedRunVersion, runStatus);
+        CostSourceRules.AssertNoTransferInIncurred(sources);
+
+        const string upsertSql = @"
+INSERT INTO production_cost_source (
+    RUN_ID, RUN_VERSION, COMPANY_CD, PRODUCT_ID, DEPARTMENT_ID, SOURCE_KIND, AMOUNT, NOTE,
+    ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+) VALUES (
+    @RunId, @RunVersion, @CompanyCd, @ProductId, @DepartmentId, @SourceKind, @Amount, NULL,
+    '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
+)
+ON DUPLICATE KEY UPDATE
+    COMPANY_CD = VALUES(COMPANY_CD),
+    AMOUNT = VALUES(AMOUNT),
+    NOTE = VALUES(NOTE),
+    ISDEL = '0',
+    UPDATE_BY = VALUES(UPDATE_BY),
+    UPDATE_AT = UTC_TIMESTAMP()";
+
+        var keepKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in CostSourceRules.FilterForIncurred(sources))
+        {
+            var kind = (row.SourceKind ?? string.Empty).Trim();
+            await session.ExecuteAsync(upsertSql, new
+            {
+                RunId = runId,
+                RunVersion = runVersion,
+                CompanyCd = companyCd.Trim(),
+                row.ProductId,
+                row.DepartmentId,
+                SourceKind = kind,
+                row.Amount,
+                UserId = userId
+            });
+            keepKeys.Add($"{row.ProductId}\u0001{row.DepartmentId}\u0001{kind}");
+        }
+
+        const string softDeleteSql = @"
+UPDATE production_cost_source
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND ISDEL = '0'
+  AND CONCAT(PRODUCT_ID, CHAR(1), DEPARTMENT_ID, CHAR(1), SOURCE_KIND) NOT IN @KeepKeys";
+
+        if (keepKeys.Count == 0)
+        {
+            await session.ExecuteAsync(@"
+UPDATE production_cost_source
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0'",
+                new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion, UserId = userId });
+        }
+        else
+        {
+            await session.ExecuteAsync(
+                softDeleteSql,
+                new
+                {
+                    CompanyCd = companyCd.Trim(),
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    UserId = userId,
+                    KeepKeys = keepKeys.ToArray()
+                });
+        }
+    }
+
+    public async Task ReplaceWipAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<WipCalcResult> wip,
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(wip);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+        WipUpsertRules.EnsureCanPersist(
+            companyCd, runId, runVersion, lockedRunVersion, runStatus);
+
+        const string upsertSql = @"
+INSERT INTO production_cost_wip (
+    RUN_ID, RUN_VERSION, COMPANY_CD, PRODUCT_ID, DEPARTMENT_ID, PRODUCT_CD, DEPARTMENT_CD,
+    INCOMPLETE_QTY_OPENING, BEFORE_AMOUNT_RESULT_621, BEFORE_AMOUNT_RESULT_62N, BEFORE_AMOUNT_154,
+    AMOUNT_621, AMOUNT_6212, AMOUNT_622, AMOUNT_627, AMOUNT_154_DIRECT, TOTAL_AMOUNT_INCURRED,
+    QUANTITY, PERCENT_COMPLETED, CLOSING_INCOMPLETE_QUANTITY,
+    AMOUNT_RESULT_621, AMOUNT_RESULT_62N, CLOSING_INCOMPLETE_AMOUNT_154, PRODUCT_REDUCE,
+    TOTAL_COST_PRICE, UNIT_COST, Q_HT,
+    ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+) VALUES (
+    @RunId, @RunVersion, @CompanyCd, @ProductId, @DepartmentId, @ProductCd, @DepartmentCd,
+    @IncompleteQtyOpening, @BeforeAmountResult621, @BeforeAmountResult62N, @BeforeAmount154,
+    @Amount621, @Amount6212, @Amount622, @Amount627, @Amount154Direct, @TotalAmountIncurred,
+    @Quantity, @PercentCompleted, @ClosingIncompleteQty,
+    @AmountResult621, @AmountResult62N, @ClosingIncompleteAmount154, @ProductReduce,
+    @TotalCostPrice, @UnitCost, @QHt,
+    '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
+)
+ON DUPLICATE KEY UPDATE
+    COMPANY_CD = VALUES(COMPANY_CD),
+    PRODUCT_CD = VALUES(PRODUCT_CD),
+    DEPARTMENT_CD = VALUES(DEPARTMENT_CD),
+    INCOMPLETE_QTY_OPENING = VALUES(INCOMPLETE_QTY_OPENING),
+    BEFORE_AMOUNT_RESULT_621 = VALUES(BEFORE_AMOUNT_RESULT_621),
+    BEFORE_AMOUNT_RESULT_62N = VALUES(BEFORE_AMOUNT_RESULT_62N),
+    BEFORE_AMOUNT_154 = VALUES(BEFORE_AMOUNT_154),
+    AMOUNT_621 = VALUES(AMOUNT_621),
+    AMOUNT_6212 = VALUES(AMOUNT_6212),
+    AMOUNT_622 = VALUES(AMOUNT_622),
+    AMOUNT_627 = VALUES(AMOUNT_627),
+    AMOUNT_154_DIRECT = VALUES(AMOUNT_154_DIRECT),
+    TOTAL_AMOUNT_INCURRED = VALUES(TOTAL_AMOUNT_INCURRED),
+    QUANTITY = VALUES(QUANTITY),
+    PERCENT_COMPLETED = VALUES(PERCENT_COMPLETED),
+    CLOSING_INCOMPLETE_QUANTITY = VALUES(CLOSING_INCOMPLETE_QUANTITY),
+    AMOUNT_RESULT_621 = VALUES(AMOUNT_RESULT_621),
+    AMOUNT_RESULT_62N = VALUES(AMOUNT_RESULT_62N),
+    CLOSING_INCOMPLETE_AMOUNT_154 = VALUES(CLOSING_INCOMPLETE_AMOUNT_154),
+    PRODUCT_REDUCE = VALUES(PRODUCT_REDUCE),
+    TOTAL_COST_PRICE = VALUES(TOTAL_COST_PRICE),
+    UNIT_COST = VALUES(UNIT_COST),
+    Q_HT = VALUES(Q_HT),
+    ISDEL = '0',
+    UPDATE_BY = VALUES(UPDATE_BY),
+    UPDATE_AT = UTC_TIMESTAMP()";
+
+        var keepKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in wip)
+        {
+            await session.ExecuteAsync(upsertSql, new
+            {
+                RunId = runId,
+                RunVersion = runVersion,
+                CompanyCd = companyCd.Trim(),
+                row.ProductId,
+                row.DepartmentId,
+                row.ProductCd,
+                row.DepartmentCd,
+                row.IncompleteQtyOpening,
+                row.BeforeAmountResult621,
+                row.BeforeAmountResult62N,
+                row.BeforeAmount154,
+                row.Amount621,
+                row.Amount6212,
+                row.Amount622,
+                row.Amount627,
+                row.Amount154Direct,
+                row.TotalAmountIncurred,
+                row.Quantity,
+                row.PercentCompleted,
+                row.ClosingIncompleteQty,
+                row.AmountResult621,
+                row.AmountResult62N,
+                row.ClosingIncompleteAmount154,
+                row.ProductReduce,
+                row.TotalCostPrice,
+                row.UnitCost,
+                row.QHt,
+                UserId = userId
+            });
+            keepKeys.Add($"{row.ProductId}\u0001{row.DepartmentId}");
+        }
+
+        const string softDeleteSql = @"
+UPDATE production_cost_wip
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND ISDEL = '0'
+  AND CONCAT(PRODUCT_ID, CHAR(1), DEPARTMENT_ID) NOT IN @KeepKeys";
+
+        if (keepKeys.Count == 0)
+        {
+            await session.ExecuteAsync(@"
+UPDATE production_cost_wip
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0'",
+                new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion, UserId = userId });
+        }
+        else
+        {
+            await session.ExecuteAsync(
+                softDeleteSql,
+                new
+                {
+                    CompanyCd = companyCd.Trim(),
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    UserId = userId,
+                    KeepKeys = keepKeys.ToArray()
+                });
+        }
+    }
+
+    public async Task ReplaceReceiptsAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<ReceiptPricePrepLine> receipts,
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(receipts);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+        WipUpsertRules.EnsureCanPersist(
+            companyCd, runId, runVersion, lockedRunVersion, runStatus);
+
+        if (receipts.Any(r => r.IsApplied))
+            throw new InvalidOperationException("B4 cấm persist receipt với IsApplied=true.");
+
+        const string upsertSql = @"
+INSERT INTO production_cost_receipt (
+    RUN_ID, RUN_VERSION, COMPANY_CD, PRODUCT_ID, DEPARTMENT_ID, INPUT_ID, INVENTORY_ID,
+    PRODUCT_CD, INVENTORY_NO, QTY, OLD_UNIT_PRICE, NEW_UNIT_PRICE, OLD_AMOUNT, NEW_AMOUNT, DELTA_AMOUNT,
+    IS_APPLIED, ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+) VALUES (
+    @RunId, @RunVersion, @CompanyCd, @ProductId, @DepartmentId, @InputId, @InventoryId,
+    @ProductCd, @InventoryNo, @Qty, @OldUnitPrice, @NewUnitPrice, @OldAmount, @NewAmount, @DeltaAmount,
+    '0', '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
+)
+ON DUPLICATE KEY UPDATE
+    COMPANY_CD = VALUES(COMPANY_CD),
+    PRODUCT_ID = VALUES(PRODUCT_ID),
+    DEPARTMENT_ID = VALUES(DEPARTMENT_ID),
+    INVENTORY_ID = VALUES(INVENTORY_ID),
+    PRODUCT_CD = VALUES(PRODUCT_CD),
+    INVENTORY_NO = VALUES(INVENTORY_NO),
+    QTY = VALUES(QTY),
+    OLD_UNIT_PRICE = VALUES(OLD_UNIT_PRICE),
+    NEW_UNIT_PRICE = VALUES(NEW_UNIT_PRICE),
+    OLD_AMOUNT = VALUES(OLD_AMOUNT),
+    NEW_AMOUNT = VALUES(NEW_AMOUNT),
+    DELTA_AMOUNT = VALUES(DELTA_AMOUNT),
+    IS_APPLIED = '0',
+    ISDEL = '0',
+    UPDATE_BY = VALUES(UPDATE_BY),
+    UPDATE_AT = UTC_TIMESTAMP()";
+
+        var keepKeys = new HashSet<long>();
+        foreach (var row in receipts)
+        {
+            if (row.InputId <= 0)
+                throw new ArgumentException($"INPUT_ID không hợp lệ (PRODUCT_ID={row.ProductId}).");
+            if (!string.IsNullOrWhiteSpace(row.CompanyCd)
+                && !string.Equals(row.CompanyCd.Trim(), companyCd.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"INPUT_ID={row.InputId} COMPANY_CD ({row.CompanyCd}) ≠ request ({companyCd}).");
+            }
+
+            await session.ExecuteAsync(upsertSql, new
+            {
+                RunId = runId,
+                RunVersion = runVersion,
+                CompanyCd = companyCd.Trim(),
+                row.ProductId,
+                row.DepartmentId,
+                row.InputId,
+                row.InventoryId,
+                row.ProductCd,
+                row.InventoryNo,
+                row.Qty,
+                row.OldUnitPrice,
+                row.NewUnitPrice,
+                row.OldAmount,
+                row.NewAmount,
+                row.DeltaAmount,
+                UserId = userId
+            });
+            keepKeys.Add(row.InputId);
+        }
+
+        const string softDeleteSql = @"
+UPDATE production_cost_receipt
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND ISDEL = '0'
+  AND INPUT_ID NOT IN @KeepKeys";
+
+        if (keepKeys.Count == 0)
+        {
+            await session.ExecuteAsync(@"
+UPDATE production_cost_receipt
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0'",
+                new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion, UserId = userId });
+        }
+        else
+        {
+            await session.ExecuteAsync(
+                softDeleteSql,
+                new
+                {
+                    CompanyCd = companyCd.Trim(),
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    UserId = userId,
+                    KeepKeys = keepKeys.ToArray()
+                });
+        }
     }
 
     private sealed class StepStatusRow

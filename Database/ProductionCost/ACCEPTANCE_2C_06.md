@@ -16,14 +16,14 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | Engine nghiệp vụ C# (B2–B5 + REOPEN/RECALC/COMPARE) | **Hoàn thành** — unit-tested, pure / dry-run |
 | API đọc GET | **Hoàn thành** (2C-01) |
 | API Preview (DryRun payload) | **Hoàn thành** — `Persisted=false` |
-| API Confirm + Preview-from-DB | **B2 + B3 Confirm (source)** — gate OFF; B2 DryRun bị `AllocationConfirmSourceGuard`; B3 PeriodLock cùng TX; B4–B5 placeholder |
-| Repository ghi / TX session G-K | **2C-06A Implemented** + B2 persist/SP call |
+| API Confirm + Preview-from-DB | **B2–B4 Confirm (source)** — gate OFF; B2/B4 source guard; B3 PeriodLock cùng TX; B5 placeholder |
+| Repository ghi / TX session G-K | **2C-06A Implemented** + B2/B3/B4 persist |
 | SP persist B2 (confirm/load/assert) | **Script bàn giao** — `sp_pc_alloc_confirm` **không** INSERT history; chưa SOURCE DEV |
-| SP calculate / WIP / valuation / reopen | **Skeleton SIGNAL** hoặc **Pending** |
-| History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# + DDL script 2C-06A** — Confirm B2 ghi history từ C#; chưa SOURCE DEV |
-| Tái sử dụng kho / PeriodLock | **Đã xác định điểm nối** — B3+ chưa gắn |
+| SP calculate / WIP / valuation / reopen | **Skeleton SIGNAL** hoặc **Pending** — B4 persist bằng C# UPSERT |
+| History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# + DDL script 2C-06A** — Confirm B2–B4 ghi history từ C#; chưa SOURCE DEV |
+| Tái sử dụng kho / PeriodLock | **B3 gắn PeriodLock** — B4 **không** apply kho / 632 |
 
-**Kết luận (cập nhật 2C-06C):** B2 guard authoritative source; B3 Confirm EXP_TO_154_ONLY trên cùng DapperSession PeriodLock. WriteGate OFF. Dừng nghiệm thu trước 2C-06D.
+**Kết luận (cập nhật 2C-06D):** Confirm B4 COST_CALC source-tested; `CostCalcConfirmSourceGuard` chặn WipDryRun; WriteGate OFF. Dừng nghiệm thu trước 2C-06E.
 
 ---
 
@@ -50,7 +50,7 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | `PreviewTransfer` (gate OFF) | Rule-only preview |
 | `ConfirmTransfer` | **2C-06C Implemented (source)** — PeriodLock EXP_TO_154_ONLY cùng TX G-K |
 | `PreviewCostCalc` (không WipDryRun) | Throw |
-| `ConfirmCostCalc` | Throw skeleton |
+| `ConfirmCostCalc` | **2C-06D Implemented (source)** — `CostCalcConfirmSourceGuard` chặn khi chưa load nguồn từ DB; UPSERT source/wip/receipt; COST_CALC=DONE only |
 | `PreviewValuation` (không ValuationDryRun) | Throw |
 | `ConfirmValuation` | Throw skeleton |
 | `PreviewReopen` (không ReopenDryRun) | Throw |
@@ -364,7 +364,7 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 | ID | Mức | Nội dung |
 |----|-----|----------|
 | O-01 | **Process** | DDL history 2C-06A đã có script — **chưa SOURCE DEV**; GET `/history` tương thích schema cũ (probe); ghi history cần SOURCE |
-| O-02 | **Blocker Confirm B3–B5** | B2 Confirm **source done (2C-06B)** — B3–B5 vẫn placeholder |
+| O-02 | **Blocker Confirm B5** | B2–B4 Confirm **source done** — B5 / Reopen vẫn placeholder; B4 Preview-from-DB pending |
 | O-03 | High | `apply_inventory_update_*` theo PRODUCT_CD ≠ plan B5 theo INPUT_ID — cần SP/wrapper riêng |
 | O-04 | High | SP calculate/wip/valuation/reopen còn skeleton hoặc pending — quyết định C#-persist vs hoàn thiện SQL trước EnableWrites |
 | O-05 | High | B3 TX boundary: PeriodLock session vs G-K session chưa thiết kế atomic thống nhất |
@@ -383,8 +383,8 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 |-------|----------|------------|
 | **2C-06A** | History DDL + WriteRepository + TX infra | **Implemented (source)** — đã nghiệm thu source |
 | **2C-06B** | Allocation Confirm B2 + safety fix | **Implemented (source)** — UPSERT/config OK; Preview-from-DB pending |
-| **2C-06C** | EXP_TO_154_ONLY Confirm B3 | **Implemented (source)** — chờ nghiệm thu; dừng trước 2C-06D |
-| 2C-06D | CostCalc Confirm B4 | Chưa |
+| **2C-06C** | EXP_TO_154_ONLY Confirm B3 | **Implemented (source)** — đã nghiệm thu source |
+| **2C-06D** | CostCalc Confirm B4 | **Implemented (source)** — chờ nghiệm thu; dừng trước 2C-06E |
 | 2C-06E | Valuation Confirm B5 | Chưa |
 | 2C-06F | Reopen / History / Integration tests | Chưa |
 
@@ -589,7 +589,7 @@ Phạm vi: Confirm Bước 3 only — `ConfirmTransferAsync` + B2 authoritative-
 | Hạng mục | Ghi chú |
 |----------|---------|
 | Preview transfer từ DB | Throw khi gate ON |
-| Confirm B4 / B5 / Reopen persist | Chưa (2C-06D+) |
+| Confirm B5 / Reopen persist | Chưa (2C-06E+) — B4 xem §11 |
 
 ### 10.3 Pending MySQL integration (DEV/TEST — agent không chạy)
 
@@ -653,3 +653,96 @@ TEST_EXIT=0
 | EnableWrites | **OFF** |
 
 **Dừng nghiệm thu 2C-06C (safety fix) trước 2C-06D.** Không Confirm thật / không SOURCE / không bật WriteGate.
+
+---
+
+## 11. 2C-06D — Confirm COST_CALC B4 (WIP / giá thành + receipt)
+
+Ngày: 2026-11-03  
+Phạm vi: Confirm Bước 4 only — `ConfirmCostCalcAsync` + `CostCalcConfirmSourceGuard` + UPSERT source/wip/receipt.  
+**Không** B5/REOPEN · **Không** EnableWrites · **Không** SOURCE · **Không** Confirm thật · **Không** apply giá kho · **Không** post 632 · **Không** `CONFIRMED` toàn kỳ · **Không** đổi WipCostEngine · **Không** sửa B-I/kho.
+
+### 11.1 Implemented (source-tested)
+
+| Hạng mục | Chi tiết |
+|----------|----------|
+| B4 guard | `CostCalcConfirmSourceGuard` — chặn Confirm B4 ghi thật khi nguồn chưa từ DB; **độc lập** EnableWrites; không tin WipDryRun |
+| Orchestration | Gate → TX C# → lock RUN + Period → **CURRENT_RUN_ID + PERIOD_COST_ID** → VERSION/PeriodYm → config WIP từ RUN → B2/B3 DONE → engine → ReceiptReconcile ReadyToApply → UPSERT source/wip/receipt → COST_CALC=DONE → history → Commit/Rollback |
+| Config authority | `WipRunConfig.FromLockedRun` — WipMethod / IncompleteMode / IncompletePercent / EnableProductReduce từ DB |
+| Engine | `WipCostEngine` + `CostSourceRules` (loại XFER; 154 direct 1 lần; DEPT=0 không nhân đôi) — **không đổi công thức** |
+| Receipt | `ReceiptPricePrep` theo PRODUCT+DEPT+INPUT_ID; nhiều INPUT cùng PRODUCT; reconcile Confirm; **IS_APPLIED=0**; không UPDATE `chit_inventory_input` |
+| Persist | UPSERT theo UNIQUE (không ISDEL); soft-delete khóa thiếu; không đụng RUN_VERSION khác |
+| Planner | Fingerprint canonical; Noop/Conflict; COST_CALC DONE + OpId mới → `NoopAlreadyConfirmed`; `WouldApplyInventory=false`; `WouldPost632=false`; ExpectedStatus=`AfterCostCalcConfirm` |
+| Tests | B2/B3 chưa DONE · RUN_VERSION/CURRENT_RUN_ID · 154≠XFER · WIP method · nhiều INPUT_ID · reconcile · UNIQUE/ISDEL · retry OpId · FP conflict · mid-fail Rollback · không kho/632 · gate OFF · source guard |
+| Gate | `ProductionCost:EnableWrites` mặc định **OFF** |
+
+### 11.2 Skeleton / NOT production-ready
+
+| Hạng mục | Ghi chú |
+|----------|---------|
+| Preview-from-DB / source rebuild | **Pending** — Confirm phụ thuộc WipDryRun chỉ khi test hook; production bị guard |
+| `sp_pc_source_rebuild` / `sp_pc_wip_calculate` / `sp_pc_cost_confirm` | Skeleton SIGNAL — C# sở hữu persist B4 |
+| Confirm B5 / Reopen persist | Chưa (2C-06E+) |
+
+### 11.3 Pending MySQL integration (DEV/TEST — agent không chạy)
+
+| Việc | Ghi chú | Phân loại |
+|------|---------|-----------|
+| SOURCE history DDL 2C-06A nếu chưa | Cần trước EnableWrites | **Pending integration** |
+| Preview-from-DB load objects/source/receipt/opening | Cần trước khi bỏ `CostCalcConfirmSourceGuard` | **Pending** |
+| Integration MySQL Confirm B4 | Sau Preview-from-DB; **EnableWrites=OFF** đến nghiệm thu | **Pending integration** |
+| EnableWrites | **Giữ OFF** | **OFF** |
+
+### 11.4 Files changed (2C-06D)
+
+- `CostCalcConfirmSourceGuard.cs` / `WipRunConfig.cs` / `CostCalcConfirmPlanner.cs` / `WipUpsertRules.cs` — mới
+- `ProductionCostWriteService.cs` — `ConfirmCostCalcAsync`
+- `IProductionCostWriteRepository.cs` / `ProductionCostWriteRepository.cs` — Replace source/wip/receipt + HasB4 history
+- `WipCostEngineModels.cs` — `Cogs632Posted` / `IdempotencyAction` trên response
+- `ProductionCostCostCalcConfirmTests.cs` + stubs + test csproj links
+- `migrations/20261103_2c06d_README.md`
+- `ACCEPTANCE_2C_06.md` — mục này
+
+### 11.5 Build / test
+
+#### Host build (source-tested)
+
+```text
+dotnet build API_AMNOTE_WEB.csproj -o artifacts/host-2c06d-check
+→ 0 Error(s)
+HOST_EXIT=0
+```
+
+#### Unit test (source-tested)
+
+```text
+dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
+→ Passed: 165, Failed: 0
+TEST_EXIT=0
+```
+
+### 11.6 Quy tắc B4 đã giữ
+
+1. B2 COST_ALLOCATION=DONE và B3 EXP_TO_154_ONLY=DONE trước Confirm B4.  
+2. request RUN_ID = PERIOD.CURRENT_RUN_ID; PERIOD_COST_ID khớp.  
+3. Không dùng WipDryRun client làm nguồn tài chính quyết định ghi (production).  
+4. Không cộng XFER / INPUT_TYPE=LOCK vào incurred; 154 direct đúng 1 lần.  
+5. Persist source/wip/receipt theo RUN_VERSION; UPSERT UNIQUE không gồm ISDEL.  
+6. Chỉ `COST_CALC=DONE`; RUN giữ ALLOC_CONFIRMED/REOPENED — không CONFIRMED toàn kỳ.  
+7. Không UPDATE giá `chit_inventory_input`; không InventoryOutPriceEngine; không post 632.  
+8. History/OperationId idempotent; COST_CALC DONE + OpId mới không tính lại.  
+9. Fail giữa WIP/receipt/history → Rollback.
+
+### 11.7 Verdict / dừng
+
+| Phần | Trạng thái |
+|------|------------|
+| CostCalcConfirmSourceGuard | **Implemented (source-tested)** |
+| ConfirmCostCalcAsync B4 | **Implemented (source-tested)** |
+| UPSERT source/wip/receipt + COST_CALC=DONE | **Implemented (source-tested)** |
+| Unit tests B4 safety | **Implemented (source-tested)** |
+| Preview-from-DB / Confirm production-ready | **Pending / Skeleton** |
+| SOURCE + integration MySQL | **Pending DEV/TEST** |
+| EnableWrites | **OFF** |
+
+**Dừng nghiệm thu 2C-06D trước 2C-06E.** Không Confirm thật / không SOURCE / không bật WriteGate.

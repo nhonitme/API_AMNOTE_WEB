@@ -10,15 +10,15 @@ namespace API_AMNOTE_WEB.Services.ProductionCost;
 
 /// <summary>
 /// Ghi G-K Bước 2+ . Mặc định bị chặn bởi <see cref="IProductionCostWriteGate"/>.
-/// Preview dry-run thuần; Confirm B2/B3 dùng TX C# khi EnableWrites.
+/// Preview dry-run thuần; Confirm B2/B3/B4 dùng TX C# khi EnableWrites.
 /// </summary>
 public sealed class ProductionCostWriteService : IProductionCostWriteService
 {
     private readonly IProductionCostWriteGate _gate;
     private readonly IProductionCostWriteRepository _writeRepo;
     /// <summary>
-    /// Chỉ unit test B2 orchestration: cho phép DryRun pool khi Preview-from-DB chưa có.
-    /// Production / DI luôn false — <see cref="AllocationConfirmSourceGuard"/> chặn ghi thật.
+    /// Chỉ unit test B2/B4 orchestration: cho phép DryRun / WipDryRun khi Preview-from-DB chưa có.
+    /// Production / DI luôn false — source guard chặn ghi thật.
     /// </summary>
     private readonly bool _allowNonAuthoritativeFinancialPersistForTests;
 
@@ -430,7 +430,7 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         return Task.FromResult(response);
     }
 
-    public Task<ProductionCostWipWriteResponse> ConfirmCostCalcAsync(
+    public async Task<ProductionCostWipWriteResponse> ConfirmCostCalcAsync(
         string companyCd,
         string? userId,
         ProductionCostWriteRequest request,
@@ -439,16 +439,207 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         EnsureAuth(companyCd);
         ValidatePeriod(request);
         _gate.EnsureWritable();
+        ProductionCostWriteContext.EnsureDatabase(databaseName);
 
-        // Skeleton sau gate:
-        // 1) C# TX owner → sp_pc_source_rebuild (loại XFER) → sp_pc_wip_calculate
-        // 2) Không DELETE snapshot CONFIRMED cũ; chỉ ghi RUN_VERSION hiện tại (DRAFT)
-        // 3) Receipt prep theo PRODUCT+DEPT+INPUT_ID — chưa apply inventory
-        // 4) Confirm → step COST_CALC=DONE ONLY; RUN.STATUS giữ nguyên (AfterCostCalcConfirm)
-        //    — không tự CONFIRMED toàn kỳ trước B5/B6
-        throw new InvalidOperationException(
-            "Confirm COST_CALC DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-03.");
+        // Guard độc lập EnableWrites: chưa load nguồn GT từ DB → không ghi thật.
+        // Preview-from-DB / source rebuild pending → costCalcSourceLoadedFromDb=false
+        // (trừ unit-test hook dùng WipDryRun).
+        var costCalcSourceLoadedFromDb = false;
+        if (!_allowNonAuthoritativeFinancialPersistForTests)
+            CostCalcConfirmSourceGuard.EnsureAuthoritativeFinancialSource(costCalcSourceLoadedFromDb);
+
+        ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
+        var operationId = ProductionCostWriteContext.RequireOperationId(request.OperationId);
+        var runId = request.RunId!.Value;
+        var runVersion = request.RunVersion!.Value;
+        var requestPeriodYm = request.PeriodYm.Trim();
+
+        // Nguồn tài chính tạm từ WipDryRun chỉ khi test hook — production bị guard ở trên.
+        var dryRun = request.WipDryRun
+            ?? throw new InvalidOperationException(
+                "Confirm B4 production-ready (load objects/source/receipt từ DB) chưa kích hoạt. " +
+                "Preview-from-DB / source rebuild pending — không ghi thực tế chỉ bằng WipDryRun client.");
+
+        if (dryRun.Products.Count == 0)
+            throw new ArgumentException("WipDryRun.Products không được rỗng.");
+
+        return await ProductionCostWriteSession.ExecuteAsync(
+            _writeRepo,
+            databaseName!,
+            async (session, _) =>
+            {
+                var locked = await _writeRepo.LockRunForUpdateAsync(session, companyCd, runId)
+                    ?? throw new InvalidOperationException("RUN không tồn tại hoặc không thuộc COMPANY_CD.");
+                ProductionCostWriteContext.AssertLockedRunMatches(locked, companyCd, runId, runVersion);
+                AllocationRunConfig.AssertPeriodYmMatches(locked, requestPeriodYm);
+
+                var period = await _writeRepo.LockPeriodEngineForUpdateAsync(session, companyCd, locked.PeriodYm.Trim())
+                    ?? throw new InvalidOperationException("production_cost_period không tồn tại cho PERIOD_YM.");
+                ProductionCostWriteContext.AssertPeriodCurrentRunMatches(
+                    locked, period, companyCd, runId, locked.PeriodYm.Trim());
+
+                // Config WIP từ RUN DB — không tin WipDryRun cho method/mode/reduce.
+                var config = WipRunConfig.FromLockedRun(locked);
+                WipRunConfig.AssertClientDryRunAligned(config, dryRun);
+                var periodYm = config.PeriodYm;
+
+                // Nguồn incurred: Sources client (test) hoặc Amount* trên Products; loại XFER.
+                var sources = dryRun.Sources.Count > 0
+                    ? CostSourceRules.FilterForIncurred(dryRun.Sources).ToList()
+                    : WipUpsertRules.SourcesFromProductAmounts(dryRun.Products).ToList();
+                CostSourceRules.AssertNoTransferInIncurred(sources);
+
+                // Products đưa vào engine: Amount*=0 khi có Sources để tránh cộng trùng.
+                var productsForEngine = dryRun.Sources.Count > 0
+                    ? dryRun.Products.Select(ClearAmounts).ToList()
+                    : dryRun.Products.ToList();
+
+                var items = WipCostEngine.Run(
+                    productsForEngine, config.WipMethod, config.ToEngineConfig(), sources);
+                if (items.Any(i => i.HasErrors))
+                {
+                    var first = items.First(i => i.HasErrors).Errors[0];
+                    throw new InvalidOperationException(first);
+                }
+
+                var receiptPrep = ReceiptPricePrep.BuildDetailed(items, dryRun.Receipts, companyCd);
+                var receipts = receiptPrep.Lines;
+                // Reconcile Confirm — planner cũng assert ReadyToApply.
+
+                var steps = await _writeRepo.GetStepStatusesForUpdateAsync(session, companyCd, runId);
+                var persisted = await _writeRepo.GetPersistedHistoryByOperationIdAsync(
+                    session, companyCd, operationId);
+                var hasB4History = await _writeRepo.HasB4ConfirmHistoryAsync(
+                    session, companyCd, runId, runVersion);
+
+                var plan = CostCalcConfirmPlanner.Build(
+                    companyCd,
+                    periodYm,
+                    runId,
+                    runVersion,
+                    locked.Status,
+                    steps,
+                    operationId,
+                    config,
+                    items,
+                    receipts,
+                    sources,
+                    persisted,
+                    userId,
+                    clientFingerprint: null,
+                    hasB4ConfirmHistory: hasB4History);
+
+                if (plan.IsNoop)
+                {
+                    return new ProductionCostWipWriteResponse
+                    {
+                        WriteEnabled = true,
+                        Persisted = false,
+                        PeriodYm = periodYm,
+                        RunId = runId,
+                        RunVersion = runVersion,
+                        WipMethod = config.WipMethod,
+                        IncompleteMode = config.IncompleteMode,
+                        Items = items,
+                        ReceiptPreps = receipts,
+                        TotalCostPriceSum = plan.TotalCostPriceSum,
+                        InventoryPriceApplied = false,
+                        Cogs632Posted = false,
+                        IdempotencyAction = plan.IdempotencyAction,
+                        Message = plan.Message
+                    };
+                }
+
+                // Persist UPSERT theo RUN_VERSION — fail bất kỳ bước → ROLLBACK cả TX.
+                await _writeRepo.ReplaceCostSourcesAsync(
+                    session, companyCd, runId, runVersion, sources, userId,
+                    locked.Status, locked.RunVersion);
+                await _writeRepo.ReplaceWipAsync(
+                    session, companyCd, runId, runVersion, items, userId,
+                    locked.Status, locked.RunVersion);
+                await _writeRepo.ReplaceReceiptsAsync(
+                    session, companyCd, runId, runVersion, receipts, userId,
+                    locked.Status, locked.RunVersion);
+
+                // COST_CALC=DONE only — không apply kho; không post 632; không CONFIRMED toàn kỳ.
+                await _writeRepo.UpsertGkStepStatusAsync(
+                    session,
+                    companyCd,
+                    runId,
+                    CostCalcConfirmPlanner.StepIndex,
+                    CostCalcConfirmPlanner.StepCode,
+                    ProductionCostStepStatus.Done,
+                    userId);
+
+                // Giữ RUN.STATUS theo AfterCostCalcConfirm (ALLOC_CONFIRMED/REOPENED) — không ghi CONFIRMED.
+                var expectedStatus = GkRunStatus.AfterCostCalcConfirm(locked.Status);
+                if (GkRunStatus.IsFullPeriodConfirmed(expectedStatus)
+                    && !GkRunStatus.IsFullPeriodConfirmed(locked.Status))
+                {
+                    throw new InvalidOperationException("B4 không được chuyển RUN thành CONFIRMED toàn kỳ.");
+                }
+
+                if (!CostCalcConfirmPlanner.ShouldCommitHistory(persistSucceeded: true, stepMarked: true))
+                    throw new InvalidOperationException("Không ghi history khi persist/STEP thất bại.");
+
+                var historyInsert = ProductionCostWriteContext.FromHistoryPlan(plan.History!, companyCd, periodYm);
+                historyInsert.ContentFingerprint = plan.ContentFingerprint;
+                historyInsert.RequireContentFingerprint = true;
+                historyInsert.ResultAfter =
+                    $"COST_CALC=DONE; fp={plan.ContentFingerprint}; inv=0; 632=0; status={expectedStatus}";
+
+                var hist = await _writeRepo.TryInsertHistoryAsync(session, historyInsert, databaseName!);
+                if (!hist.Inserted
+                    && !string.Equals(hist.IdempotencyAction, "NoopAlreadyWritten", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(hist.Message ?? "History Confirm B4 thất bại.");
+                }
+
+                return new ProductionCostWipWriteResponse
+                {
+                    WriteEnabled = true,
+                    Persisted = true,
+                    PeriodYm = periodYm,
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    WipMethod = config.WipMethod,
+                    IncompleteMode = config.IncompleteMode,
+                    Items = items,
+                    ReceiptPreps = receipts,
+                    TotalCostPriceSum = plan.TotalCostPriceSum,
+                    InventoryPriceApplied = false,
+                    Cogs632Posted = false,
+                    IdempotencyAction = hist.IdempotencyAction,
+                    Message =
+                        "Confirm B4 OK — COST_CALC=DONE; source/wip/receipt theo RUN_VERSION; " +
+                        $"RUN={expectedStatus}; không apply giá kho; không post 632; không CONFIRMED toàn kỳ. " +
+                        "NOT production-ready: nguồn tài chính vẫn từ WipDryRun (Preview-from-DB / source rebuild pending)."
+                };
+            });
     }
+
+    private static WipCalcInput ClearAmounts(WipCalcInput p) =>
+        new()
+        {
+            ProductId = p.ProductId,
+            ProductCd = p.ProductCd,
+            DepartmentId = p.DepartmentId,
+            DepartmentCd = p.DepartmentCd,
+            IncompleteQtyOpening = p.IncompleteQtyOpening,
+            BeforeAmountResult621 = p.BeforeAmountResult621,
+            BeforeAmountResult62N = p.BeforeAmountResult62N,
+            Amount621 = 0,
+            Amount6212 = 0,
+            Amount622 = 0,
+            Amount627 = 0,
+            Amount154Direct = 0,
+            Quantity = p.Quantity,
+            PercentCompleted = p.PercentCompleted,
+            ClosingIncompleteQty = p.ClosingIncompleteQty,
+            ClosingAmountOverride = p.ClosingAmountOverride,
+            ProductReduce = p.ProductReduce,
+            PreviousClosing154 = p.PreviousClosing154
+        };
 
     public Task<ProductionCostValuationWriteResponse> PreviewValuationAsync(
         string companyCd,
