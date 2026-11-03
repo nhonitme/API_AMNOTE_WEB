@@ -553,6 +553,187 @@ WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion 
         return result.Trim();
     }
 
+    public async Task<ProductionCostPeriodEngineSnapshot?> LockPeriodEngineForUpdateAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        if (string.IsNullOrWhiteSpace(periodYm) || periodYm.Trim().Length != 6)
+            throw new ArgumentException("PERIOD_YM phải 6 ký tự.");
+
+        const string sql = @"
+SELECT
+    PERIOD_COST_ID AS PeriodCostId,
+    COMPANY_CD AS CompanyCd,
+    PERIOD_YM AS PeriodYm,
+    CURRENT_RUN_ID AS CurrentRunId,
+    COST_ENGINE AS CostEngine,
+    COGS_RULE AS CogsRule,
+    STATUS AS Status
+FROM production_cost_period
+WHERE COMPANY_CD = @CompanyCd
+  AND PERIOD_YM = @PeriodYm
+  AND ISDEL = '0'
+LIMIT 1
+FOR UPDATE";
+
+        return await session.QueryFirstOrDefaultAsync<ProductionCostPeriodEngineSnapshot>(
+            sql,
+            new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim() });
+    }
+
+    public async Task<decimal> GetConfirmedAllocTotalAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+
+        const string sql = @"
+SELECT IFNULL(SUM(ALLOCATED_AMOUNT), 0)
+FROM production_cost_alloc_detail
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND ISDEL = '0'
+  AND (ACCOUNT_CD LIKE '622%' OR ACCOUNT_CD LIKE '627%')";
+
+        return await session.QueryFirstOrDefaultAsync<decimal>(
+            sql,
+            new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion });
+    }
+
+    public async Task CallPeriodLockExpTo154Async(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        if (string.IsNullOrWhiteSpace(periodYm) || periodYm.Trim().Length != 6)
+            throw new ArgumentException("PERIOD_YM phải 6 ký tự.");
+
+        // Cùng DapperSession G-K — SP PeriodLock không START/COMMIT.
+        var rule = ProductionCostCogsRule.ExpTo154Only;
+        var uid = userId ?? string.Empty;
+        var p = new
+        {
+            p_COMPANY_CD = companyCd.Trim(),
+            p_PERIOD_YM = periodYm.Trim(),
+            p_RULE_CODE = rule,
+            p_USER_ID = uid
+        };
+
+        await session.ExecuteAsync(
+            "CALL sp_period_lock_cogs_validate(@p_COMPANY_CD, @p_PERIOD_YM, @p_RULE_CODE, @p_USER_ID)",
+            p);
+        await session.ExecuteAsync(
+            "CALL sp_period_lock_cogs_calculate(@p_COMPANY_CD, @p_PERIOD_YM, @p_RULE_CODE, @p_USER_ID)",
+            p);
+        // create_voucher: claim + build + post EXP_TO_154 only (không 154→155/632 khi rule EXP_TO_154_ONLY).
+        await session.ExecuteAsync(
+            "CALL sp_period_lock_cogs_create_voucher(@p_COMPANY_CD, @p_PERIOD_YM, @p_RULE_CODE, @p_USER_ID)",
+            p);
+    }
+
+    public async Task UpsertGkStepStatusAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int stepIndex,
+        string stepCode,
+        string status,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        if (runId <= 0)
+            throw new ArgumentException("RUN_ID phải > 0.");
+        if (string.IsNullOrWhiteSpace(stepCode))
+            throw new ArgumentException("STEP_CODE bắt buộc.");
+        if (string.IsNullOrWhiteSpace(status))
+            throw new ArgumentException("STATUS bắt buộc.");
+
+        const string sql = @"
+INSERT INTO production_cost_step (
+    RUN_ID, COMPANY_CD, STEP_INDEX, STEP_CODE, STATUS,
+    ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+) VALUES (
+    @RunId, @CompanyCd, @StepIndex, @StepCode, @Status,
+    '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
+)
+ON DUPLICATE KEY UPDATE
+    STEP_CODE = VALUES(STEP_CODE),
+    STATUS = VALUES(STATUS),
+    ISDEL = '0',
+    UPDATE_BY = VALUES(UPDATE_BY),
+    UPDATE_AT = UTC_TIMESTAMP()";
+
+        await session.ExecuteAsync(sql, new
+        {
+            RunId = runId,
+            CompanyCd = companyCd.Trim(),
+            StepIndex = stepIndex,
+            StepCode = stepCode.Trim(),
+            Status = status.Trim(),
+            UserId = userId
+        });
+    }
+
+    public async Task UpsertVoucherRefAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        int stepIndex,
+        string stepCode,
+        string refRole,
+        string stableKey,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+        if (string.IsNullOrWhiteSpace(stableKey))
+            throw new ArgumentException("STABLE_KEY bắt buộc.");
+
+        const string sql = @"
+INSERT INTO production_cost_voucher_ref (
+    RUN_ID, COMPANY_CD, STEP_INDEX, STEP_CODE, REF_ROLE, STABLE_KEY,
+    CHIT_ID, RUN_VERSION, ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+) VALUES (
+    @RunId, @CompanyCd, @StepIndex, @StepCode, @RefRole, @StableKey,
+    NULL, @RunVersion, '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
+)
+ON DUPLICATE KEY UPDATE
+    RUN_ID = VALUES(RUN_ID),
+    RUN_VERSION = VALUES(RUN_VERSION),
+    STEP_INDEX = VALUES(STEP_INDEX),
+    STEP_CODE = VALUES(STEP_CODE),
+    REF_ROLE = VALUES(REF_ROLE),
+    UPDATE_BY = VALUES(UPDATE_BY),
+    UPDATE_AT = UTC_TIMESTAMP(),
+    ISDEL = '0'";
+
+        await session.ExecuteAsync(sql, new
+        {
+            RunId = runId,
+            CompanyCd = companyCd.Trim(),
+            StepIndex = stepIndex,
+            StepCode = stepCode.Trim(),
+            RefRole = refRole.Trim(),
+            StableKey = stableKey.Trim(),
+            RunVersion = runVersion,
+            UserId = userId
+        });
+    }
+
     private sealed class StepStatusRow
     {
         public string? StepCode { get; set; }

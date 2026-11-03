@@ -10,19 +10,26 @@ namespace API_AMNOTE_WEB.Services.ProductionCost;
 
 /// <summary>
 /// Ghi G-K Bước 2+ . Mặc định bị chặn bởi <see cref="IProductionCostWriteGate"/>.
-/// Preview dry-run thuần; Confirm B2 (2C-06B) dùng TX C# khi EnableWrites.
+/// Preview dry-run thuần; Confirm B2/B3 dùng TX C# khi EnableWrites.
 /// </summary>
 public sealed class ProductionCostWriteService : IProductionCostWriteService
 {
     private readonly IProductionCostWriteGate _gate;
     private readonly IProductionCostWriteRepository _writeRepo;
+    /// <summary>
+    /// Chỉ unit test B2 orchestration: cho phép DryRun pool khi Preview-from-DB chưa có.
+    /// Production / DI luôn false — <see cref="AllocationConfirmSourceGuard"/> chặn ghi thật.
+    /// </summary>
+    private readonly bool _allowNonAuthoritativeFinancialPersistForTests;
 
     public ProductionCostWriteService(
         IProductionCostWriteGate gate,
-        IProductionCostWriteRepository writeRepo)
+        IProductionCostWriteRepository writeRepo,
+        bool allowNonAuthoritativeFinancialPersistForTests = false)
     {
         _gate = gate;
         _writeRepo = writeRepo;
+        _allowNonAuthoritativeFinancialPersistForTests = allowNonAuthoritativeFinancialPersistForTests;
     }
 
     public Task<ProductionCostAllocationWriteResponse> PreviewAllocationAsync(
@@ -77,19 +84,23 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         _gate.EnsureWritable();
         ProductionCostWriteContext.EnsureDatabase(databaseName);
 
+        // Guard độc lập EnableWrites: chưa có pool/basis từ DB → không ghi thật.
+        // Preview-from-DB pending → poolBasisLoadedFromDb=false (trừ unit-test hook).
+        var poolBasisLoadedFromDb = false;
+        if (!_allowNonAuthoritativeFinancialPersistForTests)
+            AllocationConfirmSourceGuard.EnsureAuthoritativeFinancialSource(poolBasisLoadedFromDb);
+
         ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
         var operationId = ProductionCostWriteContext.RequireOperationId(request.OperationId);
         var runId = request.RunId!.Value;
         var runVersion = request.RunVersion!.Value;
         var requestPeriodYm = request.PeriodYm.Trim();
 
-        // Preview-from-DB chưa có: Confirm vẫn phụ thuộc DryRun pool/basis — KHÔNG production-ready.
-        // WriteGate mặc định OFF; không coi nguồn tài chính client là authoritative khi gate ON sau này.
+        // Preview-from-DB chưa có: DryRun pool/products chỉ cho phép khi test hook bật.
         var dryRun = request.DryRun
             ?? throw new InvalidOperationException(
                 "Confirm B2 production-ready (load pool/basis từ DB) chưa kích hoạt. " +
-                "Preview-from-DB pending — không ghi thực tế chỉ bằng DryRun tài chính client. " +
-                "Gửi DryRun chỉ cho unit/DEV gate tạm, hoặc chờ load pool/basis từ DB.");
+                "Preview-from-DB pending — không ghi thực tế chỉ bằng DryRun tài chính client.");
 
         return await ProductionCostWriteSession.ExecuteAsync(
             _writeRepo,
@@ -240,7 +251,7 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             "Preview transfer từ DB chưa kích hoạt thực thi trong 2C-02.");
     }
 
-    public Task<ProductionCostTransferWriteResponse> ConfirmTransferAsync(
+    public async Task<ProductionCostTransferWriteResponse> ConfirmTransferAsync(
         string companyCd,
         string? userId,
         ProductionCostWriteRequest request,
@@ -249,13 +260,129 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         EnsureAuth(companyCd);
         ValidatePeriod(request);
         _gate.EnsureWritable();
+        ProductionCostWriteContext.EnsureDatabase(databaseName);
+        TransferConfirmAtomicity.EnsureSharedSessionAvailable();
 
         ExpTo154Rules.AssertRuleCode(ProductionCostCogsRule.ExpTo154Only);
         ExpTo154Rules.AssertNoDownstreamTransfer(ProductionCostCogsRule.ExpTo154Only);
 
-        // Khi mở: claim GK + PeriodLock EXP_TO_154_ONLY + STABLE_KEY idempotent.
-        throw new InvalidOperationException(
-            "Confirm transfer DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-02.");
+        ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
+        var operationId = ProductionCostWriteContext.RequireOperationId(request.OperationId);
+        var runId = request.RunId!.Value;
+        var runVersion = request.RunVersion!.Value;
+        var requestPeriodYm = request.PeriodYm.Trim();
+
+        return await ProductionCostWriteSession.ExecuteAsync(
+            _writeRepo,
+            databaseName!,
+            async (session, _) =>
+            {
+                var locked = await _writeRepo.LockRunForUpdateAsync(session, companyCd, runId)
+                    ?? throw new InvalidOperationException("RUN không tồn tại hoặc không thuộc COMPANY_CD.");
+                ProductionCostWriteContext.AssertLockedRunMatches(locked, companyCd, runId, runVersion);
+                AllocationRunConfig.AssertPeriodYmMatches(locked, requestPeriodYm);
+                var periodYm = locked.PeriodYm.Trim();
+
+                var period = await _writeRepo.LockPeriodEngineForUpdateAsync(session, companyCd, periodYm)
+                    ?? throw new InvalidOperationException("production_cost_period không tồn tại cho PERIOD_YM.");
+
+                var steps = await _writeRepo.GetStepStatusesForUpdateAsync(session, companyCd, runId);
+                var allocTotal = await _writeRepo.GetConfirmedAllocTotalAsync(
+                    session, companyCd, runId, runVersion);
+
+                // BI COGS step (acc_period_lock) — fake/repo có thể trả qua period snapshot mở rộng; mặc định null.
+                string? biCogsStepStatus = null;
+
+                var persisted = await _writeRepo.GetPersistedHistoryByOperationIdAsync(
+                    session, companyCd, operationId);
+
+                var plan = TransferConfirmPlanner.Build(
+                    companyCd,
+                    periodYm,
+                    runId,
+                    runVersion,
+                    locked.Status,
+                    steps,
+                    operationId,
+                    period.CostEngine,
+                    period.CogsRule,
+                    biCogsStepStatus,
+                    allocTotal,
+                    persisted,
+                    userId);
+
+                if (plan.IsNoop)
+                {
+                    return new ProductionCostTransferWriteResponse
+                    {
+                        WriteEnabled = true,
+                        Persisted = false,
+                        PeriodYm = periodYm,
+                        RunId = runId,
+                        RunVersion = runVersion,
+                        Downstream154To155Or632 = false,
+                        StableKey = plan.VoucherStableKey,
+                        IdempotencyAction = plan.IdempotencyAction,
+                        Message = plan.Message
+                    };
+                }
+
+                // PeriodLock COGS trên cùng session — không commit riêng.
+                await _writeRepo.CallPeriodLockExpTo154Async(session, companyCd, periodYm, userId);
+
+                await _writeRepo.UpsertGkStepStatusAsync(
+                    session,
+                    companyCd,
+                    runId,
+                    TransferConfirmPlanner.StepIndex,
+                    TransferConfirmPlanner.StepCode,
+                    ProductionCostStepStatus.Done,
+                    userId);
+
+                await _writeRepo.UpsertVoucherRefAsync(
+                    session,
+                    companyCd,
+                    runId,
+                    runVersion,
+                    TransferConfirmPlanner.StepIndex,
+                    TransferConfirmPlanner.StepCode,
+                    "EXP_TO_154",
+                    plan.VoucherStableKey,
+                    userId);
+
+                if (!TransferConfirmPlanner.ShouldCommitHistory(transferSucceeded: true, stepMarked: true))
+                    throw new InvalidOperationException("Không ghi history khi kết chuyển/STEP thất bại.");
+
+                var historyInsert = ProductionCostWriteContext.FromHistoryPlan(plan.History!, companyCd, periodYm);
+                historyInsert.ContentFingerprint = plan.ContentFingerprint;
+                historyInsert.RequireContentFingerprint = true;
+                historyInsert.ResultAfter =
+                    $"EXP_TO_154_ONLY; fp={plan.ContentFingerprint}; voucher={plan.VoucherStableKey}";
+
+                var hist = await _writeRepo.TryInsertHistoryAsync(session, historyInsert, databaseName!);
+                if (!hist.Inserted
+                    && !string.Equals(hist.IdempotencyAction, "NoopAlreadyWritten", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(hist.Message ?? "History Confirm B3 thất bại.");
+                }
+
+                // Không đổi RUN → CONFIRMED toàn kỳ.
+                return new ProductionCostTransferWriteResponse
+                {
+                    WriteEnabled = true,
+                    Persisted = true,
+                    PeriodYm = periodYm,
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    Downstream154To155Or632 = false,
+                    StableKey = plan.VoucherStableKey,
+                    IdempotencyAction = hist.IdempotencyAction,
+                    Message =
+                        "Confirm B3 OK — EXP_TO_154_ONLY; STEP DONE; " +
+                        "không N155/C154; không N632/C154; không CONFIRMED toàn kỳ; " +
+                        "PeriodLock trên cùng TX G-K."
+                };
+            });
     }
 
     public Task<ProductionCostWipWriteResponse> PreviewCostCalcAsync(

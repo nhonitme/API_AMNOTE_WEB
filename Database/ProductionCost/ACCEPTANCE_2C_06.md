@@ -16,14 +16,14 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | Engine nghiệp vụ C# (B2–B5 + REOPEN/RECALC/COMPARE) | **Hoàn thành** — unit-tested, pure / dry-run |
 | API đọc GET | **Hoàn thành** (2C-01) |
 | API Preview (DryRun payload) | **Hoàn thành** — `Persisted=false` |
-| API Confirm + Preview-from-DB | **B2 Confirm + safety UPSERT/config (source)** — gate OFF; **NOT production-ready** (pool/basis DryRun); Preview-from-DB skeleton; B3–B5 placeholder |
+| API Confirm + Preview-from-DB | **B2 + B3 Confirm (source)** — gate OFF; B2 DryRun bị `AllocationConfirmSourceGuard`; B3 PeriodLock cùng TX; B4–B5 placeholder |
 | Repository ghi / TX session G-K | **2C-06A Implemented** + B2 persist/SP call |
 | SP persist B2 (confirm/load/assert) | **Script bàn giao** — `sp_pc_alloc_confirm` **không** INSERT history; chưa SOURCE DEV |
 | SP calculate / WIP / valuation / reopen | **Skeleton SIGNAL** hoặc **Pending** |
 | History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# + DDL script 2C-06A** — Confirm B2 ghi history từ C#; chưa SOURCE DEV |
 | Tái sử dụng kho / PeriodLock | **Đã xác định điểm nối** — B3+ chưa gắn |
 
-**Kết luận (cập nhật 2C-06B safety):** Confirm B2 wire + UPSERT/UNIQUE + config/PeriodYm từ DB + fingerprint InvariantCulture. WriteGate OFF. Confirm **chưa** production-ready (Preview-from-DB pending). Dừng nghiệm thu trước 2C-06C.
+**Kết luận (cập nhật 2C-06C):** B2 guard authoritative source; B3 Confirm EXP_TO_154_ONLY trên cùng DapperSession PeriodLock. WriteGate OFF. Dừng nghiệm thu trước 2C-06D.
 
 ---
 
@@ -46,8 +46,9 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | Method | Hành vi hiện tại |
 |--------|------------------|
 | `PreviewAllocation` (không DryRun) | Throw — “chưa kích hoạt từ DB” |
-| `ConfirmAllocation` | **2C-06B safety:** TX + config từ RUN DB + UPSERT + SP + history C#; DryRun pool/products interim only — **NOT production-ready** |
-| `PreviewTransfer` (gate ON) / `ConfirmTransfer` | Throw skeleton (gate OFF: preview rule-only) |
+| `ConfirmAllocation` | **2C-06C:** `AllocationConfirmSourceGuard` chặn ghi thật khi chưa load pool/basis từ DB (độc lập EnableWrites) |
+| `PreviewTransfer` (gate OFF) | Rule-only preview |
+| `ConfirmTransfer` | **2C-06C Implemented (source)** — PeriodLock EXP_TO_154_ONLY cùng TX G-K |
 | `PreviewCostCalc` (không WipDryRun) | Throw |
 | `ConfirmCostCalc` | Throw skeleton |
 | `PreviewValuation` (không ValuationDryRun) | Throw |
@@ -381,8 +382,8 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 | Slice | Nội dung | Trạng thái |
 |-------|----------|------------|
 | **2C-06A** | History DDL + WriteRepository + TX infra | **Implemented (source)** — đã nghiệm thu source |
-| **2C-06B** | Allocation Confirm B2 + safety fix | **Implemented (source)** — UPSERT/config OK; Preview-from-DB pending; dừng trước 2C-06C |
-| 2C-06C | EXP_TO_154_ONLY Confirm B3 | Chưa |
+| **2C-06B** | Allocation Confirm B2 + safety fix | **Implemented (source)** — UPSERT/config OK; Preview-from-DB pending |
+| **2C-06C** | EXP_TO_154_ONLY Confirm B3 | **Implemented (source)** — chờ nghiệm thu; dừng trước 2C-06D |
 | 2C-06D | CostCalc Confirm B4 | Chưa |
 | 2C-06E | Valuation Confirm B5 | Chưa |
 | 2C-06F | Reopen / History / Integration tests | Chưa |
@@ -557,4 +558,93 @@ TEST_EXIT=0
 | SOURCE + integration MySQL | **Pending DEV/TEST** |
 | EnableWrites | **OFF** |
 
-**Dừng nghiệm thu trước 2C-06C (B3).** Không Confirm thật / không SOURCE / không bật WriteGate.
+**Dừng nghiệm thu 2C-06B xong — tiếp 2C-06C bên dưới.** Không Confirm thật / không SOURCE / không bật WriteGate.
+
+---
+
+## 10. 2C-06C — EXP_TO_154_ONLY Confirm B3
+
+Ngày: 2026-11-03  
+Phạm vi: Confirm Bước 3 only — `ConfirmTransferAsync` + B2 authoritative-source guard.  
+**Không** B4/B5 · **Không** EnableWrites · **Không** SOURCE · **Không** Confirm thật · **Không** post CT thật · **Không** sửa B-I/kho · **Không** đổi AllocationEngine.
+
+### 10.1 Implemented (source)
+
+| Hạng mục | Chi tiết |
+|----------|----------|
+| B2 guard | `AllocationConfirmSourceGuard` — chặn Confirm B2 ghi thật khi pool/basis chưa từ DB; **độc lập** EnableWrites |
+| Orchestration B3 | Gate → TX C# → lock RUN + Period → assert VERSION/PeriodYm → B2 DONE + alloc total → `CostEngineExclusive` → `TransferConfirmPlanner` → PeriodLock COGS trên **cùng** session → STEP B3 DONE → voucher_ref → history C# → Commit/Rollback |
+| PeriodLock reuse | `CallPeriodLockExpTo154Async` = validate + calculate + create_voucher (`EXP_TO_154_ONLY`) trên `DapperSession` G-K — **không** dual-commit PeriodLockRepository |
+| Atomicity | `TransferConfirmAtomicity.SupportsSharedGkSession=true` (SP không START/COMMIT); nếu false → Confirm B3 blocked |
+| Rules | Chỉ N154/C621–627; cấm N155/C154, N632/C154, 154→155/632; không `CONFIRMED` toàn kỳ |
+| Idempotency | OperationId + fingerprint Noop/Conflict; voucher STABLE_KEY `EXP_TO_154_ONLY:{COMPANY}:{PERIOD}` |
+| Tests | B2 chưa DONE / RUN_VERSION / ENGINE=BI / retry OpId / FP conflict / fail giữa transfer↔history Rollback / không downstream / gate OFF / B2 DryRun blocked by source guard |
+| Gate | `ProductionCost:EnableWrites` mặc định **OFF** |
+
+### 10.2 Skeleton
+
+| Hạng mục | Ghi chú |
+|----------|---------|
+| Preview transfer từ DB | Throw khi gate ON |
+| Mirror `acc_period_lock_step` COGS_SUMMARY DONE | Chưa (chỉ G-K `production_cost_step`) — PeriodLock SP tự xử lý step PL trong create path riêng nếu DEV gọi PL UI |
+| Confirm B4 / B5 / Reopen persist | Chưa (2C-06D+) |
+
+### 10.3 Pending DEV/TEST (user tự làm — agent không chạy)
+
+| Việc | Ghi chú |
+|------|---------|
+| SOURCE PeriodLock COGS + `sp_pc_assert_allocation_ready_for_exp` | Nếu chưa trên DEV |
+| Integration MySQL Confirm B3 | Sau SOURCE; **EnableWrites=OFF** đến nghiệm thu |
+| Preview-from-DB B2 | Cần trước khi bỏ `AllocationConfirmSourceGuard` |
+| EnableWrites | **Giữ OFF** |
+
+### 10.4 Files changed (2C-06C)
+
+- `AllocationConfirmSourceGuard.cs` — mới
+- `TransferConfirmPlanner.cs` / `TransferConfirmAtomicity.cs` — mới
+- `ProductionCostWriteService.cs` — ConfirmTransferAsync + B2 guard
+- `IProductionCostWriteRepository.cs` / `ProductionCostWriteRepository.cs` — PeriodLock cùng session + step/voucher UPSERT
+- `ProductionCostModels.cs` — `ProductionCostPeriodEngineSnapshot`
+- `ProductionCostTransferConfirmTests.cs` + stubs + csproj links
+- `ACCEPTANCE_2C_06.md` — mục này
+
+### 10.5 Build / test
+
+#### Host build
+
+```text
+dotnet build API_AMNOTE_WEB.csproj -o artifacts/host-2c06c-check
+→ 0 Error(s)
+HOST_EXIT=0
+```
+
+#### Unit test
+
+```text
+dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
+→ Passed: 133, Failed: 0
+TEST_EXIT=0
+```
+
+### 10.6 Quy tắc B3 đã giữ
+
+1. B2 phải ALLOC_CONFIRMED / COST_ALLOCATION=DONE trước B3.  
+2. PeriodLock EXP_TO_154_ONLY trên cùng TX G-K — không dual-commit.  
+3. Không N155/C154, N632/C154, 154→155/632.  
+4. CostEngineExclusive: ENGINE=BI claim → chặn G-K.  
+5. History/OperationId idempotent.  
+6. STEP B3 DONE; không CONFIRMED toàn kỳ.  
+7. Fail giữa kết chuyển và history → Rollback.
+
+### 10.7 Verdict / dừng
+
+| Phần | Trạng thái |
+|------|------------|
+| B2 authoritative source guard | **Implemented** |
+| ConfirmTransferAsync B3 | **Implemented (source)** |
+| Shared-session PeriodLock | **Implemented** |
+| Unit tests B3 | **Implemented** |
+| SOURCE + integration MySQL | **Pending DEV/TEST** |
+| EnableWrites | **OFF** |
+
+**Dừng nghiệm thu trước 2C-06D.** Không Confirm thật / không SOURCE / không bật WriteGate.

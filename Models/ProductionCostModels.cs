@@ -449,6 +449,18 @@ public sealed class ProductionCostHistoryDto
     public DateTime? ActionAt { get; set; }
 }
 
+/// <summary>Snapshot period FOR UPDATE — COST_ENGINE exclusive (2C-06C B3).</summary>
+public sealed class ProductionCostPeriodEngineSnapshot
+{
+    public long PeriodCostId { get; set; }
+    public string CompanyCd { get; set; } = string.Empty;
+    public string PeriodYm { get; set; } = string.Empty;
+    public long? CurrentRunId { get; set; }
+    public string CostEngine { get; set; } = ProductionCostEngine.None;
+    public string? CogsRule { get; set; }
+    public string Status { get; set; } = string.Empty;
+}
+
 /// <summary>Probe cột history bắt buộc trước khi ghi (2C-06A).</summary>
 public sealed class ProductionCostHistoryWriteSchemaProbe
 {

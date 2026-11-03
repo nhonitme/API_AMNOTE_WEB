@@ -5,7 +5,7 @@ namespace API_AMNOTE_WEB.Interfaces;
 
 /// <summary>
 /// Ghi G-K trong transaction do C# sở hữu (<see cref="DapperSession"/>).
-/// SP không START/COMMIT. Confirm B2 (2C-06B) gọi qua service; B3–B5 chưa.
+/// SP không START/COMMIT. Confirm B2/B3 gọi qua service; B4–B5 chưa.
 /// </summary>
 public interface IProductionCostWriteRepository
 {
@@ -101,5 +101,52 @@ public interface IProductionCostWriteRepository
         string companyCd,
         long runId,
         int runVersion,
+        string? userId);
+
+    // ---- 2C-06C Transfer Confirm (B3 EXP_TO_154_ONLY) ----
+
+    /// <summary>SELECT production_cost_period … FOR UPDATE (COST_ENGINE / COGS_RULE).</summary>
+    Task<ProductionCostPeriodEngineSnapshot?> LockPeriodEngineForUpdateAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm);
+
+    /// <summary>Σ ALLOCATED_AMOUNT 622/627 ISDEL=0 theo RUN_ID+VERSION.</summary>
+    Task<decimal> GetConfirmedAllocTotalAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion);
+
+    /// <summary>
+    /// CALL PeriodLock COGS validate/calculate/create_voucher trên <b>cùng</b> session G-K.
+    /// Không commit riêng. Rule = EXP_TO_154_ONLY only.
+    /// </summary>
+    Task CallPeriodLockExpTo154Async(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        string? userId);
+
+    /// <summary>UPSERT production_cost_step STATUS (B3 DONE). Không Commit.</summary>
+    Task UpsertGkStepStatusAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int stepIndex,
+        string stepCode,
+        string status,
+        string? userId);
+
+    /// <summary>UPSERT production_cost_voucher_ref theo STABLE_KEY. Không Commit.</summary>
+    Task UpsertVoucherRefAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        int stepIndex,
+        string stepCode,
+        string refRole,
+        string stableKey,
         string? userId);
 }
