@@ -437,6 +437,8 @@ public sealed class ProductionCostHistoryDto
     public string? OperationId { get; set; }
     /// <summary>PC_HIST:… — có sau DDL 2C-06A.</summary>
     public string? StableKey { get; set; }
+    /// <summary>Hash nội dung nghiệp vụ — có sau DDL 2C-06A.</summary>
+    public string? ContentFingerprint { get; set; }
     public string? StatusAfter { get; set; }
     public int? RunVersion { get; set; }
     public string? ResultBefore { get; set; }
@@ -468,8 +470,10 @@ public sealed class ProductionCostHistoryInsert
     public string ActionCode { get; set; } = string.Empty;
     public string OperationId { get; set; } = string.Empty;
     public string StableKey { get; set; } = string.Empty;
-    /// <summary>Tuỳ chọn — lưu trong DIFFERENCE_TEXT prefix hoặc cột mở rộng sau; dùng cho Conflict nội dung.</summary>
+    /// <summary>Hash nội dung nghiệp vụ — cột CONTENT_FINGERPRINT.</summary>
     public string? ContentFingerprint { get; set; }
+    /// <summary>Confirm: true → bắt buộc fingerprint; thiếu persisted ≠ khớp.</summary>
+    public bool RequireContentFingerprint { get; set; }
     public string? StatusAfter { get; set; }
     public string? ResultBefore { get; set; }
     public string? ResultAfter { get; set; }

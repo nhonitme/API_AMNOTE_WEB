@@ -401,29 +401,30 @@ Phạm vi: History DDL, Write Repository, TX ownership C#, final safety (idempot
 
 | Hạng mục | File / ghi chú |
 |----------|----------------|
-| DDL migration (MySQL 5.6/8.0) | `20261103_2c06a_ddl_history_operation.sql` — `OPERATION_ID` VARCHAR(64), `STABLE_KEY` VARCHAR(255), `STEP_CODE`; **UNIQUE** `uk_pc_hist_stable` + `uk_pc_hist_operation` |
+| DDL (MySQL 5.6/8.0, không `innodb_large_prefix`) | `STABLE_KEY` **VARCHAR(190)**; UNIQUE full `(COMPANY_CD, STABLE_KEY)` = 630 utf8 bytes ≤ 767; `CONTENT_FINGERPRINT` VARCHAR(64); UNIQUE OpId |
 | Verify / README | `20261103_2c06a_verify_readonly.sql`, `20261103_2c06a_README.md` |
-| Schema cài mới | `01_production_cost_tables.sql`, `2b_01_tables.sql` đồng bộ |
-| Idempotency C# | `HistoryPlan` — Noop / Conflict / ResolveAfterDuplicateKey; `PersistedHistoryRef` |
-| Key length | OpId 8–64; StableKey ≤255 (hash `PC_HIST_H:` nếu canonical dài) |
-| Write repo | `TryInsertHistoryAsync` — schema READY bắt buộc; PlanWrite từ DB; catch UNIQUE race |
-| GET History | `ProductionCostHistorySql` + probe cột — schema cũ không SELECT cột mới |
-| Unit test | `ProductionCostWriteInfrastructureTests` + lifecycle Conflict/Noop |
+| Schema cài mới | `01` / `2b_01` đồng bộ VARCHAR(190) + CONTENT_FINGERPRINT |
+| Idempotency C# | `HistoryPlan` — Noop / Conflict / ResolveAfterDuplicateKey + fingerprint require |
+| Key length | OpId 8–64; StableKey ≤**190** (hash `PC_HIST_H:` nếu dài); không prefix unique |
+| Write repo | Đọc `CONTENT_FINGERPRINT` thật; INSERT cột riêng; race 1062 → đọc lại |
+| GET History | Probe 4 cột; schema cũ = SQL legacy |
+| Unit test | Index 767 budget · fingerprint Conflict/Noop · race sau commit |
 
-### 8.2 Idempotency (final)
+### 8.2 Idempotency (final + fingerprint)
 
 | Tình huống | Kết quả |
 |------------|---------|
-| Cùng `OPERATION_ID` + cùng `STABLE_KEY` (+ cùng fingerprint nếu có) | **Noop** |
-| Cùng `OPERATION_ID` khác RUN/STEP/ACTION (`STABLE_KEY`) hoặc fingerprint | **Conflict** |
-| Hai request song song cùng OpId | UNIQUE `(COMPANY_CD, OPERATION_ID)` → 1062 → đọc lại → Noop/Conflict |
-| Client tự khai “đã có history” | **Không** tin — chỉ DB |
+| Cùng OpId + StableKey + **cùng** `CONTENT_FINGERPRINT` | **Noop** |
+| Cùng OpId + StableKey nhưng fingerprint khác / Confirm thiếu fingerprint DB | **Conflict** (thiếu ≠ khớp) |
+| Cùng OpId khác RUN/STEP/ACTION | **Conflict** |
+| Race UNIQUE 1062 | Đọc lại hàng đã commit (gồm fingerprint) → Noop/Conflict |
+| Client hint | **Không** tin |
 
 ### 8.3 Backward compatibility GET History
 
-- Schema **trước** 2C-06A: SQL legacy (không `OPERATION_ID`/`STABLE_KEY`/`STEP_CODE`) → API không lỗi.  
-- Schema **sau** migration / cài mới: SQL đầy đủ.  
-- Write path vẫn **từ chối** nếu probe history chưa READY.
+- Schema **trước** 2C-06A: SQL legacy → API không lỗi.  
+- Schema **sau**: SELECT thêm OPERATION_ID / STABLE_KEY / STEP_CODE / CONTENT_FINGERPRINT.  
+- Write từ chối nếu probe thiếu cột/index (gồm CONTENT_FINGERPRINT).
 
 ### 8.4 TX ownership
 
@@ -450,12 +451,12 @@ HOST_EXIT=0
 
 ```text
 dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
-→ Passed: 101, Failed: 0
+→ Passed: 99, Failed: 0
 TEST_EXIT=0
 ```
 
-Cases: OpId/StableKey length · Noop · Conflict payload · race ResolveAfterDuplicateKey · fingerprint Conflict · History SQL legacy vs mới · WriteGate OFF · schema READY gate.
+Cases: utf8 unique 630≤767 vs 825>767 · StableKey 190/hash · fingerprint Noop/Conflict/thiếu≠khớp · race 1062 đọc FP · History SQL legacy vs mới · WriteGate OFF.
 
 ### 8.7 Dừng 2C-06A
 
-Final safety 2C-06A xong — **chờ nghiệm thu trước 2C-06B**.
+Fix 2 blockers (UNIQUE 5.6 + CONTENT_FINGERPRINT) xong — **chờ nghiệm thu trước 2C-06B**.

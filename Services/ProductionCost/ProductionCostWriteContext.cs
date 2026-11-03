@@ -13,7 +13,8 @@ public static class ProductionCostWriteContext
     {
         "OPERATION_ID",
         "STABLE_KEY",
-        "STEP_CODE"
+        "STEP_CODE",
+        "CONTENT_FINGERPRINT"
     };
 
     public static readonly string[] RequiredHistoryWriteIndexes =

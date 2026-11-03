@@ -38,6 +38,7 @@ SELECT
     ACTION_CODE AS ActionCode,
     OPERATION_ID AS OperationId,
     STABLE_KEY AS StableKey,
+    CONTENT_FINGERPRINT AS ContentFingerprint,
     STATUS_AFTER AS StatusAfter,
     RUN_VERSION AS RunVersion,
     RESULT_BEFORE AS ResultBefore,
@@ -58,10 +59,11 @@ SELECT COUNT(*)
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'production_cost_history'
-  AND COLUMN_NAME IN ('OPERATION_ID', 'STABLE_KEY', 'STEP_CODE')";
+  AND COLUMN_NAME IN ('OPERATION_ID', 'STABLE_KEY', 'STEP_CODE', 'CONTENT_FINGERPRINT')";
 
     public static string SelectHistory(bool hasIdempotencyColumns) =>
         hasIdempotencyColumns ? IdempotencySelect : LegacySelect;
 
-    public static bool ProbeCountMeansReady(int columnCount) => columnCount >= 3;
+    /// <summary>Đủ 4 cột idempotency 2C-06A (kể cả CONTENT_FINGERPRINT).</summary>
+    public static bool ProbeCountMeansReady(int columnCount) => columnCount >= 4;
 }

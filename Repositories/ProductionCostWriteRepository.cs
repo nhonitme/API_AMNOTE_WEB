@@ -35,7 +35,7 @@ SELECT COLUMN_NAME
 FROM information_schema.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
   AND TABLE_NAME = 'production_cost_history'
-  AND COLUMN_NAME IN ('OPERATION_ID', 'STABLE_KEY', 'STEP_CODE')";
+  AND COLUMN_NAME IN ('OPERATION_ID', 'STABLE_KEY', 'STEP_CODE', 'CONTENT_FINGERPRINT')";
 
         const string idxSql = @"
 SELECT DISTINCT INDEX_NAME
@@ -196,7 +196,7 @@ WHERE COMPANY_CD = @CompanyCd
 SELECT
     OPERATION_ID AS OperationId,
     STABLE_KEY AS StableKey,
-    NULL AS ContentFingerprint
+    CONTENT_FINGERPRINT AS ContentFingerprint
 FROM production_cost_history
 WHERE COMPANY_CD = @CompanyCd
   AND OPERATION_ID = @OperationId
@@ -254,9 +254,11 @@ LIMIT 1";
 
         var companyCd = insert.CompanyCd.Trim();
         var stableKey = insert.StableKey.Trim();
-        var fingerprint = string.IsNullOrWhiteSpace(insert.ContentFingerprint)
-            ? null
-            : insert.ContentFingerprint.Trim();
+        // Confirm (RequireContentFingerprint) hoặc request đã gửi fingerprint → so khớp nghiêm;
+        // thiếu persisted fingerprint ≠ khớp. Reopen không fingerprint → soft.
+        var fingerprint = HistoryPlan.NormalizeContentFingerprint(
+            insert.ContentFingerprint, required: insert.RequireContentFingerprint);
+        var requireFp = insert.RequireContentFingerprint || fingerprint != null;
 
         // 1) Đọc authoritative theo COMPANY_CD + OPERATION_ID (không tin client).
         var existing = await GetPersistedHistoryByOperationIdAsync(session, companyCd, operationId);
@@ -264,7 +266,8 @@ LIMIT 1";
             stableKey,
             operationId,
             existing == null ? Array.Empty<PersistedHistoryRef>() : new[] { existing },
-            fingerprint);
+            fingerprint,
+            requireContentFingerprint: requireFp);
 
         if (!plan.WritesHistory)
             return HistoryPlan.ToWriteResult(plan);
@@ -272,12 +275,12 @@ LIMIT 1";
         const string insertSql = @"
 INSERT INTO production_cost_history (
     RUN_ID, COMPANY_CD, PERIOD_YM, STEP_INDEX, STEP_CODE, ACTION_CODE,
-    OPERATION_ID, STABLE_KEY, STATUS_AFTER, RUN_VERSION,
+    OPERATION_ID, STABLE_KEY, CONTENT_FINGERPRINT, STATUS_AFTER, RUN_VERSION,
     RESULT_BEFORE, RESULT_AFTER, DIFFERENCE_TEXT, REASON,
     USER_NAME, ACTION_AT, ISDEL
 ) VALUES (
     @RunId, @CompanyCd, @PeriodYm, @StepIndex, @StepCode, @ActionCode,
-    @OperationId, @StableKey, @StatusAfter, @RunVersion,
+    @OperationId, @StableKey, @ContentFingerprint, @StatusAfter, @RunVersion,
     @ResultBefore, @ResultAfter, @DifferenceText, @Reason,
     @UserName, @ActionAt, '0'
 )";
@@ -294,11 +297,12 @@ INSERT INTO production_cost_history (
                 ActionCode = insert.ActionCode.Trim(),
                 OperationId = operationId,
                 StableKey = stableKey,
+                ContentFingerprint = fingerprint,
                 insert.StatusAfter,
                 insert.RunVersion,
                 insert.ResultBefore,
                 insert.ResultAfter,
-                DifferenceText = BuildDifferenceText(insert.DifferenceText, fingerprint),
+                insert.DifferenceText,
                 insert.Reason,
                 insert.UserName,
                 ActionAt = insert.ActionAt ?? DateTime.UtcNow
@@ -306,25 +310,15 @@ INSERT INTO production_cost_history (
         }
         catch (Exception ex) when (HistoryPlan.IsDuplicateKeyException(ex))
         {
-            // 2) Race: UNIQUE (COMPANY_CD, OPERATION_ID) hoặc STABLE_KEY — đọc lại, không INSERT lần 2.
+            // 2) Race 1062: TX khác đã commit — đọc lại CONTENT_FINGERPRINT thật, không INSERT lần 2.
             var again = await GetPersistedHistoryByOperationIdAsync(session, companyCd, operationId);
             var resolved = HistoryPlan.ResolveAfterDuplicateKey(
-                stableKey, operationId, again, fingerprint);
+                stableKey, operationId, again, fingerprint, requireContentFingerprint: requireFp);
             return HistoryPlan.ToWriteResult(resolved);
         }
 
         var historyId = await session.QueryFirstOrDefaultAsync<long?>("SELECT LAST_INSERT_ID()");
         return HistoryPlan.ToWriteResult(plan, historyId);
-    }
-
-    private static string? BuildDifferenceText(string? differenceText, string? fingerprint)
-    {
-        if (string.IsNullOrWhiteSpace(fingerprint))
-            return differenceText;
-        var marker = "FP:" + fingerprint.Trim();
-        if (string.IsNullOrWhiteSpace(differenceText))
-            return marker;
-        return marker + "|" + differenceText.Trim();
     }
 
     private sealed class StepStatusRow
