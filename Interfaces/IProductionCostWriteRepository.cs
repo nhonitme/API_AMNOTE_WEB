@@ -5,7 +5,7 @@ namespace API_AMNOTE_WEB.Interfaces;
 
 /// <summary>
 /// Ghi G-K trong transaction do C# sở hữu (<see cref="DapperSession"/>).
-/// SP không START/COMMIT. Confirm B2–B5 chưa gọi trong 2C-06A — chỉ hạ tầng.
+/// SP không START/COMMIT. Confirm B2 (2C-06B) gọi qua service; B3–B5 chưa.
 /// </summary>
 public interface IProductionCostWriteRepository
 {
@@ -61,4 +61,34 @@ public interface IProductionCostWriteRepository
         DapperSession session,
         ProductionCostHistoryInsert insert,
         string databaseName);
+
+    // ---- 2C-06B Allocation Confirm (B2) ----
+
+    /// <summary>Ghi đè pool phiên hiện tại (soft-delete cũ + INSERT). Không Commit.</summary>
+    Task ReplaceAllocPoolAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<AllocationPoolInput> pool,
+        string? userId);
+
+    /// <summary>Ghi đè alloc_detail theo UNIQUE key. Không Commit.</summary>
+    Task ReplaceAllocDetailAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<AllocationLineResult> details,
+        string? userId);
+
+    /// <summary>
+    /// CALL sp_pc_alloc_confirm — SP không START/COMMIT; không ghi history (C# sở hữu history).
+    /// </summary>
+    Task<string> CallAllocConfirmAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        string? userId);
 }

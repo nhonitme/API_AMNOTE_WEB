@@ -362,19 +362,8 @@ proc: BEGIN
         UPDATE_AT = NOW(),
         ISDEL = '0';
 
-    -- History chỉ khi trạng thái thực sự đổi (tránh ghi history khi CT/step thất bại trước đó — caller rollback cả TX)
-    IF v_changed > 0 THEN
-        INSERT INTO production_cost_history (
-            RUN_ID, COMPANY_CD, PERIOD_YM, STEP_INDEX, ACTION_CODE, STATUS_AFTER,
-            RUN_VERSION, RESULT_AFTER, USER_NAME, ACTION_AT, ISDEL
-        ) VALUES (
-            p_RUN_ID, p_COMPANY_CD, v_period, 2, 'CONFIRM', 'DONE',
-            p_RUN_VERSION,
-            CONCAT('ALLOC_CONFIRMED; stable=', v_stable, '; pool=', v_pool_cnt, '; detail=', v_detail_cnt),
-            p_USER_ID, NOW(), '0'
-        );
-    END IF;
-
+    -- History: KHÔNG INSERT ở đây (2C-06B) — C# TryInsertHistoryAsync sở hữu OperationId/fingerprint.
+    -- Tránh ghi history hai lần (SP + C#).
     SELECT 'ALLOC_CONFIRMED' AS RESULT, p_RUN_ID AS RUN_ID, p_RUN_VERSION AS RUN_VERSION;
 END proc$$
 

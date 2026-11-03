@@ -16,14 +16,14 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | Engine nghiệp vụ C# (B2–B5 + REOPEN/RECALC/COMPARE) | **Hoàn thành** — unit-tested, pure / dry-run |
 | API đọc GET | **Hoàn thành** (2C-01) |
 | API Preview (DryRun payload) | **Hoàn thành** — `Persisted=false` |
-| API Confirm + Preview-from-DB | **Placeholder** — gate OFF hoặc throw sau `EnsureWritable` |
-| Repository ghi / TX session G-K | **2C-06A Implemented** (infra) — Confirm chưa gắn |
-| SP persist B2 (confirm/load/assert) | **Script bàn giao** — body sẵn; chưa coi đã SOURCE DEV |
+| API Confirm + Preview-from-DB | **B2 Confirm Implemented (source)** — gate OFF; Preview-from-DB vẫn skeleton; B3–B5 placeholder |
+| Repository ghi / TX session G-K | **2C-06A Implemented** + B2 persist/SP call |
+| SP persist B2 (confirm/load/assert) | **Script bàn giao** — `sp_pc_alloc_confirm` **không** INSERT history; chưa SOURCE DEV |
 | SP calculate / WIP / valuation / reopen | **Skeleton SIGNAL** hoặc **Pending** |
-| History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# + DDL script 2C-06A** — chưa SOURCE DEV |
-| Tái sử dụng kho / PeriodLock | **Đã xác định điểm nối** — Confirm chưa gắn |
+| History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# + DDL script 2C-06A** — Confirm B2 ghi history từ C#; chưa SOURCE DEV |
+| Tái sử dụng kho / PeriodLock | **Đã xác định điểm nối** — B3+ chưa gắn |
 
-**Kết luận (cập nhật 2C-06A):** Hạ tầng ghi + DDL history đã có trong source. Confirm B2–B5 vẫn placeholder; WriteGate OFF. Chờ nghiệm thu 2C-06A trước 2C-06B.
+**Kết luận (cập nhật 2C-06B):** Confirm B2 (622/627) đã wire trên hạ tầng 2C-06A. WriteGate OFF. Dừng nghiệm thu trước B3.
 
 ---
 
@@ -46,7 +46,7 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | Method | Hành vi hiện tại |
 |--------|------------------|
 | `PreviewAllocation` (không DryRun) | Throw — “chưa kích hoạt từ DB” |
-| `ConfirmAllocation` | `EnsureWritable` → throw skeleton |
+| `ConfirmAllocation` | **2C-06B:** TX + engine + persist + `sp_pc_alloc_confirm` + history C# (cần DryRun; Preview-from-DB skeleton) |
 | `PreviewTransfer` (gate ON) / `ConfirmTransfer` | Throw skeleton (gate OFF: preview rule-only) |
 | `PreviewCostCalc` (không WipDryRun) | Throw |
 | `ConfirmCostCalc` | Throw skeleton |
@@ -363,11 +363,11 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 | ID | Mức | Nội dung |
 |----|-----|----------|
 | O-01 | **Process** | DDL history 2C-06A đã có script — **chưa SOURCE DEV**; GET `/history` tương thích schema cũ (probe); ghi history cần SOURCE |
-| O-02 | **Blocker Confirm** | Write repository/TX infra **đã có (2C-06A)** — Confirm B2–B5 vẫn placeholder (2C-06B+) |
+| O-02 | **Blocker Confirm B3–B5** | B2 Confirm **source done (2C-06B)** — B3–B5 vẫn placeholder |
 | O-03 | High | `apply_inventory_update_*` theo PRODUCT_CD ≠ plan B5 theo INPUT_ID — cần SP/wrapper riêng |
 | O-04 | High | SP calculate/wip/valuation/reopen còn skeleton hoặc pending — quyết định C#-persist vs hoàn thiện SQL trước EnableWrites |
 | O-05 | High | B3 TX boundary: PeriodLock session vs G-K session chưa thiết kế atomic thống nhất |
-| O-06 | Medium | `sp_pc_alloc_confirm` history INSERT chưa gắn OperationId — lệch `HistoryPlan` |
+| O-06 | Medium | ~~SP history lệch OpId~~ → **đã bỏ INSERT history trong SP (2C-06B)**; C# sở hữu history |
 | O-07 | Medium | Preview-from-DB chưa implement — FE/API phụ thuộc DryRun payload |
 | O-08 | Medium | Chưa có integration test gắn DB/SP |
 | O-09 | Low | Không có `ConfirmRecalculate` API — chấp nhận nếu Confirm từng bước; document cho FE |
@@ -380,8 +380,8 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 
 | Slice | Nội dung | Trạng thái |
 |-------|----------|------------|
-| **2C-06A** | History DDL + WriteRepository + TX infra | **Implemented (source)** — chờ nghiệm thu |
-| 2C-06B | Allocation Confirm B2 | Chưa |
+| **2C-06A** | History DDL + WriteRepository + TX infra | **Implemented (source)** — đã nghiệm thu source |
+| **2C-06B** | Allocation Confirm B2 | **Implemented (source)** — chờ nghiệm thu; dừng trước B3 |
 | 2C-06C | EXP_TO_154_ONLY Confirm B3 | Chưa |
 | 2C-06D | CostCalc Confirm B4 | Chưa |
 | 2C-06E | Valuation Confirm B5 | Chưa |
@@ -459,4 +459,84 @@ Cases: utf8 unique 630≤767 vs 825>767 · StableKey 190/hash · fingerprint Noo
 
 ### 8.7 Dừng 2C-06A
 
-Fix 2 blockers (UNIQUE 5.6 + CONTENT_FINGERPRINT) xong — **chờ nghiệm thu trước 2C-06B**.
+Fix 2 blockers (UNIQUE 5.6 + CONTENT_FINGERPRINT) xong — **đã nghiệm thu source trước 2C-06B**.
+
+---
+
+## 9. 2C-06B — Allocation Confirm B2 (622/627)
+
+Ngày: 2026-11-03  
+Phạm vi: Confirm Bước 2 only — `ConfirmAllocationAsync` trên hạ tầng 2C-06A.  
+**Không** B3/B4/B5 · **Không** EnableWrites · **Không** SOURCE · **Không** Confirm thật trên DB · **Không** N154 · **Không** `CONFIRMED` toàn kỳ · **Không** đổi AllocationEngine · **Không** sửa B-I/kho.
+
+### 9.1 Implemented (source)
+
+| Hạng mục | Chi tiết |
+|----------|----------|
+| Orchestration | Gate → `ProductionCostWriteSession` → lock RUN FOR UPDATE → assert RUN_VERSION → steps + history idempotency → `AllocationEngine` (DryRun) → `AllocationConfirmPlanner` → Replace pool/detail → `CALL sp_pc_alloc_confirm` → `TryInsertHistoryAsync` → Commit/Rollback |
+| Planner | `AllocationConfirmPlanner` — fingerprint; Noop/Conflict; AllocLoadGuard; `WouldPostAccountingVoucher=false`; ExpectedStatus=`ALLOC_CONFIRMED` |
+| Write repo | `ReplaceAllocPoolAsync` / `ReplaceAllocDetailAsync` / `CallAllocConfirmAsync` |
+| SP contract | `sp_pc_alloc_confirm` **không** INSERT history; **không** START/COMMIT; voucher_ref `ALLOC:…`; STEP2 DONE; RUN→`ALLOC_CONFIRMED` |
+| Safety | Race UNIQUE 1062 → `ResolveAfterDuplicateKey` (đọc lại FP); preflight `STABLE_KEY` >190 SELECT-only |
+| Tests | Confirm lần đầu / retry OpId / FP conflict / ALLOC_CONFIRMED chặn / RUN_VERSION sai / fail giữa persist↔SP Rollback / không N154 / không history trùng |
+| Gate | `ProductionCost:EnableWrites` mặc định **OFF** |
+
+### 9.2 Skeleton
+
+| Hạng mục | Ghi chú |
+|----------|---------|
+| Preview-from-DB (Confirm/Preview không DryRun) | Throw — chờ load pool/basis từ DB |
+| Confirm B3 / B4 / B5 / Reopen persist | Chưa (2C-06C+) |
+
+### 9.3 Pending DEV/TEST (user tự làm — agent không chạy)
+
+| Script / việc | Ghi chú |
+|---------------|---------|
+| `20261103_2c06a_ddl_history_operation.sql` | SOURCE nếu chưa |
+| `20261103_2c06b_preflight_stable_key_len.sql` | SELECT — xử lý tay nếu `ROWS_OVER_190` > 0; **không** auto-fix |
+| `20261103_2c06b_sp_alloc_confirm_no_history.sql` hoặc SOURCE lại `20261102_2c02_sp_alloc.sql` | Patch SP bỏ history |
+| Integration test gắn MySQL | Sau SOURCE; vẫn **EnableWrites=OFF** đến khi nghiệm thu |
+| EnableWrites | **Giữ OFF** |
+
+### 9.4 Files changed (2C-06B)
+
+- `Services/ProductionCost/ProductionCostWriteService.cs` — ConfirmAllocationAsync
+- `Services/ProductionCost/Allocation/AllocationConfirmPlanner.cs` — mới
+- `Repositories/ProductionCostWriteRepository.cs` — persist + CallAllocConfirm
+- `Interfaces/IProductionCostWriteRepository.cs` — B2 methods
+- `Database/.../20261102_2c02_sp_alloc.sql` — bỏ history INSERT
+- `Database/.../20261103_2c06b_*.sql` + README
+- `API_AMNOTE_WEB.Tests/ProductionCostAllocationConfirmTests.cs` + stubs
+- `ACCEPTANCE_2C_06.md` — mục này
+
+### 9.5 Build / test
+
+#### Host build
+
+```text
+dotnet build API_AMNOTE_WEB.csproj -o artifacts/host-2c06b-check
+→ 0 Error(s)
+HOST_EXIT=0
+```
+
+#### Unit test
+
+```text
+dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
+→ Passed: 112, Failed: 0
+TEST_EXIT=0
+```
+
+### 9.6 Quy tắc B2 đã giữ
+
+1. Không bút toán N154 trong B2.  
+2. Không `RUN.STATUS=CONFIRMED` toàn kỳ.  
+3. Không đổi công thức AllocationEngine.  
+4. Không overwrite khi `ALLOC_CONFIRMED` (trừ Noop cùng OpId+FP).  
+5. History chỉ từ C# — không double SP+C#.  
+6. SP không tự START/COMMIT.  
+7. Fail giữa persist và Confirm → Rollback (không history thành công).
+
+### 9.7 Dừng 2C-06B
+
+**Chờ nghiệm thu source trước khi tiếp tục 2C-06C (B3).**

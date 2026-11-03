@@ -9,16 +9,20 @@ using API_AMNOTE_WEB.Services.ProductionCost.Wip;
 namespace API_AMNOTE_WEB.Services.ProductionCost;
 
 /// <summary>
-/// Ghi G-K Bước 2 / Bước 3 (2C-02). Mặc định bị chặn bởi <see cref="IProductionCostWriteGate"/>.
-/// Preview dry-run có thể tính thuần khi client gửi payload — không persist.
+/// Ghi G-K Bước 2+ . Mặc định bị chặn bởi <see cref="IProductionCostWriteGate"/>.
+/// Preview dry-run thuần; Confirm B2 (2C-06B) dùng TX C# khi EnableWrites.
 /// </summary>
 public sealed class ProductionCostWriteService : IProductionCostWriteService
 {
     private readonly IProductionCostWriteGate _gate;
+    private readonly IProductionCostWriteRepository _writeRepo;
 
-    public ProductionCostWriteService(IProductionCostWriteGate gate)
+    public ProductionCostWriteService(
+        IProductionCostWriteGate gate,
+        IProductionCostWriteRepository writeRepo)
     {
         _gate = gate;
+        _writeRepo = writeRepo;
     }
 
     public Task<ProductionCostAllocationWriteResponse> PreviewAllocationAsync(
@@ -62,7 +66,7 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         });
     }
 
-    public Task<ProductionCostAllocationWriteResponse> ConfirmAllocationAsync(
+    public async Task<ProductionCostAllocationWriteResponse> ConfirmAllocationAsync(
         string companyCd,
         string? userId,
         ProductionCostWriteRequest request,
@@ -71,15 +75,123 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         EnsureAuth(companyCd);
         ValidatePeriod(request);
         _gate.EnsureWritable();
+        ProductionCostWriteContext.EnsureDatabase(databaseName);
 
-        // Skeleton sau gate (chưa kích hoạt):
-        // 1) C# BEGIN TRANSACTION (owner) — SP confirm KHÔNG START/COMMIT
-        // 2) SELECT RUN FOR UPDATE (RUN_ID+RUN_VERSION+COMPANY_CD)
-        // 3) CALL sp_pc_alloc_confirm → STATUS=ALLOC_CONFIRMED (không CONFIRMED toàn kỳ)
-        // 4) Idempotent: PlanConfirm → NoopAlreadyConfirmed thì không history
-        // 5) Exception → ROLLBACK: giữ số liệu/status trước Confirm
-        throw new InvalidOperationException(
-            "Confirm allocation DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-02.");
+        ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
+        var operationId = ProductionCostWriteContext.RequireOperationId(request.OperationId);
+
+        if (request.DryRun == null)
+        {
+            throw new InvalidOperationException(
+                "Confirm B2 từ DB (load pool/basis) chưa kích hoạt trong 2C-06B. " +
+                "Gửi DryRun payload (cùng AllocationEngine) hoặc chờ Preview-from-DB.");
+        }
+
+        var compute = RunDryAllocation(companyCd, request.DryRun);
+        var allocateType = request.DryRun.AllocateType;
+        var byDepartment = request.DryRun.ByDepartment;
+        var runId = request.RunId!.Value;
+        var runVersion = request.RunVersion!.Value;
+        var periodYm = request.PeriodYm.Trim();
+
+        return await ProductionCostWriteSession.ExecuteAsync(
+            _writeRepo,
+            databaseName!,
+            async (session, _) =>
+            {
+                var locked = await _writeRepo.LockRunForUpdateAsync(session, companyCd, runId)
+                    ?? throw new InvalidOperationException("RUN không tồn tại hoặc không thuộc COMPANY_CD.");
+                ProductionCostWriteContext.AssertLockedRunMatches(locked, companyCd, runId, runVersion);
+
+                var steps = await _writeRepo.GetStepStatusesForUpdateAsync(session, companyCd, runId);
+                var persisted = await _writeRepo.GetPersistedHistoryByOperationIdAsync(
+                    session, companyCd, operationId);
+
+                var plan = AllocationConfirmPlanner.Build(
+                    companyCd,
+                    periodYm,
+                    runId,
+                    runVersion,
+                    locked.Status,
+                    steps,
+                    operationId,
+                    compute,
+                    allocateType,
+                    byDepartment,
+                    persisted,
+                    userId,
+                    clientFingerprint: null);
+
+                if (plan.IsNoop)
+                {
+                    return new ProductionCostAllocationWriteResponse
+                    {
+                        WriteEnabled = true,
+                        Persisted = false,
+                        PeriodYm = periodYm,
+                        RunId = runId,
+                        RunVersion = runVersion,
+                        AllocateType = allocateType,
+                        ByDepartment = byDepartment,
+                        Pool = compute.Pool,
+                        Details = compute.Details,
+                        Total622 = compute.Total622,
+                        Total627 = compute.Total627,
+                        IdempotencyAction = plan.IdempotencyAction,
+                        Message = plan.Message
+                    };
+                }
+
+                // Persist pool + detail trước SP (SP yêu cầu count > 0). Fail → ROLLBACK cả TX.
+                await _writeRepo.ReplaceAllocPoolAsync(
+                    session, companyCd, runId, runVersion, compute.Pool, userId);
+                await _writeRepo.ReplaceAllocDetailAsync(
+                    session, companyCd, runId, runVersion, compute.Details, userId);
+
+                var spResult = await _writeRepo.CallAllocConfirmAsync(
+                    session, companyCd, runId, runVersion, userId);
+
+                if (!string.Equals(spResult, "ALLOC_CONFIRMED", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(spResult, "NOOP_ALREADY_CONFIRMED", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException($"sp_pc_alloc_confirm RESULT bất thường: {spResult}");
+                }
+
+                if (!AllocationConfirmPlanner.ShouldCommitHistory(detailsPersisted: true, spSucceeded: true))
+                    throw new InvalidOperationException("Không ghi history khi persist/SP thất bại.");
+
+                var historyInsert = ProductionCostWriteContext.FromHistoryPlan(plan.History!, companyCd, periodYm);
+                historyInsert.ContentFingerprint = plan.ContentFingerprint;
+                historyInsert.RequireContentFingerprint = true;
+                historyInsert.ResultAfter =
+                    $"{spResult}; fp={plan.ContentFingerprint}; voucher={plan.VoucherStableKey}";
+
+                var hist = await _writeRepo.TryInsertHistoryAsync(session, historyInsert, databaseName!);
+                if (!hist.Inserted
+                    && !string.Equals(hist.IdempotencyAction, "NoopAlreadyWritten", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(hist.Message ?? "History Confirm B2 thất bại.");
+                }
+
+                return new ProductionCostAllocationWriteResponse
+                {
+                    WriteEnabled = true,
+                    Persisted = true,
+                    PeriodYm = periodYm,
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    AllocateType = allocateType,
+                    ByDepartment = byDepartment,
+                    Pool = compute.Pool,
+                    Details = compute.Details,
+                    Total622 = compute.Total622,
+                    Total627 = compute.Total627,
+                    IdempotencyAction = hist.IdempotencyAction,
+                    Message =
+                        $"Confirm B2 OK — RUN={GkRunStatus.AllocConfirmed}; SP={spResult}; " +
+                        "không tạo N154; không CONFIRMED toàn kỳ."
+                };
+            });
     }
 
     public Task<ProductionCostTransferWriteResponse> PreviewTransferAsync(

@@ -3,6 +3,7 @@ using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Services.ProductionCost;
+using API_AMNOTE_WEB.Services.ProductionCost.Allocation;
 using API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
 
 namespace API_AMNOTE_WEB.Repositories;
@@ -321,9 +322,155 @@ INSERT INTO production_cost_history (
         return HistoryPlan.ToWriteResult(plan, historyId);
     }
 
+    public async Task ReplaceAllocPoolAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<AllocationPoolInput> pool,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(pool);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+
+        await session.ExecuteAsync(@"
+UPDATE production_cost_alloc_pool
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0'",
+            new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion, UserId = userId });
+
+        const string insertSql = @"
+INSERT INTO production_cost_alloc_pool (
+    RUN_ID, RUN_VERSION, COMPANY_CD, ACCOUNT_CD, DEPARTMENT_ID, DEPARTMENT_CD,
+    TOTAL_AMOUNT, CREDIT_AMOUNT, DEBIT_AMOUNT_154, REDUCTION, ALLOCATION_COSTS,
+    ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+) VALUES (
+    @RunId, @RunVersion, @CompanyCd, @AccountCd, @DepartmentId, @DepartmentCd,
+    @TotalAmount, @CreditAmount, @DebitAmount154, @Reduction, @AllocationCosts,
+    '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
+)";
+
+        foreach (var row in pool)
+        {
+            await session.ExecuteAsync(insertSql, new
+            {
+                RunId = runId,
+                RunVersion = runVersion,
+                CompanyCd = companyCd.Trim(),
+                row.AccountCd,
+                DepartmentId = row.DepartmentId,
+                row.DepartmentCd,
+                row.TotalAmount,
+                row.CreditAmount,
+                row.DebitAmount154,
+                row.Reduction,
+                row.AllocationCosts,
+                UserId = userId
+            });
+        }
+    }
+
+    public async Task ReplaceAllocDetailAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<AllocationLineResult> details,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(details);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+
+        AllocDetailKey.AssertUnique(details.Select(d =>
+            AllocDetailKey.Of(d.ProductId, d.DepartmentId, d.AccountCd, d.PoolDepartmentId)));
+
+        await session.ExecuteAsync(@"
+UPDATE production_cost_alloc_detail
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0'",
+            new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion, UserId = userId });
+
+        const string insertSql = @"
+INSERT INTO production_cost_alloc_detail (
+    RUN_ID, RUN_VERSION, COMPANY_CD, PRODUCT_ID, DEPARTMENT_ID, POOL_DEPARTMENT_ID,
+    PRODUCT_CD, DEPARTMENT_CD, AMOUNT_QUANTITY, QUANTITY, AMOUNT_6211, AMOUNT_6212,
+    ACCOUNT_CD, ALLOCATED_AMOUNT, IS_LAST_ROW, AMOUNT_622_SUM, AMOUNT_627_SUM,
+    ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+) VALUES (
+    @RunId, @RunVersion, @CompanyCd, @ProductId, @DepartmentId, @PoolDepartmentId,
+    @ProductCd, @DepartmentCd, @AmountQuantity, @Quantity, @Amount6211, @Amount6212,
+    @AccountCd, @AllocatedAmount, @IsLastRow, @Amount622Sum, @Amount627Sum,
+    '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
+)";
+
+        foreach (var line in details)
+        {
+            await session.ExecuteAsync(insertSql, new
+            {
+                RunId = runId,
+                RunVersion = runVersion,
+                CompanyCd = companyCd.Trim(),
+                line.ProductId,
+                line.DepartmentId,
+                line.PoolDepartmentId,
+                line.ProductCd,
+                line.DepartmentCd,
+                line.AmountQuantity,
+                line.Quantity,
+                line.Amount6211,
+                line.Amount6212,
+                line.AccountCd,
+                line.AllocatedAmount,
+                IsLastRow = line.IsLastRow ? "1" : "0",
+                line.Amount622Sum,
+                line.Amount627Sum,
+                UserId = userId
+            });
+        }
+    }
+
+    public async Task<string> CallAllocConfirmAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+
+        // SP không START/COMMIT; bản 2C-06B không INSERT history (C# sở hữu).
+        var rows = await session.QueryAsync<AllocConfirmSpRow>(
+            "CALL sp_pc_alloc_confirm(@p_COMPANY_CD, @p_RUN_ID, @p_RUN_VERSION, @p_USER_ID)",
+            new
+            {
+                p_COMPANY_CD = companyCd.Trim(),
+                p_RUN_ID = runId,
+                p_RUN_VERSION = runVersion,
+                p_USER_ID = userId ?? string.Empty
+            });
+
+        var result = rows.FirstOrDefault()?.RESULT;
+        if (string.IsNullOrWhiteSpace(result))
+            throw new InvalidOperationException("sp_pc_alloc_confirm không trả RESULT.");
+        return result.Trim();
+    }
+
     private sealed class StepStatusRow
     {
         public string? StepCode { get; set; }
         public string? Status { get; set; }
+    }
+
+    private sealed class AllocConfirmSpRow
+    {
+        public string? RESULT { get; set; }
+        public long? RUN_ID { get; set; }
+        public int? RUN_VERSION { get; set; }
     }
 }

@@ -1,0 +1,22 @@
+-- G-K 2C-06B — Preflight: phát hiện STABLE_KEY history dài hơn 190 (trước/cùng migration 2C-06A)
+-- SELECT only — không tự sửa dữ liệu. User tự xử lý trước khi thu hẹp VARCHAR(190).
+
+SELECT
+    COMPANY_CD,
+    HISTORY_ID,
+    OPERATION_ID,
+    CHAR_LENGTH(STABLE_KEY) AS STABLE_KEY_LEN,
+    LEFT(STABLE_KEY, 80) AS STABLE_KEY_PREFIX
+FROM production_cost_history
+WHERE STABLE_KEY IS NOT NULL
+  AND CHAR_LENGTH(STABLE_KEY) > 190
+ORDER BY STABLE_KEY_LEN DESC, HISTORY_ID
+LIMIT 100;
+
+SELECT
+    COUNT(*) AS ROWS_OVER_190
+FROM production_cost_history
+WHERE STABLE_KEY IS NOT NULL
+  AND CHAR_LENGTH(STABLE_KEY) > 190;
+
+SELECT '2C-06B preflight STABLE_KEY length — review ROWS_OVER_190 before ALTER' AS NOTE;
