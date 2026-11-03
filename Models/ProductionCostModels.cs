@@ -430,7 +430,13 @@ public sealed class ProductionCostHistoryDto
     public long RunId { get; set; }
     public string PeriodYm { get; set; } = string.Empty;
     public int StepIndex { get; set; }
+    /// <summary>STEP_CODE G-K — có sau DDL 2C-06A.</summary>
+    public string? StepCode { get; set; }
     public string ActionCode { get; set; } = string.Empty;
+    /// <summary>Idempotency — có sau DDL 2C-06A.</summary>
+    public string? OperationId { get; set; }
+    /// <summary>PC_HIST:… — có sau DDL 2C-06A.</summary>
+    public string? StableKey { get; set; }
     public string? StatusAfter { get; set; }
     public int? RunVersion { get; set; }
     public string? ResultBefore { get; set; }
@@ -439,6 +445,46 @@ public sealed class ProductionCostHistoryDto
     public string? Reason { get; set; }
     public string? UserName { get; set; }
     public DateTime? ActionAt { get; set; }
+}
+
+/// <summary>Probe cột history bắt buộc trước khi ghi (2C-06A).</summary>
+public sealed class ProductionCostHistoryWriteSchemaProbe
+{
+    public bool Ready { get; set; }
+    public IReadOnlyList<string> MissingColumns { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> MissingIndexes { get; set; } = Array.Empty<string>();
+    public string? Message { get; set; }
+}
+
+/// <summary>Payload INSERT history trong TX do C# sở hữu — không START/COMMIT trong SP.</summary>
+public sealed class ProductionCostHistoryInsert
+{
+    public string CompanyCd { get; set; } = string.Empty;
+    public string PeriodYm { get; set; } = string.Empty;
+    public long RunId { get; set; }
+    public int? RunVersion { get; set; }
+    public int StepIndex { get; set; }
+    public string? StepCode { get; set; }
+    public string ActionCode { get; set; } = string.Empty;
+    public string OperationId { get; set; } = string.Empty;
+    public string StableKey { get; set; } = string.Empty;
+    public string? StatusAfter { get; set; }
+    public string? ResultBefore { get; set; }
+    public string? ResultAfter { get; set; }
+    public string? DifferenceText { get; set; }
+    public string? Reason { get; set; }
+    public string? UserName { get; set; }
+    public DateTime? ActionAt { get; set; }
+}
+
+public sealed class ProductionCostHistoryWriteResult
+{
+    public bool Inserted { get; set; }
+    public string IdempotencyAction { get; set; } = string.Empty;
+    public long? HistoryId { get; set; }
+    public string OperationId { get; set; } = string.Empty;
+    public string StableKey { get; set; } = string.Empty;
+    public string? Message { get; set; }
 }
 
 public sealed class ProductionCostComparisonResponse

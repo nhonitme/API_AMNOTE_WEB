@@ -6,6 +6,11 @@ public sealed class ProductionCostWriteRequest
     public string PeriodYm { get; set; } = string.Empty;
     public long? RunId { get; set; }
     public int? RunVersion { get; set; }
+    /// <summary>
+    /// Idempotency Confirm / lifecycle (tối thiểu 8 ký tự).
+    /// Confirm đọc OperationId đã persist từ DB — không tin client history hint.
+    /// </summary>
+    public string? OperationId { get; set; }
     /// <summary>Tùy chọn — client gửi để dry-run phân bổ (2C-02).</summary>
     public AllocationDryRunPayload? DryRun { get; set; }
     /// <summary>Tùy chọn — dry-run tính dở dang / giá thành (2C-03).</summary>

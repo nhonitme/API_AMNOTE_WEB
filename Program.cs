@@ -197,6 +197,7 @@ builder.Services.AddScoped<ILoginRepository, LoginRepository>();
 
 builder.Services.AddScoped<IPeriodLockRepository, PeriodLockRepository>();
 builder.Services.AddScoped<IProductionCostRepository, ProductionCostRepository>();
+builder.Services.AddScoped<IProductionCostWriteRepository, ProductionCostWriteRepository>();
 builder.Services.AddScoped<IProductionCostService, API_AMNOTE_WEB.Services.ProductionCost.ProductionCostService>();
 builder.Services.AddSingleton<API_AMNOTE_WEB.Services.ProductionCost.IProductionCostWriteGate>(sp =>
 {

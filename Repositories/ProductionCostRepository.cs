@@ -592,13 +592,17 @@ ORDER BY PRODUCT_ID, DEPARTMENT_ID, INPUT_ID";
 
     public async Task<IReadOnlyList<ProductionCostHistoryDto>> GetHistoryAsync(string companyCd, string periodYm, long? runId, string? databaseName = null)
     {
+        // STEP_CODE / OPERATION_ID / STABLE_KEY: có sau DDL 2C-06A (cài mới hoặc migration).
         const string sql = @"
 SELECT
     HISTORY_ID AS HistoryId,
     RUN_ID AS RunId,
     PERIOD_YM AS PeriodYm,
     STEP_INDEX AS StepIndex,
+    STEP_CODE AS StepCode,
     ACTION_CODE AS ActionCode,
+    OPERATION_ID AS OperationId,
+    STABLE_KEY AS StableKey,
     STATUS_AFTER AS StatusAfter,
     RUN_VERSION AS RunVersion,
     RESULT_BEFORE AS ResultBefore,

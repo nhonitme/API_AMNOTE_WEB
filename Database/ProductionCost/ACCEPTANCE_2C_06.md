@@ -17,13 +17,13 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | API đọc GET | **Hoàn thành** (2C-01) |
 | API Preview (DryRun payload) | **Hoàn thành** — `Persisted=false` |
 | API Confirm + Preview-from-DB | **Placeholder** — gate OFF hoặc throw sau `EnsureWritable` |
-| Repository ghi / TX session G-K | **Thiếu** — chỉ SELECT |
+| Repository ghi / TX session G-K | **2C-06A Implemented** (infra) — Confirm chưa gắn |
 | SP persist B2 (confirm/load/assert) | **Script bàn giao** — body sẵn; chưa coi đã SOURCE DEV |
 | SP calculate / WIP / valuation / reopen | **Skeleton SIGNAL** hoặc **Pending** |
-| History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# xong** — **DDL history chưa đủ cột** |
+| History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# + DDL script 2C-06A** — chưa SOURCE DEV |
 | Tái sử dụng kho / PeriodLock | **Đã xác định điểm nối** — Confirm chưa gắn |
 
-**Kết luận:** Sẵn sàng thiết kế tích hợp Confirm; **chưa** sẵn sàng bật ghi production. 2C-06 dừng ở plan + acceptance — không implement Confirm trong giai đoạn này.
+**Kết luận (cập nhật 2C-06A):** Hạ tầng ghi + DDL history đã có trong source. Confirm B2–B5 vẫn placeholder; WriteGate OFF. Chờ nghiệm thu 2C-06A trước 2C-06B.
 
 ---
 
@@ -362,8 +362,8 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 
 | ID | Mức | Nội dung |
 |----|-----|----------|
-| O-01 | **Blocker tích hợp** | `production_cost_history` thiếu `OPERATION_ID` / `STABLE_KEY` — không persist idempotency 2C-05 đúng contract C# |
-| O-02 | **Blocker Confirm** | Không có write repository / TX orchestration — mọi Confirm vẫn placeholder |
+| O-01 | **Process** | DDL history 2C-06A đã có script — **chưa SOURCE DEV**; GET `/history` cần cột mới sau khi SOURCE hoặc cài mới |
+| O-02 | **Blocker Confirm** | Write repository/TX infra **đã có (2C-06A)** — Confirm B2–B5 vẫn placeholder (2C-06B+) |
 | O-03 | High | `apply_inventory_update_*` theo PRODUCT_CD ≠ plan B5 theo INPUT_ID — cần SP/wrapper riêng |
 | O-04 | High | SP calculate/wip/valuation/reopen còn skeleton hoặc pending — quyết định C#-persist vs hoàn thiện SQL trước EnableWrites |
 | O-05 | High | B3 TX boundary: PeriodLock session vs G-K session chưa thiết kế atomic thống nhất |
@@ -376,22 +376,78 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 
 ---
 
-## 7. Đề xuất thứ tự triển khai sau nghiệm thu 2C-06
+## 7. Đề xuất thứ tự triển khai (slice)
 
-1. DDL history OperationId + DTO/repo đọc.  
-2. `IProductionCostWriteRepository` + session TX + Confirm B2 (`sp_pc_alloc_confirm`).  
-3. Confirm B3 (PeriodLock EXP) — chốt TX boundary.  
-4. Confirm B4 persist wip/receipt (không apply kho).  
-5. Confirm B5 INPUT_ID apply + COGS UPSERT + rollback.  
-6. Confirm Reopen + history idempotent.  
-7. Preview-from-DB.  
-8. Integration tests trên DEV → mới xét `EnableWrites=true` (DEV/TEST only).  
+| Slice | Nội dung | Trạng thái |
+|-------|----------|------------|
+| **2C-06A** | History DDL + WriteRepository + TX infra | **Implemented (source)** — chờ nghiệm thu |
+| 2C-06B | Allocation Confirm B2 | Chưa |
+| 2C-06C | EXP_TO_154_ONLY Confirm B3 | Chưa |
+| 2C-06D | CostCalc Confirm B4 | Chưa |
+| 2C-06E | Valuation Confirm B5 | Chưa |
+| 2C-06F | Reopen / History / Integration tests | Chưa |
+
+Sau 2C-06F + DEV SOURCE + verify → mới xét `EnableWrites=true` (DEV/TEST only).
 
 ---
 
-## 8. Dừng
+## 8. 2C-06A Implementation
 
-**2C-06 hoàn thành ở mức source review + kế hoạch tích hợp.**  
+Ngày: 2026-11-03  
+Phạm vi: History DDL, Write Repository, TX ownership C#.  
+**Không** Confirm thật · **Không** EnableWrites · **Không** SOURCE · **Không** kết nối DB · **Không** đổi KT/kho.
 
-Không implement Confirm · không SOURCE SQL · không bật `EnableWrites` · không kết nối database · không đổi số liệu kế toán/kho.
-`)
+### 8.1 Deliverables
+
+| Hạng mục | File / ghi chú |
+|----------|----------------|
+| DDL migration (MySQL 5.6/8.0) | `migrations/20261103_2c06a_ddl_history_operation.sql` — ADD `OPERATION_ID`, `STABLE_KEY`, `STEP_CODE`; UNIQUE `uk_pc_hist_stable`; INDEX `idx_pc_hist_operation` |
+| Verify readonly | `migrations/20261103_2c06a_verify_readonly.sql` |
+| README bàn giao | `migrations/20261103_2c06a_README.md` |
+| Schema cài mới | `01_production_cost_tables.sql`, `migrations/20261102_2b_01_tables.sql` đồng bộ cột/index |
+| DTO | `ProductionCostHistoryDto` (+ OperationId/StableKey/StepCode); `ProductionCostHistoryInsert` / `WriteResult` / schema probe; `WriteRequest.OperationId` |
+| Context / TX | `ProductionCostWriteContext.cs`, `ProductionCostWriteTransaction.cs` (pure), `ProductionCostWriteSession.cs` (`DapperSession`) |
+| Interface + repo | `IProductionCostWriteRepository`, `ProductionCostWriteRepository` — BeginSession, LockRun FOR UPDATE, step statuses, persisted OperationIds, TryInsertHistory idempotent |
+| DI | `Program.cs` đăng ký `IProductionCostWriteRepository` |
+| Read history | `GetHistoryAsync` SELECT cột mới (cần DDL 2C-06A trên DB cũ) |
+| Unit test | `ProductionCostWriteInfrastructureTests.cs` |
+
+### 8.2 TX ownership (giữ nguyên rule)
+
+1. Caller C# mở `BeginWriteSessionAsync` → `DapperExecutor.CreateSessionAsync` (BEGIN).  
+2. Work: SQL / CALL SP — SP **không** START/COMMIT.  
+3. `ProductionCostWriteSession.ExecuteAsync` → `CompleteAsync` Commit hoặc Rollback.  
+4. Trước ghi history: `ProbeHistoryWriteSchemaAsync` + `AssertHistoryWriteSchemaReady`.  
+5. Idempotency: `HistoryStableKeyExists` + `HistoryPlan.PlanWrite(OperationId)` — không tin client hint.
+
+### 8.3 Không làm trong 2C-06A
+
+- Confirm B2–B5 / Reopen persist  
+- Bật `EnableWrites`  
+- Đổi `AllocationEngine` / WIP / Valuation / PeriodLock / menu Kho  
+- SOURCE migration hoặc gọi DB  
+
+### 8.4 Kiểm thử
+
+#### Host build (output riêng — tránh DLL lock)
+
+```text
+dotnet build API_AMNOTE_WEB.csproj -o artifacts/host-2c06a-check
+→ 0 Error(s)  (warnings sẵn có / nullable / CA1416 — không lỗi biên dịch mới chặn)
+HOST_EXIT=0
+```
+
+#### Unit test
+
+```text
+dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
+→ Passed: 97, Failed: 0
+TEST_EXIT=0
+```
+
+Gồm thêm: WriteContext COMPANY/RUN/OperationId · locked run version · history schema gate · HistoryPlan noop · TX CompleteAsync commit/rollback · WriteGate vẫn OFF.
+
+### 8.5 Dừng 2C-06A
+
+Hạ tầng 2C-06A xong trong source — **chờ nghiệm thu trước 2C-06B (Allocation Confirm).**
+)
