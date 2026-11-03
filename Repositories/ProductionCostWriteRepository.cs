@@ -328,20 +328,19 @@ INSERT INTO production_cost_history (
         long runId,
         int runVersion,
         IReadOnlyList<AllocationPoolInput> pool,
-        string? userId)
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(pool);
         ProductionCostWriteContext.EnsureCompany(companyCd);
         ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+        AllocUpsertRules.EnsureCanPersist(
+            companyCd, runId, runVersion, lockedRunVersion, runStatus);
 
-        await session.ExecuteAsync(@"
-UPDATE production_cost_alloc_pool
-SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
-WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0'",
-            new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion, UserId = userId });
-
-        const string insertSql = @"
+        // UPSERT theo UNIQUE (không gồm ISDEL) — tránh duplicate khi hàng ISDEL='1' đã tồn tại.
+        const string upsertSql = @"
 INSERT INTO production_cost_alloc_pool (
     RUN_ID, RUN_VERSION, COMPANY_CD, ACCOUNT_CD, DEPARTMENT_ID, DEPARTMENT_CD,
     TOTAL_AMOUNT, CREDIT_AMOUNT, DEBIT_AMOUNT_154, REDUCTION, ALLOCATION_COSTS,
@@ -350,16 +349,29 @@ INSERT INTO production_cost_alloc_pool (
     @RunId, @RunVersion, @CompanyCd, @AccountCd, @DepartmentId, @DepartmentCd,
     @TotalAmount, @CreditAmount, @DebitAmount154, @Reduction, @AllocationCosts,
     '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
-)";
+)
+ON DUPLICATE KEY UPDATE
+    COMPANY_CD = VALUES(COMPANY_CD),
+    DEPARTMENT_CD = VALUES(DEPARTMENT_CD),
+    TOTAL_AMOUNT = VALUES(TOTAL_AMOUNT),
+    CREDIT_AMOUNT = VALUES(CREDIT_AMOUNT),
+    DEBIT_AMOUNT_154 = VALUES(DEBIT_AMOUNT_154),
+    REDUCTION = VALUES(REDUCTION),
+    ALLOCATION_COSTS = VALUES(ALLOCATION_COSTS),
+    ISDEL = '0',
+    UPDATE_BY = VALUES(UPDATE_BY),
+    UPDATE_AT = UTC_TIMESTAMP()";
 
+        var keepKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in pool)
         {
-            await session.ExecuteAsync(insertSql, new
+            var accountCd = (row.AccountCd ?? string.Empty).Trim();
+            await session.ExecuteAsync(upsertSql, new
             {
                 RunId = runId,
                 RunVersion = runVersion,
                 CompanyCd = companyCd.Trim(),
-                row.AccountCd,
+                AccountCd = accountCd,
                 DepartmentId = row.DepartmentId,
                 row.DepartmentCd,
                 row.TotalAmount,
@@ -369,6 +381,39 @@ INSERT INTO production_cost_alloc_pool (
                 row.AllocationCosts,
                 UserId = userId
             });
+            keepKeys.Add($"{accountCd}\u0001{row.DepartmentId}");
+        }
+
+        // Soft-delete khóa không còn trong kết quả mới — chỉ đúng RUN_VERSION đang ghi.
+        const string softDeleteSql = @"
+UPDATE production_cost_alloc_pool
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND ISDEL = '0'
+  AND CONCAT(ACCOUNT_CD, CHAR(1), DEPARTMENT_ID) NOT IN @KeepKeys";
+
+        if (keepKeys.Count == 0)
+        {
+            await session.ExecuteAsync(@"
+UPDATE production_cost_alloc_pool
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0'",
+                new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion, UserId = userId });
+        }
+        else
+        {
+            await session.ExecuteAsync(
+                softDeleteSql,
+                new
+                {
+                    CompanyCd = companyCd.Trim(),
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    UserId = userId,
+                    KeepKeys = keepKeys.ToArray()
+                });
         }
     }
 
@@ -378,23 +423,21 @@ INSERT INTO production_cost_alloc_pool (
         long runId,
         int runVersion,
         IReadOnlyList<AllocationLineResult> details,
-        string? userId)
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(details);
         ProductionCostWriteContext.EnsureCompany(companyCd);
         ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+        AllocUpsertRules.EnsureCanPersist(
+            companyCd, runId, runVersion, lockedRunVersion, runStatus);
 
         AllocDetailKey.AssertUnique(details.Select(d =>
             AllocDetailKey.Of(d.ProductId, d.DepartmentId, d.AccountCd, d.PoolDepartmentId)));
 
-        await session.ExecuteAsync(@"
-UPDATE production_cost_alloc_detail
-SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
-WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0'",
-            new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion, UserId = userId });
-
-        const string insertSql = @"
+        const string upsertSql = @"
 INSERT INTO production_cost_alloc_detail (
     RUN_ID, RUN_VERSION, COMPANY_CD, PRODUCT_ID, DEPARTMENT_ID, POOL_DEPARTMENT_ID,
     PRODUCT_CD, DEPARTMENT_CD, AMOUNT_QUANTITY, QUANTITY, AMOUNT_6211, AMOUNT_6212,
@@ -405,11 +448,28 @@ INSERT INTO production_cost_alloc_detail (
     @ProductCd, @DepartmentCd, @AmountQuantity, @Quantity, @Amount6211, @Amount6212,
     @AccountCd, @AllocatedAmount, @IsLastRow, @Amount622Sum, @Amount627Sum,
     '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
-)";
+)
+ON DUPLICATE KEY UPDATE
+    COMPANY_CD = VALUES(COMPANY_CD),
+    PRODUCT_CD = VALUES(PRODUCT_CD),
+    DEPARTMENT_CD = VALUES(DEPARTMENT_CD),
+    AMOUNT_QUANTITY = VALUES(AMOUNT_QUANTITY),
+    QUANTITY = VALUES(QUANTITY),
+    AMOUNT_6211 = VALUES(AMOUNT_6211),
+    AMOUNT_6212 = VALUES(AMOUNT_6212),
+    ALLOCATED_AMOUNT = VALUES(ALLOCATED_AMOUNT),
+    IS_LAST_ROW = VALUES(IS_LAST_ROW),
+    AMOUNT_622_SUM = VALUES(AMOUNT_622_SUM),
+    AMOUNT_627_SUM = VALUES(AMOUNT_627_SUM),
+    ISDEL = '0',
+    UPDATE_BY = VALUES(UPDATE_BY),
+    UPDATE_AT = UTC_TIMESTAMP()";
 
+        var keepKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var line in details)
         {
-            await session.ExecuteAsync(insertSql, new
+            var accountCd = (line.AccountCd ?? string.Empty).Trim();
+            await session.ExecuteAsync(upsertSql, new
             {
                 RunId = runId,
                 RunVersion = runVersion,
@@ -423,13 +483,45 @@ INSERT INTO production_cost_alloc_detail (
                 line.Quantity,
                 line.Amount6211,
                 line.Amount6212,
-                line.AccountCd,
+                AccountCd = accountCd,
                 line.AllocatedAmount,
                 IsLastRow = line.IsLastRow ? "1" : "0",
                 line.Amount622Sum,
                 line.Amount627Sum,
                 UserId = userId
             });
+            keepKeys.Add($"{line.ProductId}\u0001{line.DepartmentId}\u0001{accountCd}\u0001{line.PoolDepartmentId}");
+        }
+
+        const string softDeleteSql = @"
+UPDATE production_cost_alloc_detail
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND ISDEL = '0'
+  AND CONCAT(PRODUCT_ID, CHAR(1), DEPARTMENT_ID, CHAR(1), ACCOUNT_CD, CHAR(1), POOL_DEPARTMENT_ID) NOT IN @KeepKeys";
+
+        if (keepKeys.Count == 0)
+        {
+            await session.ExecuteAsync(@"
+UPDATE production_cost_alloc_detail
+SET ISDEL = '1', UPDATE_BY = @UserId, UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion AND ISDEL = '0'",
+                new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion, UserId = userId });
+        }
+        else
+        {
+            await session.ExecuteAsync(
+                softDeleteSql,
+                new
+                {
+                    CompanyCd = companyCd.Trim(),
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    UserId = userId,
+                    KeepKeys = keepKeys.ToArray()
+                });
         }
     }
 

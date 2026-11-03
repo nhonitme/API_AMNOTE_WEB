@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using API_AMNOTE_WEB.Models;
@@ -37,6 +38,8 @@ public static class AllocationConfirmPlanner
         public AllocationComputeResult Compute { get; init; } = new();
         public int AllocateType { get; init; }
         public bool ByDepartment { get; init; }
+        public int NumberDigit { get; init; }
+        public bool Include6212 { get; init; }
     }
 
     public static string VoucherStableKey(string companyCd, string periodYm)
@@ -46,37 +49,82 @@ public static class AllocationConfirmPlanner
         return $"ALLOC:{companyCd.Trim()}:{periodYm.Trim()}";
     }
 
+    /// <summary>
+    /// Fingerprint canonical / deterministic — InvariantCulture; đủ nội dung nghiệp vụ bảo vệ.
+    /// </summary>
     public static string BuildContentFingerprint(
         AllocationComputeResult compute,
+        string periodYm,
         int allocateType,
         bool byDepartment,
+        int numberDigit,
+        bool include6212,
         int runVersion)
     {
         ArgumentNullException.ThrowIfNull(compute);
+        if (string.IsNullOrWhiteSpace(periodYm) || periodYm.Trim().Length != 6)
+            throw new ArgumentException("PERIOD_YM phải 6 ký tự.");
+
+        var inv = CultureInfo.InvariantCulture;
         var sb = new StringBuilder();
-        sb.Append("B2|v").Append(runVersion)
-            .Append("|t").Append(allocateType)
-            .Append("|d").Append(byDepartment ? 1 : 0)
-            .Append("|622=").Append(compute.Total622.ToString("0.00"))
-            .Append("|627=").Append(compute.Total627.ToString("0.00"))
-            .Append("|n=").Append(compute.Details.Count);
+        sb.Append("B2|p").Append(periodYm.Trim())
+            .Append("|v").Append(runVersion.ToString(inv))
+            .Append("|t").Append(allocateType.ToString(inv))
+            .Append("|d").Append(byDepartment ? "1" : "0")
+            .Append("|n").Append(numberDigit.ToString(inv))
+            .Append("|i6212=").Append(include6212 ? "1" : "0")
+            .Append("|622=").Append(compute.Total622.ToString("0.00", inv))
+            .Append("|627=").Append(compute.Total627.ToString("0.00", inv))
+            .Append("|pool=").Append(compute.Pool.Count.ToString(inv))
+            .Append("|lines=").Append(compute.Details.Count.ToString(inv));
+
+        foreach (var pool in compute.Pool
+                     .OrderBy(x => x.AccountCd, StringComparer.Ordinal)
+                     .ThenBy(x => x.DepartmentId))
+        {
+            sb.Append("|P:")
+                .Append(pool.AccountCd?.Trim() ?? string.Empty)
+                .Append(':').Append(pool.DepartmentId.ToString(inv))
+                .Append('=')
+                .Append(pool.AllocationCosts.ToString("0.00", inv))
+                .Append('/')
+                .Append(pool.Reduction.ToString("0.00", inv))
+                .Append('/')
+                .Append(pool.TotalAmount.ToString("0.00", inv));
+        }
+
         foreach (var line in compute.Details
                      .OrderBy(x => x.ProductId)
                      .ThenBy(x => x.DepartmentId)
                      .ThenBy(x => x.AccountCd, StringComparer.Ordinal)
                      .ThenBy(x => x.PoolDepartmentId))
         {
-            sb.Append('|').Append(line.ProductId)
-                .Append(':').Append(line.DepartmentId)
-                .Append(':').Append(line.PoolDepartmentId)
-                .Append(':').Append(line.AccountCd)
-                .Append('=').Append(line.AllocatedAmount.ToString("0.00"));
+            sb.Append("|L:")
+                .Append(line.ProductId.ToString(inv))
+                .Append(':').Append(line.DepartmentId.ToString(inv))
+                .Append(':').Append(line.PoolDepartmentId.ToString(inv))
+                .Append(':').Append(line.AccountCd?.Trim() ?? string.Empty)
+                .Append('=')
+                .Append(line.AllocatedAmount.ToString("0.00", inv))
+                .Append(line.IsLastRow ? ":1" : ":0");
         }
 
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())))
             .ToLowerInvariant();
         return hash; // 64 hex
     }
+
+    /// <summary>Tương thích gọi cũ — NumberDigit=0, Include6212=false, PeriodYm bắt buộc qua overload mới.</summary>
+    public static string BuildContentFingerprint(
+        AllocationComputeResult compute,
+        int allocateType,
+        bool byDepartment,
+        int runVersion,
+        string periodYm = "000000",
+        int numberDigit = 0,
+        bool include6212 = false) =>
+        BuildContentFingerprint(
+            compute, periodYm, allocateType, byDepartment, numberDigit, include6212, runVersion);
 
     public static Plan Build(
         string companyCd,
@@ -91,7 +139,9 @@ public static class AllocationConfirmPlanner
         bool byDepartment,
         PersistedHistoryRef? persistedHistoryFromDb,
         string? userId = null,
-        string? clientFingerprint = null)
+        string? clientFingerprint = null,
+        int numberDigit = 0,
+        bool include6212 = false)
     {
         ProductionCostWriteContext.EnsureCompany(companyCd);
         ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
@@ -106,7 +156,8 @@ public static class AllocationConfirmPlanner
 
         var op = HistoryPlan.RequireOperationId(operationId);
         var fp = string.IsNullOrWhiteSpace(clientFingerprint)
-            ? BuildContentFingerprint(compute, allocateType, byDepartment, runVersion)
+            ? BuildContentFingerprint(
+                compute, periodYm.Trim(), allocateType, byDepartment, numberDigit, include6212, runVersion)
             : HistoryPlan.NormalizeContentFingerprint(clientFingerprint, required: true)!;
 
         stepStatuses.TryGetValue(StepCode, out var stepStatus);
@@ -146,12 +197,14 @@ public static class AllocationConfirmPlanner
                 History = null,
                 Compute = compute,
                 AllocateType = allocateType,
-                ByDepartment = byDepartment
+                ByDepartment = byDepartment,
+                NumberDigit = numberDigit,
+                Include6212 = include6212
             };
         }
 
         // Khóa phân bổ: không overwrite pool/detail (trừ khi đã Noop ở trên).
-        AllocLoadGuard.EnsureCanOverwrite(
+        AllocUpsertRules.EnsureCanPersist(
             companyCd, runId, runVersion, runVersion, runStatus, stepStatus);
 
         // AfterAllocationConfirm: DRAFT/… → ALLOC_CONFIRMED; giữ CONFIRMED nếu đã là toàn kỳ (không hạ).
@@ -202,7 +255,9 @@ public static class AllocationConfirmPlanner
             History = historyEntry,
             Compute = compute,
             AllocateType = allocateType,
-            ByDepartment = byDepartment
+            ByDepartment = byDepartment,
+            NumberDigit = numberDigit,
+            Include6212 = include6212
         };
     }
 

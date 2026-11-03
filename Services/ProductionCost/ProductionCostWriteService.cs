@@ -79,29 +79,36 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
 
         ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
         var operationId = ProductionCostWriteContext.RequireOperationId(request.OperationId);
-
-        if (request.DryRun == null)
-        {
-            throw new InvalidOperationException(
-                "Confirm B2 từ DB (load pool/basis) chưa kích hoạt trong 2C-06B. " +
-                "Gửi DryRun payload (cùng AllocationEngine) hoặc chờ Preview-from-DB.");
-        }
-
-        var compute = RunDryAllocation(companyCd, request.DryRun);
-        var allocateType = request.DryRun.AllocateType;
-        var byDepartment = request.DryRun.ByDepartment;
         var runId = request.RunId!.Value;
         var runVersion = request.RunVersion!.Value;
-        var periodYm = request.PeriodYm.Trim();
+        var requestPeriodYm = request.PeriodYm.Trim();
+
+        // Preview-from-DB chưa có: Confirm vẫn phụ thuộc DryRun pool/basis — KHÔNG production-ready.
+        // WriteGate mặc định OFF; không coi nguồn tài chính client là authoritative khi gate ON sau này.
+        var dryRun = request.DryRun
+            ?? throw new InvalidOperationException(
+                "Confirm B2 production-ready (load pool/basis từ DB) chưa kích hoạt. " +
+                "Preview-from-DB pending — không ghi thực tế chỉ bằng DryRun tài chính client. " +
+                "Gửi DryRun chỉ cho unit/DEV gate tạm, hoặc chờ load pool/basis từ DB.");
 
         return await ProductionCostWriteSession.ExecuteAsync(
             _writeRepo,
             databaseName!,
             async (session, _) =>
             {
+                // 1) Lock RUN — assert VERSION trước mọi thay đổi.
                 var locked = await _writeRepo.LockRunForUpdateAsync(session, companyCd, runId)
                     ?? throw new InvalidOperationException("RUN không tồn tại hoặc không thuộc COMPANY_CD.");
                 ProductionCostWriteContext.AssertLockedRunMatches(locked, companyCd, runId, runVersion);
+                AllocationRunConfig.AssertPeriodYmMatches(locked, requestPeriodYm);
+
+                // 2) Cấu hình phân bổ từ RUN DB — không tin DryRun client.
+                var config = AllocationRunConfig.FromLockedRun(locked);
+                AllocationRunConfig.AssertClientDryRunAligned(config, dryRun);
+
+                // 3) Engine: options từ DB; pool/products tạm từ DryRun (pending Preview-from-DB).
+                var compute = RunAllocationWithConfig(companyCd, dryRun, config);
+                var periodYm = config.PeriodYm;
 
                 var steps = await _writeRepo.GetStepStatusesForUpdateAsync(session, companyCd, runId);
                 var persisted = await _writeRepo.GetPersistedHistoryByOperationIdAsync(
@@ -116,11 +123,13 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     steps,
                     operationId,
                     compute,
-                    allocateType,
-                    byDepartment,
+                    config.AllocateType,
+                    config.ByDepartment,
                     persisted,
                     userId,
-                    clientFingerprint: null);
+                    clientFingerprint: null,
+                    numberDigit: config.NumberDigit,
+                    include6212: config.Include6212);
 
                 if (plan.IsNoop)
                 {
@@ -131,8 +140,8 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                         PeriodYm = periodYm,
                         RunId = runId,
                         RunVersion = runVersion,
-                        AllocateType = allocateType,
-                        ByDepartment = byDepartment,
+                        AllocateType = config.AllocateType,
+                        ByDepartment = config.ByDepartment,
                         Pool = compute.Pool,
                         Details = compute.Details,
                         Total622 = compute.Total622,
@@ -142,11 +151,13 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     };
                 }
 
-                // Persist pool + detail trước SP (SP yêu cầu count > 0). Fail → ROLLBACK cả TX.
+                // Persist UPSERT trước SP. Fail bất kỳ bước → ROLLBACK cả TX.
                 await _writeRepo.ReplaceAllocPoolAsync(
-                    session, companyCd, runId, runVersion, compute.Pool, userId);
+                    session, companyCd, runId, runVersion, compute.Pool, userId,
+                    locked.Status, locked.RunVersion);
                 await _writeRepo.ReplaceAllocDetailAsync(
-                    session, companyCd, runId, runVersion, compute.Details, userId);
+                    session, companyCd, runId, runVersion, compute.Details, userId,
+                    locked.Status, locked.RunVersion);
 
                 var spResult = await _writeRepo.CallAllocConfirmAsync(
                     session, companyCd, runId, runVersion, userId);
@@ -180,8 +191,8 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     PeriodYm = periodYm,
                     RunId = runId,
                     RunVersion = runVersion,
-                    AllocateType = allocateType,
-                    ByDepartment = byDepartment,
+                    AllocateType = config.AllocateType,
+                    ByDepartment = config.ByDepartment,
                     Pool = compute.Pool,
                     Details = compute.Details,
                     Total622 = compute.Total622,
@@ -189,7 +200,8 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     IdempotencyAction = hist.IdempotencyAction,
                     Message =
                         $"Confirm B2 OK — RUN={GkRunStatus.AllocConfirmed}; SP={spResult}; " +
-                        "không tạo N154; không CONFIRMED toàn kỳ."
+                        "không tạo N154; không CONFIRMED toàn kỳ. " +
+                        "NOT production-ready: pool/basis vẫn từ DryRun (Preview-from-DB pending)."
                 };
             });
     }
@@ -353,19 +365,45 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         if (dryRun.AllocateType is not (0 or 1))
             throw new ArgumentException("AllocateType must be 0 or 1.");
 
-        // Lọc 6212 khỏi pool nếu Include6212=false
-        var pool = dryRun.Pool
-            .Where(p => PoolAccountRules.IsAllocatableAccount(p.AccountCd, dryRun.Include6212))
+        return RunAllocationWithConfig(
+            companyCd,
+            dryRun,
+            new AllocationRunConfig
+            {
+                PeriodYm = "000000",
+                AllocateType = dryRun.AllocateType,
+                ByDepartment = dryRun.ByDepartment,
+                NumberDigit = dryRun.NumberDigit,
+                Include6212 = dryRun.Include6212
+            });
+    }
+
+    /// <summary>
+    /// AllocationEngine với cấu hình authoritative (Confirm = từ RUN DB).
+    /// Không đổi công thức phân bổ.
+    /// </summary>
+    public static AllocationComputeResult RunAllocationWithConfig(
+        string companyCd,
+        AllocationDryRunPayload source,
+        AllocationRunConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(config);
+        if (config.AllocateType is not (0 or 1))
+            throw new ArgumentException("AllocateType must be 0 or 1.");
+
+        var pool = source.Pool
+            .Where(p => PoolAccountRules.IsAllocatableAccount(p.AccountCd, config.Include6212))
             .ToList();
 
         return AllocationEngine.Run(
             pool,
-            dryRun.Products.ToList(),
+            source.Products.ToList(),
             new AllocationEngineOptions
             {
-                AllocateType = dryRun.AllocateType,
-                ByDepartment = dryRun.ByDepartment,
-                NumberDigit = dryRun.NumberDigit,
+                AllocateType = config.AllocateType,
+                ByDepartment = config.ByDepartment,
+                NumberDigit = config.NumberDigit,
                 CompanyCd = companyCd
             });
     }

@@ -64,23 +64,34 @@ public interface IProductionCostWriteRepository
 
     // ---- 2C-06B Allocation Confirm (B2) ----
 
-    /// <summary>Ghi đè pool phiên hiện tại (soft-delete cũ + INSERT). Không Commit.</summary>
+    /// <summary>
+    /// UPSERT pool theo UNIQUE (RUN_ID, RUN_VERSION, ACCOUNT_CD, DEPARTMENT_ID).
+    /// Soft-delete khóa không còn trong kết quả mới. Không ghi đè RUN_VERSION khác.
+    /// Chặn khi RUN.STATUS=ALLOC_CONFIRMED/CONFIRMED. Không Commit.
+    /// </summary>
     Task ReplaceAllocPoolAsync(
         DapperSession session,
         string companyCd,
         long runId,
         int runVersion,
         IReadOnlyList<AllocationPoolInput> pool,
-        string? userId);
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion);
 
-    /// <summary>Ghi đè alloc_detail theo UNIQUE key. Không Commit.</summary>
+    /// <summary>
+    /// UPSERT alloc_detail theo UNIQUE nghiệp vụ. Soft-delete khóa thiếu.
+    /// Chặn khi RUN.STATUS=ALLOC_CONFIRMED/CONFIRMED. Không Commit.
+    /// </summary>
     Task ReplaceAllocDetailAsync(
         DapperSession session,
         string companyCd,
         long runId,
         int runVersion,
         IReadOnlyList<AllocationLineResult> details,
-        string? userId);
+        string? userId,
+        string? runStatus,
+        int lockedRunVersion);
 
     /// <summary>
     /// CALL sp_pc_alloc_confirm — SP không START/COMMIT; không ghi history (C# sở hữu history).
