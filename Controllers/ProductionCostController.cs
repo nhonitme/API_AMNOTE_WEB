@@ -137,6 +137,70 @@ public sealed class ProductionCostController : BaseApiController
 
     // ---- 2C-02 write (mặc định chặn ghi DB) ----
 
+    /// <summary>POST /api/production-cost/period/ensure</summary>
+    [HttpPost("period/ensure")]
+    public async Task<IActionResult> EnsurePeriod([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.EnsureDraftRunAsync(
+            CompanyCd(), UserIdOrNull(), request?.PeriodYm ?? string.Empty, DbName()));
+    }
+
+    /// <summary>PUT /api/production-cost/run/config</summary>
+    [HttpPut("run/config")]
+    public async Task<IActionResult> UpdateRunConfig([FromBody] ProductionCostRunConfigUpdate? request)
+    {
+        return await WriteAsync(async () =>
+        {
+            await _writeService.UpdateRunConfigAsync(CompanyCd(), UserIdOrNull(), request ?? new ProductionCostRunConfigUpdate(), DbName());
+            return new { Saved = true };
+        });
+    }
+
+    /// <summary>PUT /api/production-cost/objects/selection</summary>
+    [HttpPut("objects/selection")]
+    public async Task<IActionResult> UpdateObjectSelection([FromBody] ProductionCostObjectSelectionUpdate? request)
+    {
+        return await WriteAsync(async () =>
+        {
+            await _writeService.UpdateObjectSelectionAsync(CompanyCd(), UserIdOrNull(), request ?? new ProductionCostObjectSelectionUpdate(), DbName());
+            return new { Saved = true };
+        });
+    }
+
+    /// <summary>POST /api/production-cost/objects/sync-receipts</summary>
+    [HttpPost("objects/sync-receipts")]
+    public async Task<IActionResult> SyncObjects([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.SyncObjectsFromReceiptsAsync(
+            CompanyCd(),
+            UserIdOrNull(),
+            request?.RunId ?? 0,
+            request?.RunVersion ?? 0,
+            DbName()));
+    }
+
+    /// <summary>PUT /api/production-cost/allocation/reduction</summary>
+    [HttpPut("allocation/reduction")]
+    public async Task<IActionResult> UpdateReduction([FromBody] ProductionCostPoolReductionUpdate? request)
+    {
+        return await WriteAsync(async () =>
+        {
+            await _writeService.UpdatePoolReductionAsync(CompanyCd(), UserIdOrNull(), request ?? new ProductionCostPoolReductionUpdate(), DbName());
+            return new { Saved = true };
+        });
+    }
+
+    /// <summary>PUT /api/production-cost/wip/adjustment</summary>
+    [HttpPut("wip/adjustment")]
+    public async Task<IActionResult> SaveWipAdjustment([FromBody] ProductionCostWipAdjustmentUpdate? request)
+    {
+        return await WriteAsync(async () =>
+        {
+            await _writeService.SaveWipAdjustmentAsync(CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWipAdjustmentUpdate(), DbName());
+            return new { Saved = true };
+        });
+    }
+
     /// <summary>POST /api/production-cost/allocation/preview</summary>
     [HttpPost("allocation/preview")]
     public async Task<IActionResult> PreviewAllocation([FromBody] ProductionCostWriteRequest? request)

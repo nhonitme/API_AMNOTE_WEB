@@ -71,6 +71,24 @@ public interface IProductionCostWriteService
         ProductionCostWriteRequest request,
         string? databaseName = null);
 
+    Task<ProductionCostEnsureResult> EnsureDraftRunAsync(
+        string companyCd, string? userId, string periodYm, string? databaseName = null);
+
+    Task UpdateRunConfigAsync(
+        string companyCd, string? userId, ProductionCostRunConfigUpdate update, string? databaseName = null);
+
+    Task UpdateObjectSelectionAsync(
+        string companyCd, string? userId, ProductionCostObjectSelectionUpdate update, string? databaseName = null);
+
+    Task<int> SyncObjectsFromReceiptsAsync(
+        string companyCd, string? userId, long runId, int runVersion, string? databaseName = null);
+
+    Task UpdatePoolReductionAsync(
+        string companyCd, string? userId, ProductionCostPoolReductionUpdate update, string? databaseName = null);
+
+    Task SaveWipAdjustmentAsync(
+        string companyCd, string? userId, ProductionCostWipAdjustmentUpdate update, string? databaseName = null);
+
     Task<ProductionCostLifecycleWriteResponse> PreviewCompareAsync(
         string companyCd,
         string? userId,

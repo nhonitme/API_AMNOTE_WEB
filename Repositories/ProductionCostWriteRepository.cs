@@ -16,23 +16,23 @@ namespace API_AMNOTE_WEB.Repositories;
 /// 2C-06A: session, lock run, history idempotency. Confirm B2–B5 = 2C-06B+.
 /// B5 inventory INPUT_ID apply: <see cref="SupportsInputIdSafeInventoryUpdate"/> = false đến khi DEV bàn giao SQL.
 /// </summary>
-public sealed class ProductionCostWriteRepository : IProductionCostWriteRepository
+public sealed partial class ProductionCostWriteRepository : IProductionCostWriteRepository
 {
     private readonly DapperExecutor _db;
 
     /// <inheritdoc />
     /// <remarks>
-    /// Production chưa có UPDATE chit_inventory_input theo INPUT_ID+COMPANY_CD an toàn
-    /// (không dùng apply_inventory_update_in_price PRODUCT_CD). Confirm B5 bị chặn.
+    /// SQL theo INPUT_ID+COMPANY_CD nằm ở <c>ProductionCostWriteRepository.ValuationApply</c>.
+    /// Thiếu bảng audit / lệch QTY / kỳ khóa → throw và rollback, không báo thành công.
     /// </remarks>
-    public bool SupportsInputIdSafeInventoryUpdate => false;
+    public bool SupportsInputIdSafeInventoryUpdate => true;
 
     /// <inheritdoc />
     /// <remarks>
-    /// Production chưa có reverse EXP_TO_154 / IS_APPLIED / giá kho / 632 trong cùng TX.
-    /// REOPEN cascade đụng side-effect → bị <see cref="ReopenImpactGuard"/> chặn.
+    /// Reverse giá/chứng từ G-K trong cùng TX. Không hoàn nguyên được (giá đã lệch snapshot,
+    /// PeriodLock B1/B6 đang DONE) thì throw — không đánh dấu REOPEN thành công.
     /// </remarks>
-    public bool SupportsSafeReopenSideEffectReverse => false;
+    public bool SupportsSafeReopenSideEffectReverse => true;
 
     public ProductionCostWriteRepository(DapperExecutor db)
     {
@@ -1243,79 +1243,7 @@ LIMIT 1";
         return row is > 0;
     }
 
-    public Task<InventoryInputValuationRow?> GetInventoryInputByInputIdAsync(
-        DapperSession session,
-        string companyCd,
-        long inputId)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        ProductionCostWriteContext.EnsureCompany(companyCd);
-        // Skeleton: SELECT prepared nhưng Confirm bị chặn bởi SupportsInputIdSafeInventoryUpdate=false.
-        // DEV: implement FOR UPDATE theo INPUT_ID + COMPANY_CD (không PRODUCT_CD bulk).
-        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
-    }
-
-    public Task ApplyInventoryInputPriceByInputIdAsync(
-        DapperSession session,
-        string companyCd,
-        ValuationPriceApplyPlanLine line,
-        string? userId)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(line);
-        ProductionCostWriteContext.EnsureCompany(companyCd);
-        ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(SupportsInputIdSafeInventoryUpdate);
-        // Unreachable until SupportsInputIdSafeInventoryUpdate=true + SQL INPUT_ID bàn giao.
-        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
-    }
-
-    public Task ApplyInventoryOutPricesAsync(
-        DapperSession session,
-        string companyCd,
-        string periodYm,
-        IReadOnlyList<ValuationAverageResult> afterGroups,
-        string? userId)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(afterGroups);
-        ProductionCostWriteContext.EnsureCompany(companyCd);
-        ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(SupportsInputIdSafeInventoryUpdate);
-        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
-    }
-
-    public Task UpsertValuationCogsAsync(
-        DapperSession session,
-        string companyCd,
-        string periodYm,
-        long runId,
-        int runVersion,
-        long? existingChitId,
-        IReadOnlyList<Cogs632PreviewLine> cogs,
-        string? userId)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(cogs);
-        ProductionCostWriteContext.EnsureCompany(companyCd);
-        // Chặn post 632 thật — cùng capability gate với apply kho INPUT_ID.
-        ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(SupportsInputIdSafeInventoryUpdate);
-        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
-    }
-
-    public Task MarkReceiptsAppliedAsync(
-        DapperSession session,
-        string companyCd,
-        long runId,
-        int runVersion,
-        IReadOnlyList<long> inputIds,
-        string? userId)
-    {
-        ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(inputIds);
-        ProductionCostWriteContext.EnsureCompany(companyCd);
-        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
-        ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(SupportsInputIdSafeInventoryUpdate);
-        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
-    }
+    // INPUT_ID / giá xuất / VALUATION_COGS / IS_APPLIED: ProductionCostWriteRepository.ValuationApply.cs
 
     public async Task<ReopenSideEffectSnapshot> ProbeReopenSideEffectsAsync(
         DapperSession session,

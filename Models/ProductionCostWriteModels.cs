@@ -35,6 +35,72 @@ public sealed class AllocationDryRunPayload
     public IReadOnlyList<AllocationProductInput> Products { get; set; } = Array.Empty<AllocationProductInput>();
 }
 
+public sealed class ProductionCostEnsureResult
+{
+    public bool Created { get; set; }
+    public long? PeriodCostId { get; set; }
+    public long? RunId { get; set; }
+    public int? RunVersion { get; set; }
+    public string PeriodYm { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+}
+
+public sealed class ProductionCostRunConfigUpdate
+{
+    public string PeriodYm { get; set; } = string.Empty;
+    public long RunId { get; set; }
+    public int RunVersion { get; set; }
+    public int? AllocateType { get; set; }
+    public bool? ByDepartment { get; set; }
+    public bool? Include6212 { get; set; }
+    public int? NumberDigit { get; set; }
+    public string? WipMethod { get; set; }
+    public string? IncompleteMode { get; set; }
+    public decimal? IncompletePercent { get; set; }
+    public bool? EnableProductReduce { get; set; }
+    public string? ValuationMethod { get; set; }
+}
+
+public sealed class ProductionCostObjectSelectionItem
+{
+    public long DepartmentId { get; set; }
+    public long ProductId { get; set; }
+    public bool Selected { get; set; }
+}
+
+public sealed class ProductionCostObjectSelectionUpdate
+{
+    public string PeriodYm { get; set; } = string.Empty;
+    public long RunId { get; set; }
+    public int RunVersion { get; set; }
+    public long DepartmentId { get; set; }
+    public long ProductId { get; set; }
+    public bool Selected { get; set; }
+}
+
+public sealed class ProductionCostPoolReductionUpdate
+{
+    public string PeriodYm { get; set; } = string.Empty;
+    public long RunId { get; set; }
+    public int RunVersion { get; set; }
+    public string AccountCd { get; set; } = string.Empty;
+    public long DepartmentId { get; set; }
+    public decimal Reduction { get; set; }
+}
+
+public sealed class ProductionCostWipAdjustmentUpdate
+{
+    public string PeriodYm { get; set; } = string.Empty;
+    public long RunId { get; set; }
+    public int RunVersion { get; set; }
+    public long ProductId { get; set; }
+    public long DepartmentId { get; set; }
+    public decimal? PercentCompleted { get; set; }
+    public decimal? ClosingIncompleteQty { get; set; }
+    public decimal? ProductReduce { get; set; }
+    public decimal? IncompleteQtyOpening { get; set; }
+}
+
 public sealed class ProductionCostAllocationWriteResponse
 {
     public bool WriteEnabled { get; set; }

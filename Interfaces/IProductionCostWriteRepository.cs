@@ -77,6 +77,50 @@ public interface IProductionCostWriteRepository
         ProductionCostHistoryInsert insert,
         string databaseName);
 
+    // ---- Authoritative DB loaders (Preview/Confirm B2 + B4) ----
+
+    /// <summary>
+    /// Load nguồn tài chính B2 từ DB trong TX hiện tại (sau <c>LockRunForUpdate</c>).
+    /// RUN DRAFT/PREVIEWED/REOPENED: CALL <c>sp_pc_alloc_load_pool</c> (rebuild pool version làm việc),
+    /// basis NVL qua <c>sp_pc_nvl_basis_build</c> (type 0) hoặc SELECT SL N155/C154 (type 1).
+    /// RUN ALLOC_CONFIRMED/CONFIRMED: đọc lại snapshot pool/detail đã persist (không rebuild).
+    /// Cấu hình (AllocateType/ByDepartment/NumberDigit/Include6212) lấy từ <paramref name="lockedRun"/>.
+    /// Throw <see cref="InvalidOperationException"/> khi thiếu SP/bảng hoặc dữ liệu rỗng — không trả fake success.
+    /// </summary>
+    Task<AllocationDryRunPayload> LoadAllocationDryRunFromDbAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        ProductionCostRunDto lockedRun,
+        string? userId);
+
+    /// <summary>
+    /// Load nguồn B4 (COST_CALC) từ DB trong TX hiện tại — chỉ SELECT, không ghi:
+    /// đối tượng chọn, opening (WIP CK kỳ trước), SL TP hoàn thành, cấu hình dở dang cuối kỳ,
+    /// nguồn SRC_621/6212/622/627/154_DIRECT (loại XFER_EXP_TO_154), phiếu nhập theo INPUT_ID.
+    /// Config WIP lấy từ <paramref name="lockedRun"/>.
+    /// </summary>
+    Task<WipDryRunPayload> LoadWipDryRunFromDbAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        ProductionCostRunDto lockedRun,
+        string? userId);
+
+    /// <summary>
+    /// Load receipt B4, WIP đã xác nhận, chuyển động kho và chứng từ VALUATION_COGS.
+    /// Không dùng ValuationDryRun tài chính của client.
+    /// </summary>
+    Task<ValuationDryRunPayload> LoadValuationDryRunFromDbAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        ProductionCostRunDto lockedRun,
+        string? userId);
+
     // ---- 2C-06B Allocation Confirm (B2) ----
 
     /// <summary>
@@ -336,4 +380,54 @@ public interface IProductionCostWriteRepository
         IReadOnlyList<string> cascadeReverse,
         string? userId,
         DateTime? actionAtUtc = null);
+
+    /// <summary>
+    /// Hoàn giá kho theo snapshot audit và soft-delete chứng từ G-K trong cùng TX.
+    /// Không xóa snapshot RUN_VERSION. Không hoàn nguyên được thì throw.
+    /// </summary>
+    Task ReverseReopenSideEffectsAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        long runId,
+        int runVersion,
+        IReadOnlyList<string> cascadeReverse,
+        string? userId);
+
+    Task<ProductionCostEnsureResult> EnsureDraftRunAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        string? userId);
+
+    Task UpdateRunConfigAsync(
+        DapperSession session,
+        string companyCd,
+        ProductionCostRunConfigUpdate update,
+        string? userId);
+
+    Task UpdateObjectSelectionAsync(
+        DapperSession session,
+        string companyCd,
+        ProductionCostObjectSelectionUpdate update,
+        string? userId);
+
+    Task<int> SyncObjectsFromReceiptsAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        string? userId);
+
+    Task UpdatePoolReductionAsync(
+        DapperSession session,
+        string companyCd,
+        ProductionCostPoolReductionUpdate update,
+        string? userId);
+
+    Task SaveWipAdjustmentAsync(
+        DapperSession session,
+        string companyCd,
+        ProductionCostWipAdjustmentUpdate update,
+        string? userId);
 }

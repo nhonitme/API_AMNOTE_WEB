@@ -8,7 +8,7 @@ public static class CostCalcConfirmSourceGuard
 {
     public const string BlockReason =
         "Confirm B4 bị chặn: nguồn tính giá thành chưa authoritative từ DB " +
-        "(load objects/source/receipt/opening pending). " +
+        "(không load được objects/source/receipt/opening từ DB). " +
         "Không ghi thật chỉ bằng WipDryRun client — guard độc lập EnableWrites.";
 
     /// <summary>

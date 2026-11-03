@@ -13,7 +13,7 @@ namespace API_AMNOTE_WEB.Services.ProductionCost;
 /// Preview dry-run thuần; Confirm B2–B5 + REOPEN dùng TX C# khi EnableWrites
 /// (B5 INPUT_ID + REOPEN reverse capability-gated).
 /// </summary>
-public sealed class ProductionCostWriteService : IProductionCostWriteService
+public sealed partial class ProductionCostWriteService : IProductionCostWriteService
 {
     private readonly IProductionCostWriteGate _gate;
     private readonly IProductionCostWriteRepository _writeRepo;
@@ -46,15 +46,9 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         EnsureAuth(companyCd);
         ValidatePeriod(request);
 
-        // Preview: tính thử thuần nếu có DryRun — không ghi DB dù gate mở hay đóng.
+        // Payload client chỉ để tính thử thuần (unit test). UI production không gửi DryRun.
         if (request.DryRun == null)
-        {
-            _gate.EnsureWritable();
-            // Khi EnableWrites=true: sẽ load pool/basis từ DB rồi tính + ghi DRAFT (2C-02b / sau nghiệm thu 2B).
-            throw new InvalidOperationException(
-                "Preview allocation từ DB chưa kích hoạt trong 2C-02. " +
-                "Gửi DryRun payload để tính thử thuần, hoặc chờ bật ghi sau nghiệm thu 2B.");
-        }
+            return PreviewAllocationFromDatabaseAsync(companyCd, userId, request, databaseName);
 
         var result = RunDryAllocation(companyCd, request.DryRun);
         ConfirmIdempotency.AssertPreviewDoesNotOverwriteConfirmed(
@@ -89,23 +83,17 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         _gate.EnsureWritable();
         ProductionCostWriteContext.EnsureDatabase(databaseName);
 
-        // Guard độc lập EnableWrites: chưa có pool/basis từ DB → không ghi thật.
-        // Preview-from-DB pending → poolBasisLoadedFromDb=false (trừ unit-test hook).
-        var poolBasisLoadedFromDb = false;
-        if (!_allowNonAuthoritativeFinancialPersistForTests)
-            AllocationConfirmSourceGuard.EnsureAuthoritativeFinancialSource(poolBasisLoadedFromDb);
-
         ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
         var operationId = ProductionCostWriteContext.RequireOperationId(request.OperationId);
         var runId = request.RunId!.Value;
         var runVersion = request.RunVersion!.Value;
         var requestPeriodYm = request.PeriodYm.Trim();
-
-        // Preview-from-DB chưa có: DryRun pool/products chỉ cho phép khi test hook bật.
-        var dryRun = request.DryRun
-            ?? throw new InvalidOperationException(
-                "Confirm B2 production-ready (load pool/basis từ DB) chưa kích hoạt. " +
-                "Preview-from-DB pending — không ghi thực tế chỉ bằng DryRun tài chính client.");
+        var useDatabaseSource = !_allowNonAuthoritativeFinancialPersistForTests;
+        if (!useDatabaseSource && request.DryRun == null)
+        {
+            throw new InvalidOperationException(
+                "Confirm B2 test hook yêu cầu DryRun. Production load pool/basis từ DB.");
+        }
 
         return await ProductionCostWriteSession.ExecuteAsync(
             _writeRepo,
@@ -120,10 +108,21 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
 
                 // 2) Cấu hình phân bổ từ RUN DB — không tin DryRun client.
                 var config = AllocationRunConfig.FromLockedRun(locked);
-                AllocationRunConfig.AssertClientDryRunAligned(config, dryRun);
+                AllocationDryRunPayload source;
+                if (useDatabaseSource)
+                {
+                    source = await _writeRepo.LoadAllocationDryRunFromDbAsync(
+                        session, companyCd, runId, runVersion, locked, userId);
+                    AllocationConfirmSourceGuard.EnsureAuthoritativeFinancialSource(
+                        AllocationSourceProvenance.IsAuthoritative(source));
+                }
+                else
+                {
+                    source = request.DryRun!;
+                    AllocationRunConfig.AssertClientDryRunAligned(config, source);
+                }
 
-                // 3) Engine: options từ DB; pool/products tạm từ DryRun (pending Preview-from-DB).
-                var compute = RunAllocationWithConfig(companyCd, dryRun, config);
+                var compute = RunAllocationWithConfig(companyCd, source, config);
                 var periodYm = config.PeriodYm;
 
                 var steps = await _writeRepo.GetStepStatusesForUpdateAsync(session, companyCd, runId);
@@ -214,10 +213,11 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     Total622 = compute.Total622,
                     Total627 = compute.Total627,
                     IdempotencyAction = hist.IdempotencyAction,
-                    Message =
-                        $"Confirm B2 OK — RUN={GkRunStatus.AllocConfirmed}; SP={spResult}; " +
-                        "không tạo N154; không CONFIRMED toàn kỳ. " +
-                        "NOT production-ready: pool/basis vẫn từ DryRun (Preview-from-DB pending)."
+                    Message = useDatabaseSource
+                        ? $"Confirm B2 OK — nguồn pool/basis từ DB; RUN={GkRunStatus.AllocConfirmed}; SP={spResult}; không tạo N154; không CONFIRMED toàn kỳ."
+                        : $"Confirm B2 OK — RUN={GkRunStatus.AllocConfirmed}; SP={spResult}; " +
+                          "không tạo N154; không CONFIRMED toàn kỳ. " +
+                          "NOT production-ready: pool/basis vẫn từ DryRun (test hook)."
                 };
             });
     }
@@ -416,12 +416,7 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         ValidatePeriod(request);
 
         if (request.WipDryRun == null)
-        {
-            _gate.EnsureWritable();
-            throw new InvalidOperationException(
-                "Preview COST_CALC từ DB chưa kích hoạt trong 2C-03. " +
-                "Gửi WipDryRun payload để tính thử thuần.");
-        }
+            return PreviewCostCalcFromDatabaseAsync(companyCd, userId, request, databaseName);
 
         var response = RunDryWip(request);
         response.WriteEnabled = _gate.IsWriteEnabled;
@@ -446,27 +441,19 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         _gate.EnsureWritable();
         ProductionCostWriteContext.EnsureDatabase(databaseName);
 
-        // Guard độc lập EnableWrites: chưa load nguồn GT từ DB → không ghi thật.
-        // Preview-from-DB / source rebuild pending → costCalcSourceLoadedFromDb=false
-        // (trừ unit-test hook dùng WipDryRun).
-        var costCalcSourceLoadedFromDb = false;
-        if (!_allowNonAuthoritativeFinancialPersistForTests)
-            CostCalcConfirmSourceGuard.EnsureAuthoritativeFinancialSource(costCalcSourceLoadedFromDb);
-
         ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
         var operationId = ProductionCostWriteContext.RequireOperationId(request.OperationId);
         var runId = request.RunId!.Value;
         var runVersion = request.RunVersion!.Value;
         var requestPeriodYm = request.PeriodYm.Trim();
-
-        // Nguồn tài chính tạm từ WipDryRun chỉ khi test hook — production bị guard ở trên.
-        var dryRun = request.WipDryRun
-            ?? throw new InvalidOperationException(
-                "Confirm B4 production-ready (load objects/source/receipt từ DB) chưa kích hoạt. " +
-                "Preview-from-DB / source rebuild pending — không ghi thực tế chỉ bằng WipDryRun client.");
-
-        if (dryRun.Products.Count == 0)
-            throw new ArgumentException("WipDryRun.Products không được rỗng.");
+        var useDatabaseSource = !_allowNonAuthoritativeFinancialPersistForTests;
+        if (!useDatabaseSource)
+        {
+            if (request.WipDryRun == null)
+                throw new InvalidOperationException("Confirm B4 test hook yêu cầu WipDryRun.");
+            if (request.WipDryRun.Products.Count == 0)
+                throw new ArgumentException("WipDryRun.Products không được rỗng.");
+        }
 
         return await ProductionCostWriteSession.ExecuteAsync(
             _writeRepo,
@@ -483,18 +470,28 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                 ProductionCostWriteContext.AssertPeriodCurrentRunMatches(
                     locked, period, companyCd, runId, locked.PeriodYm.Trim());
 
-                // Config WIP từ RUN DB — không tin WipDryRun cho method/mode/reduce.
                 var config = WipRunConfig.FromLockedRun(locked);
-                WipRunConfig.AssertClientDryRunAligned(config, dryRun);
+                WipDryRunPayload dryRun;
+                if (useDatabaseSource)
+                {
+                    dryRun = await _writeRepo.LoadWipDryRunFromDbAsync(
+                        session, companyCd, runId, runVersion, locked, userId);
+                    CostCalcConfirmSourceGuard.EnsureAuthoritativeFinancialSource(
+                        WipSourceProvenance.IsAuthoritative(dryRun));
+                }
+                else
+                {
+                    dryRun = request.WipDryRun!;
+                    WipRunConfig.AssertClientDryRunAligned(config, dryRun);
+                }
+
                 var periodYm = config.PeriodYm;
 
-                // Nguồn incurred: Sources client (test) hoặc Amount* trên Products; loại XFER.
                 var sources = dryRun.Sources.Count > 0
                     ? CostSourceRules.FilterForIncurred(dryRun.Sources).ToList()
                     : WipUpsertRules.SourcesFromProductAmounts(dryRun.Products).ToList();
                 CostSourceRules.AssertNoTransferInIncurred(sources);
 
-                // Products đưa vào engine: Amount*=0 khi có Sources để tránh cộng trùng.
                 var productsForEngine = dryRun.Sources.Count > 0
                     ? dryRun.Products.Select(ClearAmounts).ToList()
                     : dryRun.Products.ToList();
@@ -616,9 +613,13 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     Cogs632Posted = false,
                     IdempotencyAction = hist.IdempotencyAction,
                     Message =
-                        "Confirm B4 OK — COST_CALC=DONE; source/wip/receipt theo RUN_VERSION; " +
-                        $"RUN={expectedStatus}; không apply giá kho; không post 632; không CONFIRMED toàn kỳ. " +
-                        "NOT production-ready: nguồn tài chính vẫn từ WipDryRun (Preview-from-DB / source rebuild pending)."
+                        (useDatabaseSource
+                            ? "Confirm B4 OK — nguồn 621/622/627/154/WIP/receipt từ DB; COST_CALC=DONE; "
+                            : "Confirm B4 OK — COST_CALC=DONE; source/wip/receipt theo RUN_VERSION; ") +
+                        $"RUN={expectedStatus}; không apply giá kho; không post 632; không CONFIRMED toàn kỳ." +
+                        (useDatabaseSource
+                            ? string.Empty
+                            : " NOT production-ready: nguồn tài chính vẫn từ WipDryRun (test hook).")
                 };
             });
     }
@@ -656,11 +657,7 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         ValidatePeriod(request);
 
         if (request.ValuationDryRun == null)
-        {
-            _gate.EnsureWritable();
-            throw new InvalidOperationException(
-                "Preview VALUATION từ DB chưa kích hoạt trong 2C-04. Gửi ValuationDryRun payload.");
-        }
+            return PreviewValuationFromDatabaseAsync(companyCd, userId, request, databaseName);
 
         var response = RunDryValuation(companyCd, request);
         response.WriteEnabled = _gate.IsWriteEnabled;
@@ -688,13 +685,6 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         _gate.EnsureWritable();
         ProductionCostWriteContext.EnsureDatabase(databaseName);
 
-        // Guard độc lập EnableWrites: chưa load nguồn valuation từ DB → không ghi thật.
-        // Preview-from-DB pending → valuationSourceLoadedFromDb=false (trừ unit-test hook).
-        var valuationSourceLoadedFromDb = false;
-        if (!_allowNonAuthoritativeFinancialPersistForTests)
-            ValuationConfirmSourceGuard.EnsureAuthoritativeFinancialSource(valuationSourceLoadedFromDb);
-
-        // Capability: UPDATE INPUT_ID an toàn — production repo = false → Confirm blocked.
         ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(
             _writeRepo.SupportsInputIdSafeInventoryUpdate);
 
@@ -703,19 +693,18 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         var runId = request.RunId!.Value;
         var runVersion = request.RunVersion!.Value;
         var requestPeriodYm = request.PeriodYm.Trim();
-
-        // Nguồn tạm từ ValuationDryRun chỉ khi test hook — production bị guard ở trên.
-        var dryRun = request.ValuationDryRun
-            ?? throw new InvalidOperationException(
-                "Confirm B5 production-ready (load receipt/movements/WIP từ DB) chưa kích hoạt. " +
-                "Preview-from-DB pending — không ghi thực tế chỉ bằng ValuationDryRun client.");
-
-        if (dryRun.ConfirmedWip.Count == 0)
-            throw new ArgumentException("ValuationDryRun.ConfirmedWip không được rỗng.");
-        if (dryRun.Receipts.Count == 0)
-            throw new ArgumentException("ValuationDryRun.Receipts không được rỗng.");
-        if (dryRun.Movements.Count == 0)
-            throw new ArgumentException("ValuationDryRun.Movements không được rỗng.");
+        var useDatabaseSource = !_allowNonAuthoritativeFinancialPersistForTests;
+        if (!useDatabaseSource)
+        {
+            if (request.ValuationDryRun == null)
+                throw new InvalidOperationException("Confirm B5 test hook yêu cầu ValuationDryRun.");
+            if (request.ValuationDryRun.ConfirmedWip.Count == 0)
+                throw new ArgumentException("ValuationDryRun.ConfirmedWip không được rỗng.");
+            if (request.ValuationDryRun.Receipts.Count == 0)
+                throw new ArgumentException("ValuationDryRun.Receipts không được rỗng.");
+            if (request.ValuationDryRun.Movements.Count == 0)
+                throw new ArgumentException("ValuationDryRun.Movements không được rỗng.");
+        }
 
         return await ProductionCostWriteSession.ExecuteAsync(
             _writeRepo,
@@ -733,6 +722,19 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     locked, period, companyCd, runId, locked.PeriodYm.Trim());
 
                 var periodYm = locked.PeriodYm.Trim();
+                ValuationDryRunPayload dryRun;
+                if (useDatabaseSource)
+                {
+                    dryRun = await _writeRepo.LoadValuationDryRunFromDbAsync(
+                        session, companyCd, runId, runVersion, locked, userId);
+                    ValuationConfirmSourceGuard.EnsureAuthoritativeFinancialSource(
+                        ValuationSourceProvenance.IsAuthoritative(dryRun));
+                }
+                else
+                {
+                    dryRun = request.ValuationDryRun!;
+                }
+
                 var valuationMethod = string.IsNullOrWhiteSpace(dryRun.ValuationMethod)
                     ? GkValuationMethod.PeriodEndAverage
                     : dryRun.ValuationMethod.Trim();
@@ -916,9 +918,10 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     IdempotencyAction = hist.IdempotencyAction,
                     Message =
                         "Confirm B5 OK — VALUATION=DONE; apply INPUT_ID + tính xuất + UPSERT VALUATION_COGS; " +
-                        $"RUN={expectedStatus}; không CONFIRMED toàn kỳ. " +
-                        "NOT production-ready: nguồn vẫn từ ValuationDryRun; " +
-                        "SQL INPUT_ID / post 632 thật pending DEV (SupportsInputIdSafeInventoryUpdate)."
+                        $"RUN={expectedStatus}; không CONFIRMED toàn kỳ." +
+                        (useDatabaseSource
+                            ? " Nguồn receipt/WIP/movement từ DB."
+                            : " NOT production-ready: nguồn vẫn từ ValuationDryRun (test hook).")
                 };
             });
     }
@@ -1250,6 +1253,24 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     plan.Reopen.CascadeReverse,
                     effects,
                     _writeRepo.SupportsSafeReopenSideEffectReverse);
+
+                if (_writeRepo.SupportsSafeReopenSideEffectReverse
+                    && (effects.HasExternalSideEffects
+                        || plan.Reopen.CascadeReverse.Any(s =>
+                            string.Equals(GkStepOrder.Normalize(s), ProductionCostStepCode.FaPrepaidLock, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(GkStepOrder.Normalize(s), ProductionCostStepCode.ProfitLossReport, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(GkStepOrder.Normalize(s), ProductionCostStepCode.ExpTo154Only, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(GkStepOrder.Normalize(s), ProductionCostStepCode.Valuation, StringComparison.OrdinalIgnoreCase))))
+                {
+                    await _writeRepo.ReverseReopenSideEffectsAsync(
+                        session,
+                        companyCd,
+                        periodYm,
+                        runId,
+                        locked.RunVersion,
+                        plan.Reopen.CascadeReverse,
+                        userId);
+                }
 
                 await _writeRepo.PersistReopenAsync(
                     session,

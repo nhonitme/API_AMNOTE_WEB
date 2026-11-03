@@ -7,7 +7,8 @@ namespace API_AMNOTE_WEB.Services.ProductionCost.Allocation;
 public static class AllocationConfirmSourceGuard
 {
     public const string BlockReason =
-        "Confirm B2 bị chặn: nguồn pool/basis chưa authoritative từ DB (Preview-from-DB pending). " +
+        "Confirm B2 bị chặn: nguồn pool/basis chưa authoritative từ DB " +
+        "(không load được pool/basis qua sp_pc_alloc_load_pool / production_cost_object). " +
         "Không ghi thật chỉ bằng DryRun — guard độc lập EnableWrites.";
 
     /// <summary>

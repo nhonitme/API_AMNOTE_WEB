@@ -1,4 +1,8 @@
 -- =============================================================================
+-- SUPERSEDED bởi 20261103_gk_final_price_audit.sql.
+-- Không SOURCE file này sau script final: nó tạo lại procedure SIGNAL.
+-- Ghi giá INPUT_ID nằm ở ProductionCostWriteRepository.ValuationApply (C#).
+-- =============================================================================
 -- G-K 2C-06E — Skeleton SQL cập nhật giá nhập theo INPUT_ID + COMPANY_CD
 -- BÀN GIAO — user tự SOURCE sau nghiệm thu. CẤM production trong 2C-06E.
 -- Không START/COMMIT nội bộ. Caller C# sở hữu DapperSession / TX.

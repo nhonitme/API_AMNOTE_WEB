@@ -37,4 +37,35 @@ public static class ProductionCostWriteSession
             await work(session, ct);
             return true;
         }, cancellationToken);
+
+    /// <summary>
+    /// Chạy work rồi ROLLBACK kể cả khi work thành công.
+    /// Dùng cho Preview có gọi SP rebuild (pool/basis) — không giữ dữ liệu đã tính.
+    /// Nếu rollback lỗi, không trả kết quả.
+    /// </summary>
+    public static async Task<T> ExecuteRolledBackAsync<T>(
+        IProductionCostWriteRepository writeRepository,
+        string databaseName,
+        Func<DapperSession, CancellationToken, Task<T>> work,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(writeRepository);
+        ArgumentNullException.ThrowIfNull(work);
+        ProductionCostWriteContext.EnsureDatabase(databaseName);
+
+        await using var session = await writeRepository.BeginWriteSessionAsync(databaseName);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await work(session, cancellationToken);
+            session.Rollback();
+            return result;
+        }
+        catch
+        {
+            try { session.Rollback(); }
+            catch { /* session may already be closed */ }
+            throw;
+        }
+    }
 }
