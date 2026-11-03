@@ -5,6 +5,7 @@ using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Services.ProductionCost;
 using API_AMNOTE_WEB.Services.ProductionCost.Allocation;
 using API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
+using API_AMNOTE_WEB.Services.ProductionCost.Transfer;
 using API_AMNOTE_WEB.Services.ProductionCost.Valuation;
 using API_AMNOTE_WEB.Services.ProductionCost.Wip;
 
@@ -25,6 +26,13 @@ public sealed class ProductionCostWriteRepository : IProductionCostWriteReposito
     /// (không dùng apply_inventory_update_in_price PRODUCT_CD). Confirm B5 bị chặn.
     /// </remarks>
     public bool SupportsInputIdSafeInventoryUpdate => false;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Production chưa có reverse EXP_TO_154 / IS_APPLIED / giá kho / 632 trong cùng TX.
+    /// REOPEN cascade đụng side-effect → bị <see cref="ReopenImpactGuard"/> chặn.
+    /// </remarks>
+    public bool SupportsSafeReopenSideEffectReverse => false;
 
     public ProductionCostWriteRepository(DapperExecutor db)
     {
@@ -111,6 +119,7 @@ SELECT
     CONFIRMED_BY AS ConfirmedBy,
     CONFIRMED_AT AS ConfirmedAt,
     REOPEN_REASON AS ReopenReason,
+    REOPENED_BY AS ReopenedBy,
     REOPENED_AT AS ReopenedAt
 FROM production_cost_run
 WHERE COMPANY_CD = @CompanyCd
@@ -207,7 +216,12 @@ WHERE COMPANY_CD = @CompanyCd
 SELECT
     OPERATION_ID AS OperationId,
     STABLE_KEY AS StableKey,
-    CONTENT_FINGERPRINT AS ContentFingerprint
+    CONTENT_FINGERPRINT AS ContentFingerprint,
+    ACTION_CODE AS ActionCode,
+    STEP_CODE AS StepCode,
+    RUN_ID AS RunId,
+    RUN_VERSION AS RunVersion,
+    STATUS_AFTER AS StatusAfter
 FROM production_cost_history
 WHERE COMPANY_CD = @CompanyCd
   AND OPERATION_ID = @OperationId
@@ -1301,6 +1315,157 @@ LIMIT 1";
         ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
         ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(SupportsInputIdSafeInventoryUpdate);
         throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
+    }
+
+    public async Task<ReopenSideEffectSnapshot> ProbeReopenSideEffectsAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        long runId,
+        int runVersion)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+        if (string.IsNullOrWhiteSpace(periodYm) || periodYm.Trim().Length != 6)
+            throw new ArgumentException("PERIOD_YM phải 6 ký tự.");
+
+        var expKey = ExpTo154Rules.StableKey(companyCd, periodYm);
+        var cogsKey = ValuationApplyPlan.StableKey(companyCd, periodYm);
+        var company = companyCd.Trim();
+        var ym = periodYm.Trim();
+
+        var expExists = await VoucherRefExistsAsync(session, company, expKey);
+        var cogsExists = await VoucherRefExistsAsync(session, company, cogsKey);
+
+        const string appliedSql = @"
+SELECT COUNT(1)
+FROM production_cost_receipt
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND ISDEL = '0'
+  AND IS_APPLIED = '1'";
+
+        var applied = await session.QueryFirstOrDefaultAsync<int>(
+            appliedSql,
+            new { CompanyCd = company, RunId = runId, RunVersion = runVersion });
+
+        const string snapshotSql = @"
+SELECT COUNT(1)
+FROM production_cost_wip
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND ISDEL = '0'";
+
+        var wipCount = await session.QueryFirstOrDefaultAsync<int>(
+            snapshotSql,
+            new { CompanyCd = company, RunId = runId, RunVersion = runVersion });
+
+        var period = await LockPeriodEngineForUpdateAsync(session, company, ym);
+        var claimedExp = period != null
+            && string.Equals(period.CogsRule, ProductionCostCogsRule.ExpTo154Only, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(period.CostEngine, ProductionCostEngine.Gk, StringComparison.OrdinalIgnoreCase);
+
+        return new ReopenSideEffectSnapshot
+        {
+            ExpTo154VoucherExists = expExists,
+            PeriodClaimedExpTo154Only = claimedExp,
+            ValuationCogsVoucherExists = cogsExists,
+            AppliedReceiptCount = applied,
+            InventoryPriceUpdated = applied > 0 || cogsExists,
+            HasCostCalcSnapshot = wipCount > 0
+        };
+    }
+
+    public async Task PersistReopenAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int preservedRunVersion,
+        int newWorkingRunVersion,
+        bool markPriorVersionSuperseded,
+        string reason,
+        IReadOnlyList<string> cascadeReverse,
+        string? userId,
+        DateTime? actionAtUtc = null)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(cascadeReverse);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, preservedRunVersion);
+        if (newWorkingRunVersion <= 0)
+            throw new ArgumentException("NewWorkingRunVersion phải > 0.");
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 3)
+            throw new ArgumentException("REOPEN_REASON bắt buộc (tối thiểu 3 ký tự).");
+
+        RunVersionRules.AssertConfirmedSnapshotIntact(
+            wouldDeleteOldVersionRows: false,
+            wouldOverwriteConfirmedUniqueKey: false);
+
+        if (markPriorVersionSuperseded && newWorkingRunVersion <= preservedRunVersion)
+        {
+            throw new InvalidOperationException(
+                "CreateNewWorkingVersion yêu cầu NewWorkingRunVersion = preserved + 1.");
+        }
+
+        if (!markPriorVersionSuperseded && newWorkingRunVersion != preservedRunVersion)
+        {
+            throw new InvalidOperationException(
+                "KeepCurrentWorkingVersion / IdempotentRetry phải giữ nguyên RUN_VERSION.");
+        }
+
+        // Header RUN: bump version (nếu cần) + REOPENED + reason. Không DELETE child version cũ.
+        // SUPERSEDED = bất biến snapshot version cũ (không ghi đè UNIQUE cũ) — không đổi STATUS=SUPERSEDED
+        // trên cùng một hàng RUN (header phải REOPENED để làm việc tiếp).
+        const string updateRunSql = @"
+UPDATE production_cost_run
+SET RUN_VERSION = @NewVersion,
+    STATUS = @Status,
+    REOPEN_REASON = @Reason,
+    REOPENED_BY = @UserId,
+    REOPENED_AT = @ActionAt,
+    UPDATE_BY = @UserId,
+    UPDATE_AT = UTC_TIMESTAMP()
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @PreservedVersion
+  AND ISDEL = '0'";
+
+        var actionAt = actionAtUtc ?? DateTime.UtcNow;
+        var affected = await session.ExecuteAsync(updateRunSql, new
+        {
+            CompanyCd = companyCd.Trim(),
+            RunId = runId,
+            PreservedVersion = preservedRunVersion,
+            NewVersion = newWorkingRunVersion,
+            Status = GkRunStatus.Reopened,
+            Reason = reason.Trim(),
+            UserId = userId,
+            ActionAt = actionAt
+        });
+
+        if (affected != 1)
+        {
+            throw new InvalidOperationException(
+                $"Persist REOPEN thất bại — RUN_VERSION header lệch hoặc RUN không tồn tại " +
+                $"(expected preserved v{preservedRunVersion}, rows={affected}).");
+        }
+
+        foreach (var step in cascadeReverse)
+        {
+            var code = GkStepOrder.Normalize(step);
+            var index = GkStepOrder.IndexOf(code) + 1;
+            await UpsertGkStepStatusAsync(
+                session,
+                companyCd,
+                runId,
+                index,
+                code,
+                ProductionCostStepStatus.Reopened,
+                userId);
+        }
     }
 
     private sealed class StepStatusRow

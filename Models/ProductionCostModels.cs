@@ -124,6 +124,7 @@ public sealed class ProductionCostRunDto
     public string? ConfirmedBy { get; set; }
     public DateTime? ConfirmedAt { get; set; }
     public string? ReopenReason { get; set; }
+    public string? ReopenedBy { get; set; }
     public DateTime? ReopenedAt { get; set; }
 }
 

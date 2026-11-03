@@ -1,5 +1,6 @@
 using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Models;
+using API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
 using API_AMNOTE_WEB.Services.ProductionCost.Valuation;
 
 namespace API_AMNOTE_WEB.Interfaces;
@@ -16,6 +17,12 @@ public interface IProductionCostWriteRepository
     /// Production hiện <c>false</c> — Confirm B5 bị chặn đến khi DEV bàn giao SQL.
     /// </summary>
     bool SupportsInputIdSafeInventoryUpdate { get; }
+
+    /// <summary>
+    /// true nếu có đảo/khôi phục an toàn EXP_TO_154 / IS_APPLIED / giá kho / VALUATION_COGS
+    /// trong cùng TX khi REOPEN cascade. Production = <c>false</c> → REOPEN bị block khi còn side-effect.
+    /// </summary>
+    bool SupportsSafeReopenSideEffectReverse { get; }
 
     /// <summary>
     /// Mở kết nối DB công ty + BEGIN TRANSACTION.
@@ -299,4 +306,34 @@ public interface IProductionCostWriteRepository
         int runVersion,
         IReadOnlyList<long> inputIds,
         string? userId);
+
+    // ---- 2C-06F REOPEN / History ----
+
+    /// <summary>
+    /// Probe tác động B3/B5 trước REOPEN (voucher EXP_TO_154, VALUATION_COGS, IS_APPLIED, claim kỳ).
+    /// Không ghi. Không Commit.
+    /// </summary>
+    Task<ReopenSideEffectSnapshot> ProbeReopenSideEffectsAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        long runId,
+        int runVersion);
+
+    /// <summary>
+    /// Persist REOPEN: bump/giữ RUN_VERSION, STATUS=REOPENED, REOPEN_REASON/BY/AT,
+    /// cascade STEP→REOPENED. Không DELETE/overwrite snapshot version cũ. Không Commit.
+    /// Không đảo chứng từ/kho (gọi sau <see cref="ReopenImpactGuard"/>).
+    /// </summary>
+    Task PersistReopenAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int preservedRunVersion,
+        int newWorkingRunVersion,
+        bool markPriorVersionSuperseded,
+        string reason,
+        IReadOnlyList<string> cascadeReverse,
+        string? userId,
+        DateTime? actionAtUtc = null);
 }

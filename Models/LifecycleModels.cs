@@ -38,6 +38,12 @@ public sealed class PersistedHistoryRef
     public string? StableKey { get; set; }
     /// <summary>Tuỳ chọn — hash nội dung nghiệp vụ; khác → Conflict dù cùng StableKey.</summary>
     public string? ContentFingerprint { get; set; }
+    /// <summary>Đọc từ DB khi có — dùng nhận diện REOPEN retry sau bump version.</summary>
+    public string? ActionCode { get; set; }
+    public string? StepCode { get; set; }
+    public long? RunId { get; set; }
+    public int? RunVersion { get; set; }
+    public string? StatusAfter { get; set; }
 }
 
 public sealed class HistoryEntryPlan
@@ -167,5 +173,6 @@ public sealed class ProductionCostLifecycleWriteResponse
     public RecalcPlan? Recalc { get; set; }
     public SessionCompareResult? Compare { get; set; }
     public bool StepStatusesAreClientSimulated { get; set; } = true;
+    public string? IdempotencyAction { get; set; }
     public string? Message { get; set; }
 }
