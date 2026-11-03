@@ -29,7 +29,7 @@ Chỉ chạy phần còn thiếu:
 
 1. `migrations/20261103_2c06a_ddl_history_operation.sql` nếu chưa có `OPERATION_ID`, `STABLE_KEY`, `CONTENT_FINGERPRINT` và unique history.
 2. `migrations/20261103_2c06b_sp_alloc_confirm_no_history.sql` nếu `sp_pc_alloc_confirm` vẫn INSERT history.
-3. `migrations/20261103_gk_final_price_audit.sql`
+3. `migrations/20261103_gk_final_price_audit.sql` — có guard DEV/TEST của 2B ở đầu file. Sai môi trường thì dừng trước DROP/CREATE. Script chỉ DROP `sp_pc_valuation_apply_input_price` và `sp_pc_valuation_confirm`.
 
 Không tạo lại bảng kỳ/RUN. Không xóa snapshot `RUN_VERSION` cũ.
 

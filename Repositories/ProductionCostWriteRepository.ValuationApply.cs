@@ -222,11 +222,13 @@ WHERE COMPANY_CD = @CompanyCd AND OUTPUT_ID = @OutputId AND PRODUCT_ID = @Produc
             "khóa VALUATION_COGS");
 
         long? chitId = refRow?.ChitId is > 0 ? refRow.ChitId : existingChitId;
+        ChitOwnerRow? owner = null;
         if (chitId is > 0)
         {
-            var owner = await QueryFirstOrDefaultAsync<ChitOwnerRow>(
+            owner = await QueryFirstOrDefaultAsync<ChitOwnerRow>(
                 session,
-                @"SELECT CHIT_ID AS ChitId, COMPANY_CD AS CompanyCd, INPUT_TYPE AS InputType, ISDEL AS IsDel
+                @"SELECT CHIT_ID AS ChitId, COMPANY_CD AS CompanyCd, CHIT_CD AS ChitCd,
+                         INPUT_TYPE AS InputType, ISDEL AS IsDel
                   FROM chitinfo WHERE CHIT_ID=@ChitId LIMIT 1 FOR UPDATE",
                 new { ChitId = chitId },
                 "đọc chứng từ VALUATION_COGS");
@@ -239,9 +241,11 @@ WHERE COMPANY_CD = @CompanyCd AND OUTPUT_ID = @OutputId AND PRODUCT_ID = @Produc
             }
         }
 
-        var lines = cogs.Where(c => c.CogsDelta != 0 || c.CogsAmountAfter != 0).ToList();
-        var amount = AllocationMath.RoundDigit(lines.Sum(c => c.CogsDelta), 0);
+        var posting = ValuationCogsPosting.Build(cogs);
+        var amount = ValuationCogsPosting.HeaderAmount(posting);
         var ymd = periodYm.Trim() + LastDay(periodYm).ToString("dd");
+        var stampedAt = DateTime.UtcNow;
+        string headerChitCd;
 
         if (chitId is not > 0)
         {
@@ -260,15 +264,14 @@ WHERE COMPANY_CD = @CompanyCd AND OUTPUT_ID = @OutputId AND PRODUCT_ID = @Produc
                     $"Đã có chứng từ GK_VALUATION CHIT_ID={duplicate} theo STABLE_KEY nhưng voucher_ref chưa trỏ. Không INSERT thêm.");
             }
 
-            var chitCd = ("GV" + periodYm + DateTime.UtcNow.ToString("HHmmssfff"));
-            if (chitCd.Length > 30)
-                chitCd = chitCd[..30];
+            headerChitCd = GkValuationChitCode.NewHeader(stampedAt);
+            var extChitCd = GkValuationChitCode.ForExt(headerChitCd);
             await session.ExecuteAsync(@"
 INSERT INTO chitinfo (
   COMPANY_CD, CHIT_CD, CHIT_NO, CHIT_YMD, CHIT_TYPE, INPUT_TYPE, LOCK_STEP_CODE, AMOUNT, ISDEL, CREATE_BY, UPDATE_BY
 ) VALUES (
   @CompanyCd, @ChitCd, @ChitCd, @Ymd, 'OT', 'GK_VALUATION', 'VALUATION_COGS', @Amount, '0', @UserId, @UserId
-)", new { CompanyCd = companyCd.Trim(), ChitCd = chitCd, Ymd = ymd, Amount = amount, UserId = userId ?? string.Empty });
+)", new { CompanyCd = companyCd.Trim(), ChitCd = headerChitCd, Ymd = ymd, Amount = amount, UserId = userId ?? string.Empty });
 
             chitId = await session.QueryFirstOrDefaultAsync<long>(
                 "SELECT LAST_INSERT_ID()");
@@ -277,7 +280,7 @@ INSERT INTO chitinfo_ext (
   COMPANY_CD, CHIT_ID, CHIT_CD, IS_LOCK, ISEXCEL, IS_CONFIRMED, IS_PAYMENT, NOTE, ISDEL, CREATE_BY, UPDATE_BY
 ) VALUES (
   @CompanyCd, @ChitId, @ChitCd, '0', '0', '0', '0', @StableKey, '0', @UserId, @UserId
-)", new { CompanyCd = companyCd.Trim(), ChitId = chitId, ChitCd = chitCd.Length > 20 ? chitCd[..20] : chitCd, StableKey = stableKey, UserId = userId ?? string.Empty });
+)", new { CompanyCd = companyCd.Trim(), ChitId = chitId, ChitCd = extChitCd, StableKey = stableKey, UserId = userId ?? string.Empty });
         }
         else
         {
@@ -289,6 +292,8 @@ WHERE CHIT_ID=@ChitId AND COMPANY_CD=@CompanyCd AND INPUT_TYPE='GK_VALUATION' AN
             if (affected != 1)
                 throw new InvalidOperationException($"Không cập nhật được header VALUATION_COGS CHIT_ID={chitId}.");
 
+            headerChitCd = GkValuationChitCode.RequireHeader(owner?.ChitCd);
+
             await session.ExecuteAsync(@"
 UPDATE chitdetailinfo
 SET ISDEL='1', UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
@@ -297,24 +302,24 @@ WHERE COMPANY_CD=@CompanyCd AND CHIT_ID=@ChitId AND ISDEL='0'",
         }
 
         var sort = 1;
-        foreach (var line in lines)
+        foreach (var line in posting)
         {
-            var detailCd = ("D" + chitId + sort).PadLeft(8, '0');
-            if (detailCd.Length > 30)
-                detailCd = detailCd[..30];
+            var detailCd = GkValuationChitCode.NewDetailCode(stampedAt, sort);
             await session.ExecuteAsync(@"
 INSERT INTO chitdetailinfo (
   COMPANY_CD, CHIT_ID, CHIT_CD, CHITDETAIL_CD, CHIT_YMD, DEBIT, CREDIT, AMOUNT, FC_AMOUNT, FC_RATE, SORT, ISDEL, CREATE_BY, UPDATE_BY
 ) VALUES (
-  @CompanyCd, @ChitId, @ChitCd, @DetailCd, @Ymd, '632', '155', @Amount, 0, 0, @Sort, '0', @UserId, @UserId
+  @CompanyCd, @ChitId, @ChitCd, @DetailCd, @Ymd, @Debit, @Credit, @Amount, 0, 0, @Sort, '0', @UserId, @UserId
 )", new
             {
                 CompanyCd = companyCd.Trim(),
                 ChitId = chitId,
-                ChitCd = "GV" + periodYm,
+                ChitCd = headerChitCd,
                 DetailCd = detailCd,
                 Ymd = ymd,
-                Amount = line.CogsDelta,
+                line.Debit,
+                line.Credit,
+                line.Amount,
                 Sort = sort++,
                 UserId = userId ?? string.Empty
             });
@@ -790,6 +795,7 @@ FOR UPDATE",
     {
         public long ChitId { get; set; }
         public string? CompanyCd { get; set; }
+        public string? ChitCd { get; set; }
         public string? InputType { get; set; }
         public string? IsDel { get; set; }
     }

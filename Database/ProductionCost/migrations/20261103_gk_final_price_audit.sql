@@ -1,11 +1,12 @@
 -- =============================================================================
 -- G-K final — snapshot giá để REOPEN hoàn nguyên được.
--- Chạy sau 2C-06E. Không xóa dữ liệu nghiệp vụ cũ.
--- MySQL 5.6 / 8.0. Không START TRANSACTION trong file này.
--- Procedure skeleton sp_pc_valuation_apply_input_price / sp_pc_valuation_confirm
--- bị DROP: ghi giá theo INPUT_ID nằm ở ProductionCostWriteRepository (C# + Dapper),
--- không giữ procedure SIGNAL cạnh tranh.
+-- Chỉ DEV/TEST. Guard giống migration 2B: dừng trước mọi DDL nếu không phải
+-- database/host/env đã duyệt. Không chạy trên Production.
+-- MySQL 5.6 / 8.0. Không START TRANSACTION.
+-- DROP chỉ hai procedure skeleton G-K (sp_pc_valuation_*). Không đụng procedure Kho/B-I.
 -- =============================================================================
+
+SOURCE 20261102_2b_00_guard_inline.sql;
 
 DROP PROCEDURE IF EXISTS `sp_pc_valuation_apply_input_price`;
 DROP PROCEDURE IF EXISTS `sp_pc_valuation_confirm`;
