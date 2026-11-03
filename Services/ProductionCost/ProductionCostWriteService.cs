@@ -10,14 +10,14 @@ namespace API_AMNOTE_WEB.Services.ProductionCost;
 
 /// <summary>
 /// Ghi G-K Bước 2+ . Mặc định bị chặn bởi <see cref="IProductionCostWriteGate"/>.
-/// Preview dry-run thuần; Confirm B2/B3/B4 dùng TX C# khi EnableWrites.
+/// Preview dry-run thuần; Confirm B2–B5 dùng TX C# khi EnableWrites (B5 capability-gated).
 /// </summary>
 public sealed class ProductionCostWriteService : IProductionCostWriteService
 {
     private readonly IProductionCostWriteGate _gate;
     private readonly IProductionCostWriteRepository _writeRepo;
     /// <summary>
-    /// Chỉ unit test B2/B4 orchestration: cho phép DryRun / WipDryRun khi Preview-from-DB chưa có.
+    /// Chỉ unit test B2/B4/B5 orchestration: cho phép DryRun / WipDryRun / ValuationDryRun khi Preview-from-DB chưa có.
     /// Production / DI luôn false — source guard chặn ghi thật.
     /// </summary>
     private readonly bool _allowNonAuthoritativeFinancialPersistForTests;
@@ -672,7 +672,7 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         return Task.FromResult(response);
     }
 
-    public Task<ProductionCostValuationWriteResponse> ConfirmValuationAsync(
+    public async Task<ProductionCostValuationWriteResponse> ConfirmValuationAsync(
         string companyCd,
         string? userId,
         ProductionCostWriteRequest request,
@@ -681,16 +681,241 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         EnsureAuth(companyCd);
         ValidatePeriod(request);
         _gate.EnsureWritable();
+        ProductionCostWriteContext.EnsureDatabase(databaseName);
 
-        // Skeleton (TX owner = C#):
-        // 1) ĐỌC LẠI từ DB: B2/B3/B4 DONE + RUN_ID+VERSION + COMPANY_CD — không tin DryRun client
-        // 2) ReadyToApply reconcile → apply giá INPUT_ID (COMPANY_CD) theo nhóm PRODUCT+STORE
-        // 3) Tính lại xuất theo nhóm + UPSERT VALUATION_COGS (STABLE_KEY+COMPANY) — atomic với (2)
-        // 4) VALUATION=DONE; không tự RUN.STATUS=CONFIRMED toàn kỳ
-        // 5) RollbackRestoreLines nếu fail giữa chừng
-        throw new InvalidOperationException(
-            "Confirm VALUATION DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-04. " +
-            "Confirm bắt buộc kiểm tra lại trạng thái bước từ database.");
+        // Guard độc lập EnableWrites: chưa load nguồn valuation từ DB → không ghi thật.
+        // Preview-from-DB pending → valuationSourceLoadedFromDb=false (trừ unit-test hook).
+        var valuationSourceLoadedFromDb = false;
+        if (!_allowNonAuthoritativeFinancialPersistForTests)
+            ValuationConfirmSourceGuard.EnsureAuthoritativeFinancialSource(valuationSourceLoadedFromDb);
+
+        // Capability: UPDATE INPUT_ID an toàn — production repo = false → Confirm blocked.
+        ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(
+            _writeRepo.SupportsInputIdSafeInventoryUpdate);
+
+        ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
+        var operationId = ProductionCostWriteContext.RequireOperationId(request.OperationId);
+        var runId = request.RunId!.Value;
+        var runVersion = request.RunVersion!.Value;
+        var requestPeriodYm = request.PeriodYm.Trim();
+
+        // Nguồn tạm từ ValuationDryRun chỉ khi test hook — production bị guard ở trên.
+        var dryRun = request.ValuationDryRun
+            ?? throw new InvalidOperationException(
+                "Confirm B5 production-ready (load receipt/movements/WIP từ DB) chưa kích hoạt. " +
+                "Preview-from-DB pending — không ghi thực tế chỉ bằng ValuationDryRun client.");
+
+        if (dryRun.ConfirmedWip.Count == 0)
+            throw new ArgumentException("ValuationDryRun.ConfirmedWip không được rỗng.");
+        if (dryRun.Receipts.Count == 0)
+            throw new ArgumentException("ValuationDryRun.Receipts không được rỗng.");
+        if (dryRun.Movements.Count == 0)
+            throw new ArgumentException("ValuationDryRun.Movements không được rỗng.");
+
+        return await ProductionCostWriteSession.ExecuteAsync(
+            _writeRepo,
+            databaseName!,
+            async (session, _) =>
+            {
+                var locked = await _writeRepo.LockRunForUpdateAsync(session, companyCd, runId)
+                    ?? throw new InvalidOperationException("RUN không tồn tại hoặc không thuộc COMPANY_CD.");
+                ProductionCostWriteContext.AssertLockedRunMatches(locked, companyCd, runId, runVersion);
+                AllocationRunConfig.AssertPeriodYmMatches(locked, requestPeriodYm);
+
+                var period = await _writeRepo.LockPeriodEngineForUpdateAsync(session, companyCd, locked.PeriodYm.Trim())
+                    ?? throw new InvalidOperationException("production_cost_period không tồn tại cho PERIOD_YM.");
+                ProductionCostWriteContext.AssertPeriodCurrentRunMatches(
+                    locked, period, companyCd, runId, locked.PeriodYm.Trim());
+
+                var periodYm = locked.PeriodYm.Trim();
+                var valuationMethod = string.IsNullOrWhiteSpace(dryRun.ValuationMethod)
+                    ? GkValuationMethod.PeriodEndAverage
+                    : dryRun.ValuationMethod.Trim();
+
+                // Receipt từ B4 prep — authoritative khi load DB; test hook dùng DryRun.
+                var receiptPreps = ReceiptPricePrep.Build(dryRun.ConfirmedWip, dryRun.Receipts, companyCd);
+                ReceiptReconcile.AssertMatches(
+                    dryRun.ConfirmedWip, receiptPreps, ReceiptReconcileMode.ReadyToApply);
+
+                // Đối chiếu từng INPUT_ID với dòng nhập kho (COMPANY_CD + PRODUCT + kỳ + đối tượng).
+                var inventoryByInput = new Dictionary<long, InventoryInputValuationRow>();
+                foreach (var r in receiptPreps)
+                {
+                    var row = await _writeRepo.GetInventoryInputByInputIdAsync(session, companyCd, r.InputId);
+                    inventoryByInput[r.InputId] = row!;
+                }
+
+                ValuationInputIdMatch.AssertAllReceipts(companyCd, periodYm, receiptPreps, inventoryByInput);
+
+                // Tính giá xuất trước/sau trên nguồn movements (DB authoritative / test DryRun).
+                var beforeGroups = ValuationAverageCost.ComputeByGroup(
+                    dryRun.Movements, valuationMethod, companyCd);
+                var afterMovements = ValuationAverageCost.ApplyReceiptPrices(
+                    dryRun.Movements, receiptPreps, companyCd, dryRun.ConfirmedWip);
+                var afterGroups = ValuationAverageCost.ComputeByGroup(
+                    afterMovements, valuationMethod, companyCd);
+                var cogs = Cogs632PreviewRules.BuildPreviewByGroup(beforeGroups, afterGroups);
+
+                var existingChitId = dryRun.ExistingValuationChitId;
+                var existingCompany = dryRun.ExistingValuationChitCompanyCd;
+                var existingKey = dryRun.ExistingValuationStableKey;
+                // Nếu voucher_ref đã có trên DB → Confirm phải UPDATE, không INSERT thứ hai.
+                var cogsStableKey = ValuationApplyPlan.StableKey(companyCd, periodYm);
+                if (await _writeRepo.VoucherRefExistsAsync(session, companyCd, cogsStableKey)
+                    && existingChitId is null or <= 0)
+                {
+                    existingChitId = 1; // sentinel: Plan → UpdateExisting; không INSERT trùng
+                    existingCompany ??= companyCd;
+                    existingKey ??= cogsStableKey;
+                }
+
+                var txPlan = ValuationApplyPlan.BuildForConfirm(
+                    companyCd,
+                    periodYm,
+                    receiptPreps,
+                    existingChitId,
+                    existingCompany,
+                    existingKey);
+
+                var steps = await _writeRepo.GetStepStatusesForUpdateAsync(session, companyCd, runId);
+                var persisted = await _writeRepo.GetPersistedHistoryByOperationIdAsync(
+                    session, companyCd, operationId);
+                var hasB5History = await _writeRepo.HasB5ConfirmHistoryAsync(
+                    session, companyCd, runId, runVersion);
+
+                var plan = ValuationConfirmPlanner.Build(
+                    companyCd,
+                    periodYm,
+                    runId,
+                    runVersion,
+                    locked.Status,
+                    steps,
+                    operationId,
+                    valuationMethod,
+                    dryRun.ConfirmedWip,
+                    receiptPreps,
+                    beforeGroups,
+                    afterGroups,
+                    cogs,
+                    txPlan,
+                    persisted,
+                    userId,
+                    clientFingerprint: null,
+                    hasB5ConfirmHistory: hasB5History);
+
+                if (plan.IsNoop)
+                {
+                    return new ProductionCostValuationWriteResponse
+                    {
+                        WriteEnabled = true,
+                        Persisted = false,
+                        PeriodYm = periodYm,
+                        RunId = runId,
+                        RunVersion = runVersion,
+                        ValuationMethod = valuationMethod,
+                        ReceiptPreps = receiptPreps,
+                        ReadyToApply = true,
+                        AverageBeforeGroups = beforeGroups,
+                        AverageAfterGroups = afterGroups,
+                        Cogs632Preview = cogs,
+                        TransactionPlan = txPlan,
+                        InventoryPriceApplied = false,
+                        CogsVoucherPosted = false,
+                        StepStatusesAreClientSimulated = false,
+                        IdempotencyAction = plan.IdempotencyAction,
+                        Message = plan.Message
+                    };
+                }
+
+                // Persist atomic: INPUT_ID → out price → 632 → IS_APPLIED → VALUATION=DONE → history.
+                foreach (var line in txPlan.PriceLines)
+                {
+                    await _writeRepo.ApplyInventoryInputPriceByInputIdAsync(
+                        session, companyCd, line, userId);
+                }
+
+                await _writeRepo.ApplyInventoryOutPricesAsync(
+                    session, companyCd, periodYm, afterGroups, userId);
+
+                await _writeRepo.UpsertValuationCogsAsync(
+                    session, companyCd, periodYm, runId, runVersion, existingChitId, cogs, userId);
+
+                await _writeRepo.UpsertVoucherRefAsync(
+                    session,
+                    companyCd,
+                    runId,
+                    runVersion,
+                    ValuationConfirmPlanner.StepIndex,
+                    ValuationConfirmPlanner.StepCode,
+                    ValuationConfirmPlanner.CogsRefRole,
+                    cogsStableKey,
+                    userId);
+
+                await _writeRepo.MarkReceiptsAppliedAsync(
+                    session,
+                    companyCd,
+                    runId,
+                    runVersion,
+                    receiptPreps.Select(r => r.InputId).ToList(),
+                    userId);
+
+                await _writeRepo.UpsertGkStepStatusAsync(
+                    session,
+                    companyCd,
+                    runId,
+                    ValuationConfirmPlanner.StepIndex,
+                    ValuationConfirmPlanner.StepCode,
+                    ProductionCostStepStatus.Done,
+                    userId);
+
+                var expectedStatus = ValuationPrerequisite.AfterValuationConfirm(locked.Status);
+                if (GkRunStatus.IsFullPeriodConfirmed(expectedStatus)
+                    && !GkRunStatus.IsFullPeriodConfirmed(locked.Status))
+                {
+                    throw new InvalidOperationException("B5 không được chuyển RUN thành CONFIRMED toàn kỳ.");
+                }
+
+                if (!ValuationConfirmPlanner.ShouldCommitHistory(persistSucceeded: true, stepMarked: true))
+                    throw new InvalidOperationException("Không ghi history khi persist/STEP thất bại.");
+
+                var historyInsert = ProductionCostWriteContext.FromHistoryPlan(plan.History!, companyCd, periodYm);
+                historyInsert.ContentFingerprint = plan.ContentFingerprint;
+                historyInsert.RequireContentFingerprint = true;
+                historyInsert.ResultAfter =
+                    $"VALUATION=DONE; fp={plan.ContentFingerprint}; inv=1; 632=1; status={expectedStatus}";
+
+                var hist = await _writeRepo.TryInsertHistoryAsync(session, historyInsert, databaseName!);
+                if (!hist.Inserted
+                    && !string.Equals(hist.IdempotencyAction, "NoopAlreadyWritten", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(hist.Message ?? "History Confirm B5 thất bại.");
+                }
+
+                return new ProductionCostValuationWriteResponse
+                {
+                    WriteEnabled = true,
+                    Persisted = true,
+                    PeriodYm = periodYm,
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    ValuationMethod = valuationMethod,
+                    ReceiptPreps = receiptPreps,
+                    ReadyToApply = true,
+                    AverageBeforeGroups = beforeGroups,
+                    AverageAfterGroups = afterGroups,
+                    Cogs632Preview = cogs,
+                    TransactionPlan = txPlan,
+                    InventoryPriceApplied = true,
+                    CogsVoucherPosted = true,
+                    StepStatusesAreClientSimulated = false,
+                    IdempotencyAction = hist.IdempotencyAction,
+                    Message =
+                        "Confirm B5 OK — VALUATION=DONE; apply INPUT_ID + tính xuất + UPSERT VALUATION_COGS; " +
+                        $"RUN={expectedStatus}; không CONFIRMED toàn kỳ. " +
+                        "NOT production-ready: nguồn vẫn từ ValuationDryRun; " +
+                        "SQL INPUT_ID / post 632 thật pending DEV (SupportsInputIdSafeInventoryUpdate)."
+                };
+            });
     }
 
     /// <summary>Tính phân bổ thuần — dùng unit test / dry-run API.</summary>

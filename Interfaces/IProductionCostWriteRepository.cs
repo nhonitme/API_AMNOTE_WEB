@@ -1,14 +1,22 @@
 using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Models;
+using API_AMNOTE_WEB.Services.ProductionCost.Valuation;
 
 namespace API_AMNOTE_WEB.Interfaces;
 
 /// <summary>
 /// Ghi G-K trong transaction do C# sở hữu (<see cref="DapperSession"/>).
-/// SP không START/COMMIT. Confirm B2–B4 gọi qua service; B5 chưa.
+/// SP không START/COMMIT. Confirm B2–B5 gọi qua service (B5 capability-gated).
 /// </summary>
 public interface IProductionCostWriteRepository
 {
+    /// <summary>
+    /// true nếu repo hỗ trợ UPDATE <c>chit_inventory_input</c> theo INPUT_ID+COMPANY_CD
+    /// trong cùng <see cref="DapperSession"/> (không dùng SP PRODUCT_CD).
+    /// Production hiện <c>false</c> — Confirm B5 bị chặn đến khi DEV bàn giao SQL.
+    /// </summary>
+    bool SupportsInputIdSafeInventoryUpdate { get; }
+
     /// <summary>
     /// Mở kết nối DB công ty + BEGIN TRANSACTION.
     /// Caller phải Commit hoặc Rollback (hoặc dùng <c>ProductionCostWriteSession</c>).
@@ -226,4 +234,69 @@ public interface IProductionCostWriteRepository
         string? userId,
         string? runStatus,
         int lockedRunVersion);
+
+    // ---- 2C-06E Valuation Confirm (B5) ----
+
+    /// <summary>
+    /// true nếu đã có history CONFIRM B5 (STEP_CODE=VALUATION) ISDEL=0 cho RUN+VERSION.
+    /// </summary>
+    Task<bool> HasB5ConfirmHistoryAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion);
+
+    /// <summary>
+    /// Đọc dòng nhập kho theo INPUT_ID + COMPANY_CD trong TX (FOR UPDATE khi READY).
+    /// </summary>
+    Task<InventoryInputValuationRow?> GetInventoryInputByInputIdAsync(
+        DapperSession session,
+        string companyCd,
+        long inputId);
+
+    /// <summary>
+    /// UPDATE giá nhập theo INPUT_ID + COMPANY_CD trên cùng session. Không Commit.
+    /// Production: throw nếu !SupportsInputIdSafeInventoryUpdate.
+    /// </summary>
+    Task ApplyInventoryInputPriceByInputIdAsync(
+        DapperSession session,
+        string companyCd,
+        ValuationPriceApplyPlanLine line,
+        string? userId);
+
+    /// <summary>
+    /// Áp kết quả giá xuất (InventoryOutPriceEngine) theo nhóm trên cùng session. Không Commit.
+    /// Production: throw nếu !SupportsInputIdSafeInventoryUpdate (cùng capability gate).
+    /// </summary>
+    Task ApplyInventoryOutPricesAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        IReadOnlyList<ValuationAverageResult> afterGroups,
+        string? userId);
+
+    /// <summary>
+    /// UPSERT chứng từ VALUATION_COGS theo STABLE_KEY — InsertOnce hoặc UpdateExisting.
+    /// Không INSERT chứng từ thứ hai. Không Commit.
+    /// </summary>
+    Task UpsertValuationCogsAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        long runId,
+        int runVersion,
+        long? existingChitId,
+        IReadOnlyList<Cogs632PreviewLine> cogs,
+        string? userId);
+
+    /// <summary>
+    /// Đánh IS_APPLIED='1' trên production_cost_receipt theo RUN+VERSION+INPUT_ID. Không Commit.
+    /// </summary>
+    Task MarkReceiptsAppliedAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<long> inputIds,
+        string? userId);
 }

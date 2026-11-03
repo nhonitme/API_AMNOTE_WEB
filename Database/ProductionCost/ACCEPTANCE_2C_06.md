@@ -16,14 +16,14 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | Engine nghiệp vụ C# (B2–B5 + REOPEN/RECALC/COMPARE) | **Hoàn thành** — unit-tested, pure / dry-run |
 | API đọc GET | **Hoàn thành** (2C-01) |
 | API Preview (DryRun payload) | **Hoàn thành** — `Persisted=false` |
-| API Confirm + Preview-from-DB | **B2–B4 Confirm (source)** — gate OFF; B2/B4 source guard; B3 PeriodLock cùng TX; B5 placeholder |
-| Repository ghi / TX session G-K | **2C-06A Implemented** + B2/B3/B4 persist |
+| API Confirm + Preview-from-DB | **B2–B5 Confirm (source)** — gate OFF; B2/B4/B5 source guard; B3 PeriodLock cùng TX; B5 INPUT_ID capability OFF |
+| Repository ghi / TX session G-K | **2C-06A Implemented** + B2/B3/B4 persist + B5 surface (capability-gated) |
 | SP persist B2 (confirm/load/assert) | **Script bàn giao** — `sp_pc_alloc_confirm` **không** INSERT history; chưa SOURCE DEV |
-| SP calculate / WIP / valuation / reopen | **Skeleton SIGNAL** hoặc **Pending** — B4 persist bằng C# UPSERT |
-| History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# + DDL script 2C-06A** — Confirm B2–B4 ghi history từ C#; chưa SOURCE DEV |
-| Tái sử dụng kho / PeriodLock | **B3 gắn PeriodLock** — B4 **không** apply kho / 632 |
+| SP calculate / WIP / valuation / reopen | **Skeleton SIGNAL** hoặc **Pending** — B4 persist bằng C# UPSERT; B5 INPUT_ID SQL skeleton |
+| History idempotency (`OperationId` + `STABLE_KEY`) | **Logic C# + DDL script 2C-06A** — Confirm B2–B5 ghi history từ C#; chưa SOURCE DEV |
+| Tái sử dụng kho / PeriodLock | **B3 gắn PeriodLock** — B5 apply kho/632 **capability-gated** (production OFF) |
 
-**Kết luận (cập nhật 2C-06D):** Confirm B4 COST_CALC source-tested; `CostCalcConfirmSourceGuard` chặn WipDryRun; WriteGate OFF. Dừng nghiệm thu trước 2C-06E.
+**Kết luận (cập nhật 2C-06E):** Confirm B5 VALUATION source-tested; `ValuationConfirmSourceGuard` + INPUT_ID capability chặn ghi thật; WriteGate OFF. Dừng nghiệm thu trước 2C-06F (REOPEN).
 
 ---
 
@@ -52,7 +52,7 @@ Tham chiếu nghiệm thu trước: `ACCEPTANCE_2C_01` … `ACCEPTANCE_2C_05`.
 | `PreviewCostCalc` (không WipDryRun) | Throw |
 | `ConfirmCostCalc` | **2C-06D Implemented (source)** — `CostCalcConfirmSourceGuard` chặn khi chưa load nguồn từ DB; UPSERT source/wip/receipt; COST_CALC=DONE only |
 | `PreviewValuation` (không ValuationDryRun) | Throw |
-| `ConfirmValuation` | Throw skeleton |
+| `ConfirmValuation` | **2C-06E Implemented (source)** — `ValuationConfirmSourceGuard` + INPUT_ID capability; production blocked |
 | `PreviewReopen` (không ReopenDryRun) | Throw |
 | `ConfirmReopen` | Throw skeleton |
 | `PreviewRecalculate` / `PreviewCompare` | DryRun only — **không** có `ConfirmRecalculate` trên interface (cố ý: persist qua Confirm từng bước) |
@@ -364,7 +364,7 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 | ID | Mức | Nội dung |
 |----|-----|----------|
 | O-01 | **Process** | DDL history 2C-06A đã có script — **chưa SOURCE DEV**; GET `/history` tương thích schema cũ (probe); ghi history cần SOURCE |
-| O-02 | **Blocker Confirm B5** | B2–B4 Confirm **source done** — B5 / Reopen vẫn placeholder; B4 Preview-from-DB pending |
+| O-02 | **Blocker Confirm B5 production** | B5 Confirm **source done** — Preview-from-DB + SQL INPUT_ID + post 632 thật pending; Reopen 2C-06F |
 | O-03 | High | `apply_inventory_update_*` theo PRODUCT_CD ≠ plan B5 theo INPUT_ID — cần SP/wrapper riêng |
 | O-04 | High | SP calculate/wip/valuation/reopen còn skeleton hoặc pending — quyết định C#-persist vs hoàn thiện SQL trước EnableWrites |
 | O-05 | High | B3 TX boundary: PeriodLock session vs G-K session chưa thiết kế atomic thống nhất |
@@ -384,8 +384,8 @@ Cập nhật `ProductionCostHistoryDto` + `GetHistoryAsync` SELECT; probe schema
 | **2C-06A** | History DDL + WriteRepository + TX infra | **Implemented (source)** — đã nghiệm thu source |
 | **2C-06B** | Allocation Confirm B2 + safety fix | **Implemented (source)** — UPSERT/config OK; Preview-from-DB pending |
 | **2C-06C** | EXP_TO_154_ONLY Confirm B3 | **Implemented (source)** — đã nghiệm thu source |
-| **2C-06D** | CostCalc Confirm B4 | **Implemented (source)** — chờ nghiệm thu; dừng trước 2C-06E |
-| 2C-06E | Valuation Confirm B5 | Chưa |
+| **2C-06D** | CostCalc Confirm B4 | **Implemented (source)** |
+| **2C-06E** | Valuation Confirm B5 | **Implemented (source)** — chờ nghiệm thu; dừng trước 2C-06F |
 | 2C-06F | Reopen / History / Integration tests | Chưa |
 
 Sau 2C-06F + DEV SOURCE + verify → mới xét `EnableWrites=true` (DEV/TEST only).
@@ -589,7 +589,8 @@ Phạm vi: Confirm Bước 3 only — `ConfirmTransferAsync` + B2 authoritative-
 | Hạng mục | Ghi chú |
 |----------|---------|
 | Preview transfer từ DB | Throw khi gate ON |
-| Confirm B5 / Reopen persist | Chưa (2C-06E+) — B4 xem §11 |
+| Confirm B5 | **2C-06E** — xem §12 |
+| Reopen persist | Chưa (2C-06F) |
 
 ### 10.3 Pending MySQL integration (DEV/TEST — agent không chạy)
 
@@ -682,7 +683,8 @@ Phạm vi: Confirm Bước 4 only — `ConfirmCostCalcAsync` + `CostCalcConfirmS
 |----------|---------|
 | Preview-from-DB / source rebuild | **Pending** — Confirm phụ thuộc WipDryRun chỉ khi test hook; production bị guard |
 | `sp_pc_source_rebuild` / `sp_pc_wip_calculate` / `sp_pc_cost_confirm` | Skeleton SIGNAL — C# sở hữu persist B4 |
-| Confirm B5 / Reopen persist | Chưa (2C-06E+) |
+| Confirm B5 | **2C-06E Implemented (source)** — xem §12 |
+| Reopen persist | Chưa (2C-06F) |
 
 ### 11.3 Pending MySQL integration (DEV/TEST — agent không chạy)
 
@@ -746,3 +748,102 @@ TEST_EXIT=0
 | EnableWrites | **OFF** |
 
 **Dừng nghiệm thu 2C-06D trước 2C-06E.** Không Confirm thật / không SOURCE / không bật WriteGate.
+
+---
+
+## 12. 2C-06E — Confirm VALUATION B5 (định giá + xuất kho + 632)
+
+Ngày: 2026-11-03  
+Phạm vi: Confirm Bước 5 only — `ConfirmValuationAsync` + `ValuationConfirmSourceGuard` + apply INPUT_ID + InventoryOutPriceEngine + VALUATION_COGS.  
+**Không** REOPEN (2C-06F) · **Không** EnableWrites · **Không** SOURCE · **Không** Confirm thật · **Không** cập nhật kho thật · **Không** post 632 thật · **Không** đổi WIP / AllocationEngine / InventoryOutPriceEngine · **Không** `CONFIRMED` toàn kỳ · **Không** đưa B-I vào G-K khi ENGINE=GK.
+
+### 12.1 Implemented (source-tested)
+
+| Hạng mục | Chi tiết |
+|----------|----------|
+| B5 guard | `ValuationConfirmSourceGuard` — chặn khi nguồn chưa từ DB **hoặc** `SupportsInputIdSafeInventoryUpdate=false`; **độc lập** EnableWrites; không tin ValuationDryRun |
+| Orchestration | Gate → source guard → INPUT_ID capability → TX C# → lock RUN + Period → **CURRENT_RUN_ID + PERIOD_COST_ID** → VERSION/PeriodYm → B2/B3/B4 DONE từ DB → đối chiếu INPUT_ID → engine xuất → apply plan → IS_APPLIED → VALUATION=DONE → history → Commit/Rollback |
+| Inventory | Bắt buộc INPUT_ID + COMPANY_CD; `ValuationInputIdMatch`; không bulk PRODUCT_CD; không `apply_inventory_update_in_price` |
+| Engine | `ValuationAverageCost` → `InventoryOutPriceEngine` (4 PP) — **không đổi công thức**; nhóm PRODUCT+STORE+CHIT_TYPE; loại EXP_TO_154_ONLY |
+| COGS 632 | `Cogs632PreviewRules` N632/C155; STABLE_KEY `VALUATION_COGS:{COMPANY}:{PERIOD}`; InsertOnce hoặc UpdateExisting — không INSERT trùng |
+| Planner | Fingerprint; Noop/Conflict; VALUATION DONE + OpId mới → `NoopAlreadyConfirmed`; `WouldPromoteFullPeriodConfirmed=false` |
+| Tests | B2/B3/B4 chưa DONE · RUN_VERSION/CURRENT_RUN_ID · INPUT_ID COMPANY/PRODUCT · nhiều INPUT_ID · nhiều SP/kho · 4 PP · 632 tồn tại/chưa · retry OpId · FP conflict · B5 DONE · mid-fail Rollback · gate OFF · source guard · capability OFF |
+| Gate | `ProductionCost:EnableWrites` mặc định **OFF** |
+
+### 12.2 Skeleton / NOT production-ready
+
+| Hạng mục | Ghi chú |
+|----------|---------|
+| Preview-from-DB load receipt/WIP/movements | **Pending** — Confirm phụ thuộc ValuationDryRun chỉ khi test hook; production bị guard |
+| SQL UPDATE `chit_inventory_input` theo INPUT_ID+COMPANY_CD | **Skeleton** — `20261103_2c06e_sp_valuation_input_id.sql`; production `SupportsInputIdSafeInventoryUpdate=false` |
+| Apply out price + post chứng từ 632 thật | **Skeleton** — orchestration C# sẵn; SQL/API chứng từ pending DEV |
+| `sp_pc_valuation_confirm` | Skeleton SIGNAL — C# sở hữu TX B5 |
+| Confirm REOPEN | Chưa (2C-06F) |
+
+### 12.3 Pending MySQL / API / repository (DEV/TEST — agent không chạy)
+
+| Việc | Ghi chú | Phân loại |
+|------|---------|-----------|
+| SOURCE history DDL 2C-06A nếu chưa | Cần trước EnableWrites | **Pending integration** |
+| Preview-from-DB load receipt B4 + movements + WIP | Cần trước khi bỏ `ValuationConfirmSourceGuard` | **Pending** |
+| SQL INPUT_ID an toàn + bật `SupportsInputIdSafeInventoryUpdate` | Không dùng SP PRODUCT_CD | **Pending DEV** |
+| UPSERT chứng từ kế toán VALUATION_COGS thật | Cùng TX; UpdateExisting nếu đã có key | **Pending DEV** |
+| Integration MySQL Confirm B5 | Sau Preview-from-DB + SQL INPUT_ID | **Pending integration** |
+| EnableWrites | **Giữ OFF** | **OFF** |
+
+### 12.4 Files changed (2C-06E)
+
+- `ValuationConfirmSourceGuard.cs` / `ValuationConfirmPlanner.cs` / `ValuationInputIdMatch.cs` — mới
+- `ValuationApplyPlan.cs` — `BuildForConfirm`
+- `ProductionCostWriteService.cs` — `ConfirmValuationAsync`
+- `IProductionCostWriteRepository.cs` / `ProductionCostWriteRepository.cs` — B5 surface (capability=false)
+- `FakeProductionCostWriteRepository.cs` — B5 fake apply
+- `ValuationEngineModels.cs` — `IdempotencyAction` trên response
+- `ProductionCostValuationConfirmTests.cs` + test csproj links
+- `migrations/20261103_2c06e_README.md` / `20261103_2c06e_sp_valuation_input_id.sql`
+- `ACCEPTANCE_2C_06.md` — mục này
+
+### 12.5 Build / test
+
+#### Host build (source-tested)
+
+```text
+dotnet build API_AMNOTE_WEB.csproj -o artifacts/host-2c06e-check
+→ 0 Error(s)
+HOST_EXIT=0
+```
+
+#### Unit test (source-tested)
+
+```text
+dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
+→ Passed: 194, Failed: 0
+TEST_EXIT=0
+```
+
+### 12.6 Quy tắc B5 đã giữ
+
+1. B2/B3/B4 = DONE từ DB trước Confirm B5 — không tin DryRun status.  
+2. request RUN_ID = PERIOD.CURRENT_RUN_ID; PERIOD_COST_ID khớp.  
+3. Không dùng ValuationDryRun client làm nguồn quyết định ghi (production).  
+4. Cập nhật nhập theo INPUT_ID + COMPANY_CD; đối chiếu PRODUCT/STORE/kỳ/đối tượng.  
+5. Tính xuất bằng InventoryOutPriceEngine đã cấu hình; không trộn PRODUCT/STORE/CHIT_TYPE; không EXP_TO_154_ONLY.  
+6. VALUATION_COGS STABLE_KEY — UpdateExisting nếu đã có; không INSERT trùng; không tự N632/C154.  
+7. Chỉ `VALUATION=DONE`; RUN giữ ALLOC_CONFIRMED/REOPENED — không CONFIRMED toàn kỳ.  
+8. Atomic TX: input → out → 632 → IS_APPLIED → step → history; fail → Rollback.  
+9. Idempotency OperationId + fingerprint; B5 DONE + OpId mới không tính lại.  
+10. Production Confirm blocked đến khi SQL INPUT_ID + Preview-from-DB READY.
+
+### 12.7 Verdict / dừng
+
+| Phần | Trạng thái |
+|------|------------|
+| ValuationConfirmSourceGuard + INPUT_ID capability | **Implemented (source-tested)** |
+| ConfirmValuationAsync B5 | **Implemented (source-tested)** — NOT production-ready |
+| Unit tests B5 safety | **Implemented (source-tested)** |
+| SQL INPUT_ID / post 632 thật / Preview-from-DB | **Skeleton / Pending DEV/TEST** |
+| SOURCE + integration MySQL | **Pending DEV/TEST** |
+| EnableWrites | **OFF** |
+| REOPEN (2C-06F) | **Chưa** |
+
+**Dừng nghiệm thu 2C-06E trước 2C-06F.** Không Confirm thật / không SOURCE / không bật WriteGate / không cập nhật kho / không post 632.

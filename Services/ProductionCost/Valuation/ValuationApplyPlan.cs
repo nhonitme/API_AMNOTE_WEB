@@ -4,7 +4,7 @@ namespace API_AMNOTE_WEB.Services.ProductionCost.Valuation;
 
 /// <summary>
 /// Kế hoạch atomic: cập nhật giá nhập INPUT_ID + tính lại xuất + (tuỳ chọn) 632.
-/// 2C-04: WouldApplyInventory=false — chỉ lập plan / rollback map.
+/// Preview: WouldApplyInventory=false. Confirm B5: <see cref="BuildForConfirm"/>.
 /// </summary>
 public static class ValuationApplyPlan
 {
@@ -18,7 +18,47 @@ public static class ValuationApplyPlan
         long? existingValuationChitId,
         bool writeEnabled,
         string? existingValuationChitCompanyCd = null,
-        string? existingValuationStableKey = null)
+        string? existingValuationStableKey = null) =>
+        BuildCore(
+            companyCd,
+            periodYm,
+            receiptPreps,
+            existingValuationChitId,
+            existingValuationChitCompanyCd,
+            existingValuationStableKey,
+            forConfirm: false,
+            writeEnabled);
+
+    /// <summary>
+    /// Plan Confirm B5 — WouldApplyInventory + WouldPostCogs632 = true;
+    /// đã có STABLE_KEY → UPDATE (không INSERT trùng).
+    /// </summary>
+    public static ValuationTransactionPlan BuildForConfirm(
+        string companyCd,
+        string periodYm,
+        IEnumerable<ReceiptPricePrepLine> receiptPreps,
+        long? existingValuationChitId,
+        string? existingValuationChitCompanyCd = null,
+        string? existingValuationStableKey = null) =>
+        BuildCore(
+            companyCd,
+            periodYm,
+            receiptPreps,
+            existingValuationChitId,
+            existingValuationChitCompanyCd,
+            existingValuationStableKey,
+            forConfirm: true,
+            writeEnabled: true);
+
+    private static ValuationTransactionPlan BuildCore(
+        string companyCd,
+        string periodYm,
+        IEnumerable<ReceiptPricePrepLine> receiptPreps,
+        long? existingValuationChitId,
+        string? existingValuationChitCompanyCd,
+        string? existingValuationStableKey,
+        bool forConfirm,
+        bool writeEnabled)
     {
         if (string.IsNullOrWhiteSpace(companyCd))
             throw new ArgumentException("COMPANY_CD bắt buộc trên plan (không update nhầm công ty).");
@@ -65,9 +105,10 @@ public static class ValuationApplyPlan
 
         var idem = ConfirmIdempotency.Plan(StableKey(companyCd, periodYm), existingValuationChitId);
         var hasExisting = existingValuationChitId is > 0;
+        // Đã có STABLE_KEY → UPDATE only (wouldInsertNew=false). InsertOnce chỉ khi chưa có.
         Cogs632PreviewRules.AssertNoDuplicateCogsPost(
             alreadyHasValuationCogsVoucher: hasExisting,
-            wouldInsertNew: false); // 2C-04 chưa post; Confirm DEV phải UPDATE nếu hasExisting
+            wouldInsertNew: false);
 
         var rollback = lines.Select(l => new ValuationPriceApplyPlanLine
         {
@@ -90,15 +131,18 @@ public static class ValuationApplyPlan
             StableKey = StableKey(companyCd, periodYm),
             IdempotencyAction = idem.Action.ToString(),
             AtomicInAndOutRequired = true,
-            WouldApplyInventory = false,
-            WouldPostCogs632 = false,
+            WouldApplyInventory = forConfirm,
+            WouldPostCogs632 = forConfirm,
             ExistingValuationCogsVoucher = hasExisting,
             PriceLines = lines,
             RollbackRestoreLines = rollback,
-            Message = writeEnabled
-                ? "Plan sẵn sàng — vẫn chưa apply kho trong 2C-04 skeleton. Confirm DEV phải đọc lại B2/B3/B4 từ DB."
-                : "Preview plan — WriteGate OFF; không cập nhật kho / không post 632. " +
-                  "Step B2/B3/B4 trong DryRun chỉ là mô phỏng client."
+            Message = forConfirm
+                ? $"Confirm plan — apply INPUT_ID + UPSERT {StableKey(companyCd, periodYm)} " +
+                  $"({idem.Action}); RollbackRestoreLines={rollback.Count}."
+                : writeEnabled
+                    ? "Plan sẵn sàng — Preview chưa apply kho. Confirm phải đọc lại B2/B3/B4 từ DB."
+                    : "Preview plan — WriteGate OFF; không cập nhật kho / không post 632. " +
+                      "Step B2/B3/B4 trong DryRun chỉ là mô phỏng client."
         };
     }
 }

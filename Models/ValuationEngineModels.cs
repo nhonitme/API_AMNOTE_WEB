@@ -196,5 +196,6 @@ public sealed class ProductionCostValuationWriteResponse
     public bool CogsVoucherPosted { get; set; }
     /// <summary>True khi B2/B3/B4 trong DryRun chỉ là mô phỏng client, chưa xác thực DB.</summary>
     public bool StepStatusesAreClientSimulated { get; set; } = true;
+    public string? IdempotencyAction { get; set; }
     public string? Message { get; set; }
 }

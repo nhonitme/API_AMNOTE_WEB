@@ -5,6 +5,7 @@ using API_AMNOTE_WEB.Models;
 using API_AMNOTE_WEB.Services.ProductionCost;
 using API_AMNOTE_WEB.Services.ProductionCost.Allocation;
 using API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
+using API_AMNOTE_WEB.Services.ProductionCost.Valuation;
 using API_AMNOTE_WEB.Services.ProductionCost.Wip;
 
 namespace API_AMNOTE_WEB.Repositories;
@@ -12,10 +13,18 @@ namespace API_AMNOTE_WEB.Repositories;
 /// <summary>
 /// Write path G-K — TX owner = caller C# qua <see cref="DapperSession"/>.
 /// 2C-06A: session, lock run, history idempotency. Confirm B2–B5 = 2C-06B+.
+/// B5 inventory INPUT_ID apply: <see cref="SupportsInputIdSafeInventoryUpdate"/> = false đến khi DEV bàn giao SQL.
 /// </summary>
 public sealed class ProductionCostWriteRepository : IProductionCostWriteRepository
 {
     private readonly DapperExecutor _db;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Production chưa có UPDATE chit_inventory_input theo INPUT_ID+COMPANY_CD an toàn
+    /// (không dùng apply_inventory_update_in_price PRODUCT_CD). Confirm B5 bị chặn.
+    /// </remarks>
+    public bool SupportsInputIdSafeInventoryUpdate => false;
 
     public ProductionCostWriteRepository(DapperExecutor db)
     {
@@ -1184,6 +1193,114 @@ WHERE COMPANY_CD = @CompanyCd AND RUN_ID = @RunId AND RUN_VERSION = @RunVersion 
                     KeepKeys = keepKeys.ToArray()
                 });
         }
+    }
+
+    public async Task<bool> HasB5ConfirmHistoryAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+
+        const string sql = @"
+SELECT 1
+FROM production_cost_history
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND STEP_CODE = @StepCode
+  AND ACTION_CODE = @ActionCode
+  AND ISDEL = '0'
+LIMIT 1";
+
+        var row = await session.QueryFirstOrDefaultAsync<int?>(
+            sql,
+            new
+            {
+                CompanyCd = companyCd.Trim(),
+                RunId = runId,
+                RunVersion = runVersion,
+                StepCode = ProductionCostStepCode.Valuation,
+                ActionCode = HistoryActionCode.Confirm
+            });
+        return row is > 0;
+    }
+
+    public Task<InventoryInputValuationRow?> GetInventoryInputByInputIdAsync(
+        DapperSession session,
+        string companyCd,
+        long inputId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        // Skeleton: SELECT prepared nhưng Confirm bị chặn bởi SupportsInputIdSafeInventoryUpdate=false.
+        // DEV: implement FOR UPDATE theo INPUT_ID + COMPANY_CD (không PRODUCT_CD bulk).
+        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
+    }
+
+    public Task ApplyInventoryInputPriceByInputIdAsync(
+        DapperSession session,
+        string companyCd,
+        ValuationPriceApplyPlanLine line,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(line);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(SupportsInputIdSafeInventoryUpdate);
+        // Unreachable until SupportsInputIdSafeInventoryUpdate=true + SQL INPUT_ID bàn giao.
+        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
+    }
+
+    public Task ApplyInventoryOutPricesAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        IReadOnlyList<ValuationAverageResult> afterGroups,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(afterGroups);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(SupportsInputIdSafeInventoryUpdate);
+        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
+    }
+
+    public Task UpsertValuationCogsAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        long runId,
+        int runVersion,
+        long? existingChitId,
+        IReadOnlyList<Cogs632PreviewLine> cogs,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(cogs);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        // Chặn post 632 thật — cùng capability gate với apply kho INPUT_ID.
+        ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(SupportsInputIdSafeInventoryUpdate);
+        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
+    }
+
+    public Task MarkReceiptsAppliedAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        IReadOnlyList<long> inputIds,
+        string? userId)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(inputIds);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+        ValuationConfirmSourceGuard.EnsureInputIdSafeApplyReady(SupportsInputIdSafeInventoryUpdate);
+        throw new InvalidOperationException(ValuationConfirmSourceGuard.InputIdApplyNotReadyReason);
     }
 
     private sealed class StepStatusRow
