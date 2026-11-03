@@ -91,23 +91,21 @@ namespace API_AMNOTE_WEB.Services
 
             onProgress?.Invoke(0, 0, movements.Count, "Đang tính giá xuất kho...");
 
-            // Engine chung — cùng nhóm/công thức với G-K Preview. Kết quả hiện không persist (xem ACCEPTANCE_2C_04).
-            var groups = InventoryOutPriceEngine.ComputeByGroups(movements, methodCode);
-            var totalGroups = groups.Count;
-            var processedGroups = 0;
+            // Progress tăng sau khi mỗi nhóm tính xong qua engine chung (không copy công thức).
+            var results = InventoryOutPriceEngine.ComputeByGroups(
+                movements,
+                methodCode,
+                onGroupComputed: (processed, total, _) =>
+                {
+                    onProgress?.Invoke(
+                        processed,
+                        total,
+                        movements.Count,
+                        $"Đang xử lý {processed}/{total} nhóm...");
+                },
+                cancellationToken: cancellationToken);
 
-            foreach (var _ in groups)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                processedGroups++;
-                onProgress?.Invoke(
-                    processedGroups,
-                    totalGroups,
-                    movements.Count,
-                    $"Đang xử lý {processedGroups}/{totalGroups} nhóm...");
-            }
-
-            return (processedGroups, movements.Count);
+            return (results.Count, movements.Count);
         }
     }
 }

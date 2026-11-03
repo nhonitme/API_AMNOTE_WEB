@@ -1,67 +1,62 @@
-# Nghiệm thu Giai đoạn 2C-04 — VALUATION (điều chỉnh tái sử dụng engine Kho)
+# Nghiệm thu Giai đoạn 2C-04 — VALUATION (final review trước 2C-05)
 
 Ngày: 2026-11-02  
-**Không** DB · **Không** SOURCE · **Không** EnableWrites · **Không** cập nhật kho · **Không** đổi menu Kho / B-I.
+**Không** DB · **Không** SOURCE · **Không** EnableWrites · **Không** apply giá kho · **Không** post 632 · **Không** sửa B-I.
 
 ---
 
-## 0. Quyết định nghiệp vụ (cuối cùng)
+## 0. Quyết định (giữ nguyên)
 
-1. **Giữ nguyên** quy tắc tách nhóm `InventoryValuationService`:
-   `PRODUCT_CD + PRODUCT_NAME + STORE_CD + STORE_NAME + CHIT_TYPE` (gồm `CHIT_TYPE`).
-2. **Hủy** yêu cầu bắt buộc chuyển khóa nhóm sang `PRODUCT_ID + STORE_ID`.
-3. **Không** xây engine tính giá xuất kho thứ hai. G-K Bước 5 dùng `InventoryOutPriceEngine` (logic tách từ menu Kho) qua adapter `ValuationAverageCost`.
-4. Bốn phương pháp: `PERIOD_END_AVG` · `MOVING_AVG` · `FIFO` · `SPECIFIC` — cùng mã với menu `/inventory/calc-out-price`.
-5. Không tự sửa công thức / nhóm / sắp xếp của bất kỳ phương pháp nào.
-
-### Vai trò G-K
-
-| Bước | Việc làm |
-|------|----------|
-| B4 COST_CALC | Tính & xác nhận giá thành TP |
-| B5 VALUATION | Chuẩn bị cập nhật giá nhập theo INPUT_ID; đối chiếu SL/GT; **tái sử dụng** tính giá xuất kho; Preview ảnh hưởng 632; không tạo bút toán trùng |
+1. Engine chung `InventoryOutPriceEngine` cho menu Kho và G-K.
+2. Khóa nhóm Kho: `PRODUCT_CD + PRODUCT_NAME + STORE_CD + STORE_NAME + CHIT_TYPE`.
+3. Bốn PP: `PERIOD_END_AVG` · `MOVING_AVG` · `FIFO` · `SPECIFIC`.
+4. Không copy công thức sang Service / adapter độc lập.
 
 ---
 
-## 1. Báo cáo thực trạng engine Kho (chỉ đọc — chưa bổ sung persist)
+## 1. Final review — đã xử lý
 
-| Câu hỏi | Kết quả rà soát source |
-|---------|-------------------------|
-| Engine chỉ tính hay cập nhật dữ liệu? | **Chỉ tính toán in-memory.** `CalculateAsync` → `InventoryOutPriceEngine.ComputeByGroups` → trả `ProcessedGroups` / `MovementCount`. **Không** gọi repository UPDATE. |
-| Bảng lưu kết quả giá xuất kho? | **Không có bảng kết quả valuation** trong luồng `api/inventory/valuation`. |
-| Có cập nhật ĐG / TT chứng từ xuất? | **Không** trong job valuation. Cập nhật tay/hàng loạt nằm ở luồng riêng `InventoryPriceUpdate` → SP `apply_inventory_update_out_price` → `chit_inventory_output.UNIT_PRICE_CC` / `AMOUNT_CC`. |
-| Giá vốn 632 cập nhật ở đâu? | (1) Phiếu xuất OT: `setInventoryCogs` / `InventoryVoucherRepository.Cogs` → `chitinfo` + `chitdetailinfo` gắn `CHIT_ID_COGS`. (2) Khi đổi giá xuất hàng loạt: `apply_inventory_update_out_price` cộng dồn lại `chitdetailinfo` / `chitinfo` COGS đã link. **G-K VALUATION_COGS (N632/C155) chưa persist trong 2C-04.** |
+### 1.1 Progress job Kho thực tế
 
-**Kết luận:** Menu tính giá xuất kho hiện là **compute + progress job**; persist đơn giá xuất / 632 thuộc luồng khác. Bổ sung ghi kho cho G-K = việc **sau nghiệm thu**, không làm trong báo cáo này.
+- `BuildOrderedGroups` tách nhóm trước khi tính.
+- `ComputeByGroups` tính **từng nhóm**, gọi `onGroupComputed` **sau** `ComputeMethod` của nhóm đó.
+- `CancellationToken` kiểm tra **giữa** các nhóm.
+- `InventoryValuationService` ủy thác progress qua callback engine — không giả lập sau khi tính xong hết.
 
----
+### 1.2 Metadata adapter G-K
 
-## 2. Implemented vs skeleton
+- `ComputeByGroup(..., companyCd)` kiểm tra COMPANY_CD request / không trộn công ty.
+- Trong cùng nhóm Kho: PRODUCT_ID và STORE_ID phải nhất quán; xung đột → lỗi (không lấy ID dòng đầu).
+- Khóa nhóm Kho không đổi.
 
-| Hạng mục | Trạng thái |
-|----------|------------|
-| `InventoryOutPriceEngine` — 4 PP, nhóm/sort như Kho | **Implemented** (dùng chung) |
-| `InventoryValuationService` ủy thác engine chung (không đổi nghiệp vụ) | **Implemented** |
-| `ValuationAverageCost` = adapter G-K (ApplyReceiptPrices + map kết quả) | **Implemented** |
-| Preview 632 theo nhóm PRODUCT_CD+STORE+CHIT; không EXP | **Implemented** |
-| STABLE_KEY + COMPANY ownership | **Implemented** |
-| DryRun B2/B3/B4 = mô phỏng client | **Implemented** |
-| Confirm DB + apply kho + post 632 | **Skeleton / WriteGate OFF** |
+### 1.3 Audit persist (không đổi)
+
+Menu valuation vẫn **chỉ tính** (không persist). Cập nhật ĐG xuất / 632 nằm luồng `apply_inventory_update_out_price` / `setInventoryCogs`. G-K Confirm persist = sau nghiệm thu.
 
 ---
 
-## 3. Build & test
+## 2. Kiểm thử (báo cáo tách)
+
+### Host build (output riêng — tránh DLL lock)
 
 ```text
-dotnet build (Tests + linked sources) → 0 Error(s)
-dotnet test --filter FullyQualifiedName~ProductionCost
-→ Passed: 72, Failed: 0
+dotnet build API_AMNOTE_WEB.csproj -o artifacts/host-2c04-check
+→ 0 Error(s)  (warnings sẵn có / NU advisory — không lỗi biên dịch mới)
+HOST_EXIT=0
 ```
 
-Test then chốt: parity adapter ↔ `InventoryOutPriceEngine` (4 PP); nhóm gồm CHIT_TYPE; ApplyReceiptPrices; Preview 632; Confirm bị WriteGate.
+### Unit test (chạy riêng sau host)
+
+```text
+dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
+→ Passed: 76, Failed: 0
+TEST_EXIT=0
+```
+
+Gồm: progress nhiều nhóm · cancel giữa nhóm · COMPANY/ID xung đột · parity 4 PP Kho↔G-K.
 
 ---
 
-## 4. Dừng
+## 3. Dừng
 
-Điều chỉnh 2C-04 theo quyết định tái sử dụng engine Kho — chờ duyệt trước 2C-05.
+Final review 2C-04 xong — chờ nghiệm thu lần cuối trước khi triển khai 2C-05.

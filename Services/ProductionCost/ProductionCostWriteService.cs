@@ -330,10 +330,10 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
 
         if (dry.Movements.Count > 0)
         {
-            beforeGroups = ValuationAverageCost.ComputeByGroup(dry.Movements, dry.ValuationMethod);
+            beforeGroups = ValuationAverageCost.ComputeByGroup(dry.Movements, dry.ValuationMethod, companyCd);
             var afterMovements = ValuationAverageCost.ApplyReceiptPrices(
                 dry.Movements, receiptPreps, companyCd, dry.ConfirmedWip);
-            afterGroups = ValuationAverageCost.ComputeByGroup(afterMovements, dry.ValuationMethod);
+            afterGroups = ValuationAverageCost.ComputeByGroup(afterMovements, dry.ValuationMethod, companyCd);
             cogs = Cogs632PreviewRules.BuildPreviewByGroup(beforeGroups, afterGroups);
         }
 

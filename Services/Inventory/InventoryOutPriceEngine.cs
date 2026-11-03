@@ -36,16 +36,38 @@ public static class InventoryOutPriceEngine
             .ThenBy(m => m.CHITDETAIL_ID)
             .ToList();
 
+    /// <summary>
+    /// Chỉ sắp xếp + tách nhóm — chưa tính giá. Dùng cho progress thực tế theo từng nhóm.
+    /// </summary>
+    public static IReadOnlyList<IGrouping<GroupKey, InventoryValuationMovement>> BuildOrderedGroups(
+        IEnumerable<InventoryValuationMovement> movements) =>
+        OrderMovements(movements).GroupBy(KeyOf).ToList();
+
+    /// <summary>
+    /// Tính từng nhóm tuần tự: progress/cancel giữa các nhóm; không tính hết rồi giả lập tiến độ.
+    /// </summary>
     public static IReadOnlyList<(GroupKey Key, InventoryValuationMethodResult Result)> ComputeByGroups(
         IEnumerable<InventoryValuationMovement> movements,
-        string methodCode)
+        string methodCode,
+        Action<int, int, GroupKey>? onGroupComputed = null,
+        CancellationToken cancellationToken = default)
     {
         var normalized = InventoryValuationMethod.Normalize(methodCode);
-        var ordered = OrderMovements(movements);
-        return ordered
-            .GroupBy(KeyOf)
-            .Select(g => (g.Key, ComputeMethod(g, normalized)))
-            .ToList();
+        var groups = BuildOrderedGroups(movements);
+        var totalGroups = groups.Count;
+        var results = new List<(GroupKey Key, InventoryValuationMethodResult Result)>(totalGroups);
+        var processed = 0;
+
+        foreach (var group in groups)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = ComputeMethod(group, normalized);
+            processed++;
+            onGroupComputed?.Invoke(processed, totalGroups, group.Key);
+            results.Add((group.Key, result));
+        }
+
+        return results;
     }
 
     public static InventoryValuationMethodResult ComputeMethod(

@@ -42,18 +42,20 @@ public static class ValuationAverageCost
 
     public static IReadOnlyList<ValuationAverageResult> ComputeByGroup(
         IEnumerable<ValuationMovementInput> movements,
-        string methodCode)
+        string methodCode,
+        string? companyCd = null)
     {
         var method = InventoryValuationMethod.Normalize(
             string.IsNullOrWhiteSpace(methodCode) ? GkValuationMethod.PeriodEndAverage : methodCode);
 
         var list = movements.ToList();
         Cogs632PreviewRules.AssertMovementsSafeForValuation(list);
+        AssertCompanyScope(list, companyCd);
 
         var inventoryMoves = list.Select(ToInventoryMovement).ToList();
         var computed = InventoryOutPriceEngine.ComputeByGroups(inventoryMoves, method);
 
-        // Map lại ProductId/CompanyCd từ movement nguồn (không dùng làm khóa nhóm)
+        // Map metadata từ nguồn theo khóa Kho — không lấy ID dòng đầu khi xung đột
         var byInventoryKey = list
             .GroupBy(m => InventoryOutPriceEngine.KeyOf(ToInventoryMovement(m)))
             .ToDictionary(g => g.Key, g => g.ToList());
@@ -63,7 +65,7 @@ public static class ValuationAverageCost
         {
             byInventoryKey.TryGetValue(key, out var rows);
             rows ??= new List<ValuationMovementInput>();
-            var first = rows.FirstOrDefault();
+            var meta = ResolveGroupMetadata(key, rows, companyCd);
             var outUnit = engineResult.OutputQuantity > 0
                 ? engineResult.OutputAmount / engineResult.OutputQuantity
                 : 0m;
@@ -73,21 +75,21 @@ public static class ValuationAverageCost
                 MethodCode = engineResult.MethodCode,
                 Group = new ValuationGroupKey
                 {
-                    CompanyCd = first?.CompanyCd ?? string.Empty,
-                    ProductId = first?.ProductId ?? 0,
+                    CompanyCd = meta.CompanyCd,
+                    ProductId = meta.ProductId,
                     ProductCd = key.ProductCd,
                     ProductName = key.ProductName,
-                    StoreId = first?.StoreId ?? 0,
+                    StoreId = meta.StoreId,
                     StoreCd = key.StoreCd,
                     StoreName = key.StoreName,
                     ChitType = key.ChitType
                 },
-                ProductId = first?.ProductId ?? 0,
+                ProductId = meta.ProductId,
                 ProductCd = key.ProductCd,
-                StoreId = first?.StoreId ?? 0,
+                StoreId = meta.StoreId,
                 StoreCd = key.StoreCd,
                 ChitType = key.ChitType,
-                CompanyCd = first?.CompanyCd ?? string.Empty,
+                CompanyCd = meta.CompanyCd,
                 InputQuantity = engineResult.InputQuantity,
                 InputAmount = engineResult.InputAmount,
                 OutputQuantity = engineResult.OutputQuantity,
@@ -107,9 +109,10 @@ public static class ValuationAverageCost
     /// <summary>Tương thích gọi đơn nhóm — ném lỗi nếu nhiều nhóm.</summary>
     public static ValuationAverageResult Compute(
         IEnumerable<ValuationMovementInput> movements,
-        string methodCode)
+        string methodCode,
+        string? companyCd = null)
     {
-        var all = ComputeByGroup(movements, methodCode);
+        var all = ComputeByGroup(movements, methodCode, companyCd);
         if (all.Count == 0)
             throw new InvalidOperationException("Không có nhóm định giá để tính.");
         if (all.Count > 1)
@@ -209,6 +212,91 @@ public static class ValuationAverageCost
         }
 
         return result;
+    }
+
+    /// <summary>Không trộn nhiều COMPANY_CD; khớp request khi có.</summary>
+    internal static void AssertCompanyScope(
+        IReadOnlyList<ValuationMovementInput> movements,
+        string? companyCd)
+    {
+        var present = movements
+            .Select(m => (m.CompanyCd ?? string.Empty).Trim())
+            .Where(c => c.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (present.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Không trộn movement nhiều COMPANY_CD trong một lần định giá: {string.Join(", ", present)}.");
+        }
+
+        if (string.IsNullOrWhiteSpace(companyCd))
+            return;
+
+        var expected = companyCd.Trim();
+        foreach (var m in movements)
+        {
+            var cd = (m.CompanyCd ?? string.Empty).Trim();
+            if (cd.Length > 0 && !string.Equals(cd, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"Movement COMPANY_CD={cd} không khớp request COMPANY_CD={expected}.");
+            }
+        }
+
+        if (present.Count == 1 &&
+            !string.Equals(present[0], expected, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"COMPANY_CD movements ({present[0]}) ≠ request ({expected}).");
+        }
+    }
+
+    /// <summary>
+    /// PRODUCT_ID / STORE_ID trong cùng nhóm Kho phải nhất quán — không chọn ID dòng đầu khi xung đột.
+    /// </summary>
+    internal static (long ProductId, long StoreId, string CompanyCd) ResolveGroupMetadata(
+        InventoryOutPriceEngine.GroupKey key,
+        IReadOnlyList<ValuationMovementInput> rows,
+        string? requestCompanyCd)
+    {
+        var productIds = rows.Select(r => r.ProductId).Where(id => id > 0).Distinct().ToList();
+        if (productIds.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Nhóm Kho PRODUCT_CD={key.ProductCd} STORE_CD={key.StoreCd} CHIT={key.ChitType}: " +
+                $"PRODUCT_ID xung đột ({string.Join(", ", productIds)}) — không lấy ID dòng đầu.");
+        }
+
+        var storeIds = rows
+            .Select(r => r.StoreId ?? 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+        if (storeIds.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Nhóm Kho PRODUCT_CD={key.ProductCd} STORE_CD={key.StoreCd} CHIT={key.ChitType}: " +
+                $"STORE_ID xung đột ({string.Join(", ", storeIds)}) — không lấy ID dòng đầu.");
+        }
+
+        var companies = rows
+            .Select(r => (r.CompanyCd ?? string.Empty).Trim())
+            .Where(c => c.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (companies.Count > 1)
+        {
+            throw new InvalidOperationException(
+                $"Nhóm Kho PRODUCT_CD={key.ProductCd}: trộn COMPANY_CD ({string.Join(", ", companies)}).");
+        }
+
+        var company = companies.Count == 1
+            ? companies[0]
+            : (requestCompanyCd ?? string.Empty).Trim();
+
+        return (productIds.FirstOrDefault(), storeIds.FirstOrDefault(), company);
     }
 
     private static InventoryValuationMovement ToInventoryMovement(ValuationMovementInput m) =>
