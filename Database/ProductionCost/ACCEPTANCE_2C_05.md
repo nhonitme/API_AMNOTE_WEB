@@ -1,7 +1,7 @@
-# Nghiệm thu Giai đoạn 2C-05 — REOPEN / RECALCULATE / HISTORY
+# Nghiệm thu Giai đoạn 2C-05 — REOPEN / RECALCULATE / HISTORY (final safety)
 
 Ngày: 2026-11-03  
-**Không** SQL/SOURCE · **Không** EnableWrites · **Không** apply kho · **Không** post 632 · **Không** sửa B-I · **Không** CONFIRMED toàn kỳ tự động.
+**Không** SQL · **Không** EnableWrites · **Không** apply kho · **Không** post 632 · **Không** đổi engine Kho / B-I.
 
 ---
 
@@ -9,26 +9,26 @@ Ngày: 2026-11-03
 
 | Hạng mục | Trạng thái |
 |----------|------------|
-| `GkStepOrder` B1→B6 + cascade ngược B6→target | **Implemented** + test |
-| `ReopenRules` — lý do, quyền DryRun, phụ thuộc bước sau | **Implemented** + test |
-| `RunVersionRules` — bảo toàn version cũ; chặn SUPERSEDED/CONFIRMED overwrite | **Implemented** + test |
-| `RecalcRules` — bước ảnh hưởng; bind engine B2–B5; B5=`InventoryOutPriceEngine` | **Implemented** + test |
-| `SessionCompare` — WIP / INPUT_ID / khóa nhóm Kho | **Implemented** + test |
-| `HistoryPlan` — STABLE_KEY idempotent (không ghi trùng retry) | **Implemented** + test |
-| API Preview reopen / recalc / compare | **DryRun** |
-| API Confirm reopen | **Skeleton + WriteGate OFF** |
-| Persist history / bump version DB | **Pending DEV** |
-| Recalc thực thi engine từ DB | **Pending DEV** |
+| REOPEN: lần đầu (+1 version) / đã REOPENED (giữ version) / retry OperationId | **Implemented** |
+| SUPERSEDED chỉ khi `CreateNewWorkingVersion` | **Implemented** |
+| History `OperationId` + STABLE_KEY; retry Noop; thao tác mới cùng version ghi riêng | **Implemented** |
+| Confirm không tin client history hint (`ClientHistoryHintIsNotAuthoritative`) | **Implemented** (plan) |
+| B2 vs `AllowsPoolRecalc`; B3/B4/B5 vẫn chạy khi ALLOC_CONFIRMED | **Implemented** |
+| Đồng bộ RUN_ID/VERSION request ↔ DryRun payload | **Implemented** |
+| API Preview reopen/recalc/compare | **DryRun** |
+| Confirm reopen DB | **Skeleton + WriteGate OFF** |
+| Persist history / bump version | **Pending DEV** |
 
 ---
 
-## 1. Nghiệp vụ đã khóa
+## 1. Quy tắc version (final)
 
-1. Mở lại: cascade ngược các bước sau còn DONE; bắt buộc lý do; không đổi B-I.
-2. Sau REOPEN: `PreservedRunVersion` giữ snapshot; `NewWorkingRunVersion = +1`; không DELETE/overwrite UNIQUE version cũ.
-3. Tính lại: chặn nếu bước sau còn DONE; Preview không đụng KT/kho; B5 dùng engine Kho chung (4 PP).
-4. So sánh: CONFIRMED vs PREVIEW/REOPENED — cũ/mới/Δ; dòng chỉ một phía.
-5. History plan: COMPANY/RUN/VERSION/bước/hành động/trước-sau/lý do; retry cùng STABLE_KEY → Noop.
+| Tình huống | Version | SUPERSEDED version cũ |
+|------------|---------|------------------------|
+| REOPEN lần đầu từ CONFIRMED / ALLOC_CONFIRMED | `current + 1` | Có (chuyển hợp lệ) |
+| Đã REOPENED — mở thêm bước / cascade trong phiên | Giữ `current` | Không |
+| Retry cùng `OperationId` | Giữ `current` | Không |
+| Snapshot CONFIRMED cũ | Bảo toàn — không DELETE/overwrite | — |
 
 ---
 
@@ -46,14 +46,15 @@ HOST_EXIT=0
 
 ```text
 dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
-→ Passed: 84, Failed: 0
+→ Passed: 85, Failed: 0
 TEST_EXIT=0
 ```
 
-Gồm: bảo toàn version cũ · mở lại sai thứ tự bị chặn · RUN_VERSION/SUPERSEDED · history retry · recalc phụ thuộc · so sánh trước/sau · Confirm WriteGate.
+Gồm: reopen liên tiếp giữ version · retry OperationId · recalculate nhiều lần cùng version · ALLOC_CONFIRMED chặn B2 · request sai version · Confirm WriteGate.
+
 
 ---
 
 ## 3. Dừng
 
-2C-05 xong để nghiệm thu trước giai đoạn tiếp theo.
+Final lifecycle safety 2C-05 xong — chờ nghiệm thu trước giai đoạn tiếp theo.

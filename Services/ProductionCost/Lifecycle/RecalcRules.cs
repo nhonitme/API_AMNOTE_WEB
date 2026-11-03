@@ -5,10 +5,11 @@ namespace API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
 
 /// <summary>
 /// Tính lại bước bị ảnh hưởng — tái sử dụng engine B2/B3/B4/B5; B5 = InventoryOutPriceEngine.
+/// B2 đồng bộ <see cref="GkRunStatus.AllowsPoolRecalc"/>.
 /// </summary>
 public static class RecalcRules
 {
-    public static RecalcPlan Build(RecalcDryRunPayload dry, string companyCd)
+    public static RecalcPlan Build(RecalcDryRunPayload dry, string companyCd, string? userId = null)
     {
         if (string.IsNullOrWhiteSpace(companyCd))
             throw new ArgumentException("COMPANY_CD bắt buộc.");
@@ -16,13 +17,9 @@ public static class RecalcRules
         RunVersionRules.AssertWritableVersion(
             companyCd, dry.RunId, dry.WorkingRunVersion, dry.HeaderRunVersion, dry.RunStatus);
 
-        if (!RunVersionRules.AllowsRecalcWrite(dry.RunStatus))
-        {
-            throw new InvalidOperationException(
-                $"RUN.STATUS={dry.RunStatus} không cho tính lại. Cần DRAFT/PREVIEWED/REOPENED/ALLOC_CONFIRMED.");
-        }
-
         var fromStep = GkStepOrder.Normalize(dry.FromStepCode);
+        RunVersionRules.AssertCanRecalcStep(fromStep, dry.RunStatus);
+
         var statuses = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var kv in dry.StepStatuses ?? new Dictionary<string, string>())
         {
@@ -30,7 +27,6 @@ public static class RecalcRules
                 statuses[GkStepOrder.Normalize(kv.Key)] = (kv.Value ?? string.Empty).Trim();
         }
 
-        // Chặn tính lại khi bước sau còn DONE (phụ thuộc kết quả cũ)
         foreach (var down in GkStepOrder.Downstream(fromStep))
         {
             if (statuses.TryGetValue(down, out var st) &&
@@ -41,7 +37,6 @@ public static class RecalcRules
             }
         }
 
-        // Upstream trước fromStep phải DONE (trừ chính fromStep sẽ tính lại)
         foreach (var up in GkStepOrder.UpstreamInclusive(fromStep).Where(s =>
                      !string.Equals(s, fromStep, StringComparison.OrdinalIgnoreCase)))
         {
@@ -57,7 +52,6 @@ public static class RecalcRules
             .Skip(GkStepOrder.IndexOf(fromStep))
             .Where(s =>
             {
-                // Các bước từ from trở đi chưa DONE (đã reopen) — cần tính lại theo thứ tự
                 if (!statuses.TryGetValue(s, out var st))
                     return string.Equals(s, fromStep, StringComparison.OrdinalIgnoreCase);
                 return string.Equals(s, fromStep, StringComparison.OrdinalIgnoreCase)
@@ -70,13 +64,17 @@ public static class RecalcRules
         if (affected.Count == 0)
             affected.Add(fromStep);
 
+        // Mọi bước B2 trong danh sách affected cũng phải qua guard pool
+        foreach (var step in affected)
+            RunVersionRules.AssertCanRecalcStep(step, dry.RunStatus);
+
+        var operationId = HistoryPlan.RequireOperationId(dry.OperationId);
         var engines = affected.Select(DescribeEngine).ToList();
         var historyKey = HistoryPlan.StableKey(
-            companyCd, dry.RunId, dry.WorkingRunVersion, fromStep, HistoryActionCode.Recalculate);
-        var idem = HistoryPlan.PlanWrite(
-            historyKey,
-            alreadyWrittenSameKey: dry.ExistingHistoryStableKey is not null
-                && string.Equals(dry.ExistingHistoryStableKey, historyKey, StringComparison.Ordinal));
+            companyCd, dry.RunId, dry.WorkingRunVersion, fromStep,
+            HistoryActionCode.Recalculate, operationId);
+        var idem = HistoryPlan.PlanWrite(historyKey, operationId, dry.PersistedOperationIdsFromDb);
+        var actionAt = dry.ActionAtUtc ?? DateTime.UtcNow;
 
         return new RecalcPlan
         {
@@ -93,6 +91,7 @@ public static class RecalcRules
             History = new HistoryEntryPlan
             {
                 StableKey = historyKey,
+                OperationId = operationId,
                 ActionCode = HistoryActionCode.Recalculate,
                 StepCode = fromStep,
                 StepIndex = GkStepOrder.IndexOf(fromStep) + 1,
@@ -102,12 +101,16 @@ public static class RecalcRules
                 StatusBefore = dry.RunStatus,
                 StatusAfter = GkRunStatus.Previewed,
                 Reason = dry.Reason,
+                UserId = userId,
+                ActionAtUtc = actionAt,
                 IdempotencyAction = idem.Action.ToString(),
-                WritesHistory = idem.WritesHistory
+                WritesHistory = idem.WritesHistory,
+                ClientHistoryHintIsNotAuthoritative = true
             },
-            Message =
-                $"Plan RECALC từ {fromStep}: [{string.Join(", ", affected)}]. " +
-                "Preview không đổi chứng từ KT / kho. B5 dùng InventoryOutPriceEngine chung."
+            Message = idem.WritesHistory
+                ? $"Plan RECALC từ {fromStep}: [{string.Join(", ", affected)}]. " +
+                  "Preview không đổi chứng từ KT / kho. B5 dùng InventoryOutPriceEngine chung."
+                : "RECALCULATE idempotent — cùng OperationId đã persist; không ghi history trùng."
         };
     }
 
@@ -117,13 +120,13 @@ public static class RecalcRules
         {
             StepCode = stepCode,
             EngineName = "AllocationEngine",
-            Notes = "B2 — tái sử dụng AllocationEngine"
+            Notes = "B2 — chỉ khi AllowsPoolRecalc; ALLOC_CONFIRMED phải REOPEN trước"
         },
         ProductionCostStepCode.ExpTo154Only => new RecalcEngineBinding
         {
             StepCode = stepCode,
             EngineName = "ExpTo154Rules",
-            Notes = "B3 — EXP_TO_154_ONLY; không đụng 3 rule B-I"
+            Notes = "B3 — vẫn chạy khi ALLOC_CONFIRMED nếu tiền đề hợp lệ"
         },
         ProductionCostStepCode.CostCalc => new RecalcEngineBinding
         {
@@ -141,13 +144,13 @@ public static class RecalcRules
         {
             StepCode = stepCode,
             EngineName = "PeriodLock.FA_PREPAID_LOCK",
-            Notes = "B1 — mirror B-I; không đổi nghiệp vụ B-I trong 2C-05"
+            Notes = "B1 — mirror B-I; không đổi nghiệp vụ B-I"
         },
         ProductionCostStepCode.ProfitLossReport => new RecalcEngineBinding
         {
             StepCode = stepCode,
             EngineName = "PeriodLock.PROFIT_LOSS_REPORT",
-            Notes = "B6 — mirror B-I; skeleton 2C-05"
+            Notes = "B6 — mirror B-I; skeleton"
         },
         _ => new RecalcEngineBinding { StepCode = stepCode, EngineName = "Unknown", Notes = "" }
     };

@@ -5,10 +5,11 @@ namespace API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
 
 /// <summary>
 /// Quy tắc mở lại bước G-K: lý do bắt buộc, cascade ngược B6→target, bảo toàn RUN_VERSION cũ.
+/// Không tăng version lặp khi đã REOPENED; SUPERSEDED chỉ khi tạo version mới hợp lệ.
 /// </summary>
 public static class ReopenRules
 {
-    public static ReopenPlan Build(ReopenDryRunPayload dry, string companyCd)
+    public static ReopenPlan Build(ReopenDryRunPayload dry, string companyCd, string? userId = null)
     {
         if (string.IsNullOrWhiteSpace(companyCd))
             throw new ArgumentException("COMPANY_CD bắt buộc.");
@@ -34,61 +35,89 @@ public static class ReopenRules
                 $"RUN_VERSION request ({dry.RequestedRunVersion}) ≠ header hiện hành ({dry.CurrentRunVersion}).");
         }
 
+        var operationId = HistoryPlan.RequireOperationId(dry.OperationId);
+        // Confirm DB: chỉ tin PersistedOperationIds từ DB — không tin client history hint.
+        var isRetry = dry.PersistedOperationIdsFromDb?.Any(id =>
+            string.Equals((id ?? string.Empty).Trim(), operationId, StringComparison.OrdinalIgnoreCase)) == true;
+        var mode = RunVersionRules.ResolveReopenMode(dry.RunStatus, isRetry);
+
         var target = GkStepOrder.Normalize(dry.TargetStepCode);
         var statuses = NormalizeStatuses(dry.StepStatuses);
-
-        // Chặn mở lại khi còn bước sau DONE mà chưa nằm trong plan cascade
         var cascade = BuildCascadeReverse(target, statuses);
         AssertNoSkippedDownstream(target, statuses, cascade);
 
-        var newVersion = dry.CurrentRunVersion + 1;
-        var historyKey = HistoryPlan.StableKey(
-            companyCd, dry.RunId, dry.CurrentRunVersion, target, HistoryActionCode.Reopen);
+        var workingVersion = RunVersionRules.ResolveWorkingVersion(dry.CurrentRunVersion, mode);
+        var markSuperseded = RunVersionRules.ShouldMarkPriorVersionSuperseded(mode);
+        var preserved = mode == RunVersionRules.ReopenVersionMode.CreateNewWorkingVersion
+            ? dry.CurrentRunVersion
+            : dry.CurrentRunVersion;
 
-        var idem = HistoryPlan.PlanWrite(
-            historyKey,
-            alreadyWrittenSameKey: dry.ExistingHistoryStableKey is not null
-                && string.Equals(dry.ExistingHistoryStableKey, historyKey, StringComparison.Ordinal));
+        var historyKey = HistoryPlan.StableKey(
+            companyCd, dry.RunId, dry.CurrentRunVersion, target, HistoryActionCode.Reopen, operationId);
+        var idem = HistoryPlan.PlanWrite(historyKey, operationId, dry.PersistedOperationIdsFromDb);
+        var actionAt = dry.ActionAtUtc ?? DateTime.UtcNow;
 
         return new ReopenPlan
         {
             CompanyCd = companyCd.Trim(),
             RunId = dry.RunId,
-            PreservedRunVersion = dry.CurrentRunVersion,
-            NewWorkingRunVersion = newVersion,
+            PreservedRunVersion = preserved,
+            NewWorkingRunVersion = workingVersion,
+            VersionMode = mode.ToString(),
             TargetStepCode = target,
             CascadeReverse = cascade,
             PriorRunStatus = dry.RunStatus ?? string.Empty,
             NewRunStatus = GkRunStatus.Reopened,
-            MarkPriorVersionSuperseded = true,
+            MarkPriorVersionSuperseded = markSuperseded,
             PreserveConfirmedSnapshots = true,
             WouldDeleteConfirmedData = false,
             Reason = dry.Reason.Trim(),
             History = new HistoryEntryPlan
             {
                 StableKey = historyKey,
+                OperationId = operationId,
                 ActionCode = HistoryActionCode.Reopen,
                 StepCode = target,
                 StepIndex = GkStepOrder.IndexOf(target) + 1,
                 RunId = dry.RunId,
                 RunVersionBefore = dry.CurrentRunVersion,
-                RunVersionAfter = newVersion,
+                RunVersionAfter = workingVersion,
                 StatusBefore = dry.RunStatus,
                 StatusAfter = GkRunStatus.Reopened,
                 Reason = dry.Reason.Trim(),
+                UserId = userId,
+                ActionAtUtc = actionAt,
                 IdempotencyAction = idem.Action.ToString(),
-                WritesHistory = idem.WritesHistory
+                WritesHistory = idem.WritesHistory,
+                ClientHistoryHintIsNotAuthoritative = true
             },
-            Message = idem.WritesHistory
-                ? $"Plan REOPEN {target}: cascade {string.Join(" → ", cascade)}; " +
-                  $"bảo toàn v{dry.CurrentRunVersion}; làm việc v{newVersion}."
-                : "REOPEN idempotent — cùng STABLE_KEY đã ghi history, không ghi trùng."
+            Message = BuildMessage(mode, target, cascade, dry.CurrentRunVersion, workingVersion, idem.WritesHistory)
         };
     }
 
-    /// <summary>
-    /// Cascade mở lại: các bước sau đang DONE/PREVIEWED theo thứ tự ngược, rồi đến target.
-    /// </summary>
+    private static string BuildMessage(
+        RunVersionRules.ReopenVersionMode mode,
+        string target,
+        IReadOnlyList<string> cascade,
+        int current,
+        int working,
+        bool writesHistory)
+    {
+        if (!writesHistory)
+            return "REOPEN idempotent — cùng OperationId đã persist; không tăng version / không ghi history trùng.";
+
+        return mode switch
+        {
+            RunVersionRules.ReopenVersionMode.CreateNewWorkingVersion =>
+                $"REOPEN lần đầu {target}: cascade {string.Join(" → ", cascade)}; " +
+                $"bảo toàn snapshot v{current}; làm việc v{working}; đánh SUPERSEDED version cũ.",
+            RunVersionRules.ReopenVersionMode.KeepCurrentWorkingVersion =>
+                $"REOPEN trong phiên REOPENED/DRAFT — giữ v{working}; cascade {string.Join(" → ", cascade)}; " +
+                "không tăng RUN_VERSION; không đánh SUPERSEDED lại.",
+            _ => $"REOPEN {target} v{working}."
+        };
+    }
+
     public static IReadOnlyList<string> BuildCascadeReverse(
         string targetStepCode,
         IReadOnlyDictionary<string, string> stepStatuses)
@@ -105,7 +134,6 @@ public static class ReopenRules
         return list;
     }
 
-    /// <summary>Không được bỏ qua bước sau còn khóa khi mở bước trước.</summary>
     public static void AssertCanReopenTarget(
         string targetStepCode,
         IReadOnlyDictionary<string, string> stepStatuses)

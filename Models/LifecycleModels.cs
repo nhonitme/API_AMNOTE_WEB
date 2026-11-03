@@ -15,16 +15,23 @@ public sealed class ReopenDryRunPayload
     public string? RunStatus { get; set; }
     public string TargetStepCode { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;
-    /// <summary>DryRun: client mô phỏng quyền; Confirm phải đọc quyền thật.</summary>
+    /// <summary>DryRun: client mô phỏng quyền; Confirm phải đọc quyền thật từ DB.</summary>
     public bool HasPermission { get; set; } = true;
+    /// <summary>Idempotency — retry cùng OperationId → Noop.</summary>
+    public string OperationId { get; set; } = string.Empty;
+    public DateTime? ActionAtUtc { get; set; }
     public IReadOnlyDictionary<string, string> StepStatuses { get; set; }
         = new Dictionary<string, string>();
-    public string? ExistingHistoryStableKey { get; set; }
+    /// <summary>
+    /// OperationId đã persist (mô phỏng đọc DB). Không dùng client hint làm bằng chứng Confirm.
+    /// </summary>
+    public IReadOnlyList<string>? PersistedOperationIdsFromDb { get; set; }
 }
 
 public sealed class HistoryEntryPlan
 {
     public string StableKey { get; set; } = string.Empty;
+    public string OperationId { get; set; } = string.Empty;
     public string ActionCode { get; set; } = string.Empty;
     public string StepCode { get; set; } = string.Empty;
     public int StepIndex { get; set; }
@@ -34,8 +41,12 @@ public sealed class HistoryEntryPlan
     public string? StatusBefore { get; set; }
     public string? StatusAfter { get; set; }
     public string? Reason { get; set; }
+    public string? UserId { get; set; }
+    public DateTime? ActionAtUtc { get; set; }
     public string? IdempotencyAction { get; set; }
     public bool WritesHistory { get; set; }
+    /// <summary>Confirm phải đọc OperationId từ DB — không tin client tự khai.</summary>
+    public bool ClientHistoryHintIsNotAuthoritative { get; set; } = true;
 }
 
 public sealed class ReopenPlan
@@ -44,6 +55,8 @@ public sealed class ReopenPlan
     public long RunId { get; set; }
     public int PreservedRunVersion { get; set; }
     public int NewWorkingRunVersion { get; set; }
+    /// <summary>CreateNewWorkingVersion | KeepCurrentWorkingVersion | IdempotentRetry</summary>
+    public string VersionMode { get; set; } = string.Empty;
     public string TargetStepCode { get; set; } = string.Empty;
     public IReadOnlyList<string> CascadeReverse { get; set; } = Array.Empty<string>();
     public string PriorRunStatus { get; set; } = string.Empty;
@@ -64,9 +77,11 @@ public sealed class RecalcDryRunPayload
     public string? RunStatus { get; set; }
     public string FromStepCode { get; set; } = string.Empty;
     public string? Reason { get; set; }
+    public string OperationId { get; set; } = string.Empty;
+    public DateTime? ActionAtUtc { get; set; }
     public IReadOnlyDictionary<string, string> StepStatuses { get; set; }
         = new Dictionary<string, string>();
-    public string? ExistingHistoryStableKey { get; set; }
+    public IReadOnlyList<string>? PersistedOperationIdsFromDb { get; set; }
 }
 
 public sealed class RecalcEngineBinding

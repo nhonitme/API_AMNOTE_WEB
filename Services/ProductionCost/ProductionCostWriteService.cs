@@ -380,7 +380,8 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                 "Preview REOPEN từ DB chưa kích hoạt trong 2C-05. Gửi ReopenDryRun payload.");
         }
 
-        var plan = ReopenRules.Build(request.ReopenDryRun, companyCd);
+        LifecycleRequestGuard.AssertAlignedWithReopen(request, request.ReopenDryRun);
+        var plan = ReopenRules.Build(request.ReopenDryRun, companyCd, userId);
         RunVersionRules.AssertConfirmedSnapshotIntact(
             plan.WouldDeleteConfirmedData,
             wouldOverwriteConfirmedUniqueKey: false);
@@ -397,7 +398,8 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
             StepStatusesAreClientSimulated = true,
             Message =
                 "Preview REOPEN dry-run — không ghi DB. " +
-                "Quyền/B2–B6 trong DryRun chỉ mô phỏng; Confirm phải đọc lại từ DB. " + plan.Message
+                "Quyền/bước/history trong DryRun chỉ mô phỏng; Confirm đọc OperationId + trạng thái từ DB. " +
+                plan.Message
         });
     }
 
@@ -412,13 +414,14 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
         _gate.EnsureWritable();
 
         // Skeleton (TX owner = C#):
-        // 1) Đọc quyền + RUN FOR UPDATE (COMPANY_CD, RUN_ID, RUN_VERSION)
-        // 2) ReopenRules cascade B6→target; bump RUN_VERSION; không DELETE snapshot cũ
-        // 3) HistoryPlan idempotent theo STABLE_KEY
-        // 4) Không CONFIRMED toàn kỳ; không apply kho / 632
+        // 1) Đọc quyền + RUN FOR UPDATE (COMPANY_CD, RUN_ID, RUN_VERSION) — không tin DryRun
+        // 2) Đọc PersistedOperationIds từ production_cost_history — idempotent theo OperationId
+        // 3) ReopenRules: chỉ +1 version lần đầu; đã REOPENED thì giữ version
+        // 4) SUPERSEDED chỉ khi CreateNewWorkingVersion; không DELETE snapshot cũ
+        // 5) Không CONFIRMED toàn kỳ; không apply kho / 632
         throw new InvalidOperationException(
             "Confirm REOPEN DB path đã có gate nhưng chưa kích hoạt thực thi trong 2C-05. " +
-            "Confirm bắt buộc kiểm tra quyền và trạng thái bước từ database.");
+            "Confirm bắt buộc đọc lại quyền, RUN_VERSION và OperationId từ database.");
     }
 
     public Task<ProductionCostLifecycleWriteResponse> PreviewRecalculateAsync(
@@ -436,7 +439,8 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                 "Preview RECALCULATE từ DB chưa kích hoạt trong 2C-05. Gửi RecalcDryRun payload.");
         }
 
-        var plan = RecalcRules.Build(request.RecalcDryRun, companyCd);
+        LifecycleRequestGuard.AssertAlignedWithRecalc(request, request.RecalcDryRun);
+        var plan = RecalcRules.Build(request.RecalcDryRun, companyCd, userId);
         return Task.FromResult(new ProductionCostLifecycleWriteResponse
         {
             WriteEnabled = _gate.IsWriteEnabled,
