@@ -286,15 +286,26 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                 var period = await _writeRepo.LockPeriodEngineForUpdateAsync(session, companyCd, periodYm)
                     ?? throw new InvalidOperationException("production_cost_period không tồn tại cho PERIOD_YM.");
 
+                // CURRENT_RUN_ID + PERIOD_COST_ID — reject trước mọi SP ghi.
+                ProductionCostWriteContext.AssertPeriodCurrentRunMatches(
+                    locked, period, companyCd, runId, periodYm);
+
                 var steps = await _writeRepo.GetStepStatusesForUpdateAsync(session, companyCd, runId);
                 var allocTotal = await _writeRepo.GetConfirmedAllocTotalAsync(
                     session, companyCd, runId, runVersion);
 
-                // BI COGS step (acc_period_lock) — fake/repo có thể trả qua period snapshot mở rộng; mặc định null.
-                string? biCogsStepStatus = null;
+                // Authoritative B-I COGS_SUMMARY (cùng TX) — khớp sp_period_lock_cogs_validate.
+                var biCogsStepStatus = await _writeRepo.GetBiCogsStepStatusForUpdateAsync(
+                    session, companyCd, periodYm);
 
                 var persisted = await _writeRepo.GetPersistedHistoryByOperationIdAsync(
                     session, companyCd, operationId);
+
+                var voucherStableKey = ExpTo154Rules.StableKey(companyCd, periodYm);
+                var voucherRefExists = await _writeRepo.VoucherRefExistsAsync(
+                    session, companyCd, voucherStableKey);
+                var hasB3History = await _writeRepo.HasB3ConfirmHistoryAsync(
+                    session, companyCd, runId, runVersion);
 
                 var plan = TransferConfirmPlanner.Build(
                     companyCd,
@@ -309,7 +320,9 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                     biCogsStepStatus,
                     allocTotal,
                     persisted,
-                    userId);
+                    userId,
+                    voucherRefExists: voucherRefExists,
+                    hasB3ConfirmHistory: hasB3History);
 
                 if (plan.IsNoop)
                 {
@@ -326,6 +339,9 @@ public sealed class ProductionCostWriteService : IProductionCostWriteService
                         Message = plan.Message
                     };
                 }
+
+                if (!plan.WouldCallPeriodLockCogs)
+                    throw new InvalidOperationException("Plan B3 không PeriodLock nhưng không phải Noop.");
 
                 // PeriodLock COGS trên cùng session — không commit riêng.
                 await _writeRepo.CallPeriodLockExpTo154Async(session, companyCd, periodYm, userId);

@@ -584,6 +584,35 @@ FOR UPDATE";
             new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim() });
     }
 
+    public async Task<string?> GetBiCogsStepStatusForUpdateAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        if (string.IsNullOrWhiteSpace(periodYm) || periodYm.Trim().Length != 6)
+            throw new ArgumentException("PERIOD_YM phải 6 ký tự.");
+
+        const string sql = @"
+SELECT STATUS
+FROM acc_period_lock_step
+WHERE COMPANY_CD = @CompanyCd
+  AND PERIOD_YM = @PeriodYm
+  AND STEP_CODE = @StepCode
+LIMIT 1
+FOR UPDATE";
+
+        return await session.QueryFirstOrDefaultAsync<string?>(
+            sql,
+            new
+            {
+                CompanyCd = companyCd.Trim(),
+                PeriodYm = periodYm.Trim(),
+                StepCode = ProductionCostBiStepCode.CogsSummary
+            });
+    }
+
     public async Task<decimal> GetConfirmedAllocTotalAsync(
         DapperSession session,
         string companyCd,
@@ -606,6 +635,64 @@ WHERE COMPANY_CD = @CompanyCd
         return await session.QueryFirstOrDefaultAsync<decimal>(
             sql,
             new { CompanyCd = companyCd.Trim(), RunId = runId, RunVersion = runVersion });
+    }
+
+    public async Task<bool> VoucherRefExistsAsync(
+        DapperSession session,
+        string companyCd,
+        string stableKey)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        if (string.IsNullOrWhiteSpace(stableKey))
+            throw new ArgumentException("STABLE_KEY bắt buộc.");
+
+        const string sql = @"
+SELECT 1
+FROM production_cost_voucher_ref
+WHERE COMPANY_CD = @CompanyCd
+  AND STABLE_KEY = @StableKey
+  AND ISDEL = '0'
+LIMIT 1";
+
+        var row = await session.QueryFirstOrDefaultAsync<int?>(
+            sql,
+            new { CompanyCd = companyCd.Trim(), StableKey = stableKey.Trim() });
+        return row is > 0;
+    }
+
+    public async Task<bool> HasB3ConfirmHistoryAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+
+        const string sql = @"
+SELECT 1
+FROM production_cost_history
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND STEP_CODE = @StepCode
+  AND ACTION_CODE = @ActionCode
+  AND ISDEL = '0'
+LIMIT 1";
+
+        var row = await session.QueryFirstOrDefaultAsync<int?>(
+            sql,
+            new
+            {
+                CompanyCd = companyCd.Trim(),
+                RunId = runId,
+                RunVersion = runVersion,
+                StepCode = ProductionCostStepCode.ExpTo154Only,
+                ActionCode = HistoryActionCode.Confirm
+            });
+        return row is > 0;
     }
 
     public async Task CallPeriodLockExpTo154Async(

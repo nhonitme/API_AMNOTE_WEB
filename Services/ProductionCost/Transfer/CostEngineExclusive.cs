@@ -44,7 +44,8 @@ public static class CostEngineExclusive
     }
 
     /// <summary>
-    /// Chặn B-I full COGS khi kỳ đã claim GK; chặn G-K khi kỳ đã DONE bởi BI.
+    /// Chặn B-I full COGS khi kỳ đã claim GK; chặn G-K khi kỳ đã DONE / sở hữu bởi B-I.
+    /// Khớp <c>sp_period_lock_cogs_validate</c> (<c>sp_period_lock_step_require_open</c> + engine assert).
     /// </summary>
     public static void AssertTransferAllowed(
         string? currentEngine,
@@ -63,11 +64,13 @@ public static class CostEngineExclusive
                     "Không thể chạy EXP_TO_154_ONLY: kỳ đã thuộc engine B-I / rule B-I.");
             }
 
-            if (string.Equals(biCogsStepStatus, "DONE", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(currentEngine, ProductionCostEngine.Bi, StringComparison.OrdinalIgnoreCase))
+            // sp_period_lock_step_require_open: COGS_SUMMARY=DONE → SIGNAL (mọi engine).
+            // Caller Noop (cùng OpId / B3 đã DONE nhất quán) phải return trước khi gọi guard này.
+            if (string.Equals(biCogsStepStatus, "DONE", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
-                    "COGS_SUMMARY đã DONE bởi B-I — không chạy G-K Bước 3.");
+                    "COGS_SUMMARY đã DONE (acc_period_lock_step) — không chạy G-K Bước 3 " +
+                    "(khớp sp_period_lock_cogs_validate / require_open).");
             }
 
             return;

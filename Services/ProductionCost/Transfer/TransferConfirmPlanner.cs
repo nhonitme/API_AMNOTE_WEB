@@ -84,7 +84,9 @@ public static class TransferConfirmPlanner
         decimal confirmedAllocTotal,
         PersistedHistoryRef? persistedHistoryFromDb,
         string? userId = null,
-        string? clientFingerprint = null)
+        string? clientFingerprint = null,
+        bool voucherRefExists = false,
+        bool hasB3ConfirmHistory = false)
     {
         TransferConfirmAtomicity.EnsureSharedSessionAvailable();
         ProductionCostWriteContext.EnsureCompany(companyCd);
@@ -97,12 +99,6 @@ public static class TransferConfirmPlanner
 
         stepStatuses.TryGetValue(ProductionCostStepCode.CostAllocation, out var allocStep);
         ExpTo154Rules.AssertAllocationConfirmed(allocStep, confirmedAllocTotal, runStatus);
-
-        CostEngineExclusive.AssertTransferAllowed(
-            costEngine,
-            periodCogsRule,
-            CogsRule,
-            biCogsStepStatus);
 
         // Không hạ / không nâng CONFIRMED toàn kỳ ở B3.
         var expectedStatus = string.Equals(runStatus, GkRunStatus.Confirmed, StringComparison.OrdinalIgnoreCase)
@@ -137,45 +133,56 @@ public static class TransferConfirmPlanner
             ("154", "627")
         };
         ExpTo154Rules.AssertLinesAllowed(sampleLines);
-        // Cấm tuyệt đối downstream trong plan.
         AssertNoForbiddenDownstreamSamples();
 
+        // 1) Retry cùng OperationId + fingerprint → Noop (trước exclusive / PeriodLock).
         if (historyPlan.Action == HistoryPlan.WriteAction.NoopAlreadyWritten)
         {
-            return new Plan
-            {
-                CompanyCd = companyCd.Trim(),
-                PeriodYm = periodYm.Trim(),
-                RunId = runId,
-                RunVersion = runVersion,
-                OperationId = op,
-                HistoryStableKey = historyKey,
-                VoucherStableKey = voucherKey,
-                ContentFingerprint = fp,
-                PriorRunStatus = runStatus,
-                ExpectedRunStatusAfter = expectedStatus,
-                IsNoop = true,
-                WouldCallPeriodLockCogs = false,
-                WouldMarkStepDone = false,
-                WouldWriteHistory = false,
-                WouldCreateDownstream155Or632 = false,
-                WouldPromoteFullPeriodConfirmed = false,
-                IdempotencyAction = historyPlan.Action.ToString(),
-                Message = "Confirm B3 idempotent — cùng OperationId + fingerprint; không ghi lại.",
-                History = null,
-                ConfirmedAllocTotal = confirmedAllocTotal,
-                AllowedSampleLines = sampleLines
-            };
+            return NoopPlan(
+                companyCd, periodYm, runId, runVersion, op, historyKey, voucherKey, fp,
+                runStatus, expectedStatus, confirmedAllocTotal, sampleLines,
+                nameof(HistoryPlan.WriteAction.NoopAlreadyWritten),
+                "Confirm B3 idempotent — cùng OperationId + fingerprint; không ghi lại.");
         }
 
         stepStatuses.TryGetValue(StepCode, out var b3Status);
-        if (string.Equals(b3Status, ProductionCostStepStatus.Done, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(historyPlan.Action.ToString(), nameof(HistoryPlan.WriteAction.NoopAlreadyWritten),
-                StringComparison.Ordinal))
+        var b3Done = string.Equals(b3Status, ProductionCostStepStatus.Done, StringComparison.OrdinalIgnoreCase);
+
+        // 2) B3 đã DONE + OperationId mới → không PeriodLock / không tạo-xóa voucher.
+        if (b3Done)
         {
-            // Step DONE nhưng OpId mới → vẫn cho phép nếu chưa có history conflict (retry khác OpId hiếm).
-            // Không tạo CT trùng: PeriodLock create_voucher idempotent theo kỳ + voucher_ref STABLE_KEY.
+            var gkOwned =
+                string.Equals(costEngine, ProductionCostEngine.Gk, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(periodCogsRule, CogsRule, StringComparison.OrdinalIgnoreCase);
+
+            var consistent =
+                gkOwned
+                && voucherRefExists
+                && hasB3ConfirmHistory
+                && runVersion > 0;
+
+            if (consistent)
+            {
+                return NoopPlan(
+                    companyCd, periodYm, runId, runVersion, op, historyKey, voucherKey, fp,
+                    runStatus, expectedStatus, confirmedAllocTotal, sampleLines,
+                    nameof(ConfirmIdempotency.VoucherAction.NoopAlreadyConfirmed),
+                    "Confirm B3 đã DONE — OperationId mới không chạy lại PeriodLock; " +
+                    "bảo toàn STABLE_KEY / chứng từ / RUN_VERSION; cần REOPEN hợp lệ để Confirm lại.");
+            }
+
+            throw new InvalidOperationException(
+                "STEP B3 EXP_TO_154_ONLY đã DONE nhưng trạng thái thiếu/mâu thuẫn " +
+                "(COST_ENGINE/COGS_RULE/voucher_ref/history) — không PeriodLock lại, không tạo/xóa CT. " +
+                "Cần quy trình REOPEN hợp lệ trước khi Confirm mới.");
         }
+
+        // 3) Đường ghi thật — exclusive khớp sp_period_lock_cogs_validate.
+        CostEngineExclusive.AssertTransferAllowed(
+            costEngine,
+            periodCogsRule,
+            CogsRule,
+            biCogsStepStatus);
 
         var historyEntry = new HistoryEntryPlan
         {
@@ -225,6 +232,46 @@ public static class TransferConfirmPlanner
 
     public static bool ShouldCommitHistory(bool transferSucceeded, bool stepMarked) =>
         ConfirmIdempotency.ShouldWriteSuccessHistory(transferSucceeded, stepMarked);
+
+    private static Plan NoopPlan(
+        string companyCd,
+        string periodYm,
+        long runId,
+        int runVersion,
+        string op,
+        string historyKey,
+        string voucherKey,
+        string fp,
+        string? runStatus,
+        string expectedStatus,
+        decimal confirmedAllocTotal,
+        IReadOnlyList<(string Debit, string Credit)> sampleLines,
+        string idempotencyAction,
+        string message) =>
+        new()
+        {
+            CompanyCd = companyCd.Trim(),
+            PeriodYm = periodYm.Trim(),
+            RunId = runId,
+            RunVersion = runVersion,
+            OperationId = op,
+            HistoryStableKey = historyKey,
+            VoucherStableKey = voucherKey,
+            ContentFingerprint = fp,
+            PriorRunStatus = runStatus,
+            ExpectedRunStatusAfter = expectedStatus,
+            IsNoop = true,
+            WouldCallPeriodLockCogs = false,
+            WouldMarkStepDone = false,
+            WouldWriteHistory = false,
+            WouldCreateDownstream155Or632 = false,
+            WouldPromoteFullPeriodConfirmed = false,
+            IdempotencyAction = idempotencyAction,
+            Message = message,
+            History = null,
+            ConfirmedAllocTotal = confirmedAllocTotal,
+            AllowedSampleLines = sampleLines
+        };
 
     private static void AssertNoForbiddenDownstreamSamples()
     {

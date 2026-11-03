@@ -111,8 +111,32 @@ public interface IProductionCostWriteRepository
         string companyCd,
         string periodYm);
 
+    /// <summary>
+    /// Đọc <c>acc_period_lock_step.COGS_SUMMARY.STATUS</c> FOR UPDATE (cùng TX).
+    /// null = chưa có hàng (tương đương OPEN cho require_open).
+    /// </summary>
+    Task<string?> GetBiCogsStepStatusForUpdateAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm);
+
     /// <summary>Σ ALLOCATED_AMOUNT 622/627 ISDEL=0 theo RUN_ID+VERSION.</summary>
     Task<decimal> GetConfirmedAllocTotalAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion);
+
+    /// <summary>true nếu voucher_ref ISDEL=0 theo COMPANY_CD + STABLE_KEY.</summary>
+    Task<bool> VoucherRefExistsAsync(
+        DapperSession session,
+        string companyCd,
+        string stableKey);
+
+    /// <summary>
+    /// true nếu đã có history CONFIRM B3 (STEP_CODE=EXP_TO_154_ONLY) ISDEL=0 cho RUN+VERSION.
+    /// </summary>
+    Task<bool> HasB3ConfirmHistoryAsync(
         DapperSession session,
         string companyCd,
         long runId,

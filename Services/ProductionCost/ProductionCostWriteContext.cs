@@ -82,6 +82,63 @@ public static class ProductionCostWriteContext
         }
     }
 
+    /// <summary>
+    /// Sau lock RUN + PERIOD: request phải là CURRENT_RUN_ID và cùng PERIOD_COST_ID.
+    /// Chặn Confirm B3 trên RUN không phải current (SP xfer đọc CURRENT_RUN_ID).
+    /// </summary>
+    public static void AssertPeriodCurrentRunMatches(
+        ProductionCostRunDto lockedRun,
+        ProductionCostPeriodEngineSnapshot period,
+        string companyCd,
+        long requestRunId,
+        string requestPeriodYm)
+    {
+        EnsureCompany(companyCd);
+        if (lockedRun == null)
+            throw new InvalidOperationException("RUN không tồn tại hoặc không thuộc COMPANY_CD.");
+        if (period == null)
+            throw new InvalidOperationException("production_cost_period không tồn tại cho PERIOD_YM.");
+
+        if (!string.Equals(period.CompanyCd, companyCd.Trim(), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("PERIOD không thuộc COMPANY_CD.");
+
+        var periodYm = (period.PeriodYm ?? string.Empty).Trim();
+        if (!string.Equals(periodYm, requestPeriodYm.Trim(), StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"PERIOD_YM period ({period.PeriodYm}) ≠ request ({requestPeriodYm.Trim()}).");
+        }
+
+        if (!string.Equals((lockedRun.PeriodYm ?? string.Empty).Trim(), periodYm, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"PERIOD_YM RUN ({lockedRun.PeriodYm}) ≠ period ({period.PeriodYm}).");
+        }
+
+        if (period.CurrentRunId is null or <= 0)
+            throw new InvalidOperationException("PERIOD thiếu CURRENT_RUN_ID — không Confirm B3.");
+
+        if (period.CurrentRunId.Value != requestRunId)
+        {
+            throw new InvalidOperationException(
+                $"RUN_ID request ({requestRunId}) ≠ PERIOD.CURRENT_RUN_ID ({period.CurrentRunId.Value}) — " +
+                "không Confirm / không đánh STEP B3 DONE cho RUN không phải current " +
+                "(sp_period_lock_cogs_build_xfer dùng CURRENT_RUN_ID).");
+        }
+
+        if (lockedRun.RunId != period.CurrentRunId.Value)
+        {
+            throw new InvalidOperationException(
+                $"RUN khóa ({lockedRun.RunId}) ≠ PERIOD.CURRENT_RUN_ID ({period.CurrentRunId.Value}).");
+        }
+
+        if (lockedRun.PeriodCostId != period.PeriodCostId)
+        {
+            throw new InvalidOperationException(
+                $"PERIOD_COST_ID RUN ({lockedRun.PeriodCostId}) ≠ period ({period.PeriodCostId}).");
+        }
+    }
+
     public static void AssertHistoryWriteSchemaReady(ProductionCostHistoryWriteSchemaProbe probe)
     {
         if (probe == null || !probe.Ready)

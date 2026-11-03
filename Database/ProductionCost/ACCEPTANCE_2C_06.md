@@ -565,20 +565,23 @@ TEST_EXIT=0
 ## 10. 2C-06C — EXP_TO_154_ONLY Confirm B3
 
 Ngày: 2026-11-03  
-Phạm vi: Confirm Bước 3 only — `ConfirmTransferAsync` + B2 authoritative-source guard.  
+Phạm vi: Confirm Bước 3 only — `ConfirmTransferAsync` + B2 authoritative-source guard + safety fix (CURRENT_RUN_ID / B-I COGS / B3 DONE idempotency).  
 **Không** B4/B5 · **Không** EnableWrites · **Không** SOURCE · **Không** Confirm thật · **Không** post CT thật · **Không** sửa B-I/kho · **Không** đổi AllocationEngine.
 
-### 10.1 Implemented (source)
+### 10.1 Implemented (source-tested)
 
 | Hạng mục | Chi tiết |
 |----------|----------|
 | B2 guard | `AllocationConfirmSourceGuard` — chặn Confirm B2 ghi thật khi pool/basis chưa từ DB; **độc lập** EnableWrites |
-| Orchestration B3 | Gate → TX C# → lock RUN + Period → assert VERSION/PeriodYm → B2 DONE + alloc total → `CostEngineExclusive` → `TransferConfirmPlanner` → PeriodLock COGS trên **cùng** session → STEP B3 DONE → voucher_ref → history C# → Commit/Rollback |
-| PeriodLock reuse | `CallPeriodLockExpTo154Async` = validate + calculate + create_voucher (`EXP_TO_154_ONLY`) trên `DapperSession` G-K — **không** dual-commit PeriodLockRepository |
-| Atomicity | `TransferConfirmAtomicity.SupportsSharedGkSession=true` (SP không START/COMMIT); nếu false → Confirm B3 blocked |
-| Rules | Chỉ N154/C621–627; cấm N155/C154, N632/C154, 154→155/632; không `CONFIRMED` toàn kỳ |
-| Idempotency | OperationId + fingerprint Noop/Conflict; voucher STABLE_KEY `EXP_TO_154_ONLY:{COMPANY}:{PERIOD}` |
-| Tests | B2 chưa DONE / RUN_VERSION / ENGINE=BI / retry OpId / FP conflict / fail giữa transfer↔history Rollback / không downstream / gate OFF / B2 DryRun blocked by source guard |
+| Orchestration B3 | Gate → TX C# → lock RUN + Period → **assert CURRENT_RUN_ID + PERIOD_COST_ID** → VERSION/PeriodYm → đọc `acc_period_lock_step.COGS_SUMMARY` → B2 DONE + alloc → planner (Noop/Conflict/AlreadyConfirmed) → `CostEngineExclusive` → PeriodLock cùng session → STEP B3 DONE → voucher_ref → history → Commit/Rollback |
+| CURRENT_RUN_ID | `AssertPeriodCurrentRunMatches` — reject trước mọi SP ghi nếu request ≠ `PERIOD.CURRENT_RUN_ID` hoặc `RUN.PERIOD_COST_ID` ≠ period |
+| B-I COGS status | `GetBiCogsStepStatusForUpdateAsync` (FOR UPDATE) → `CostEngineExclusive`; COGS_SUMMARY=DONE chặn đường ghi (khớp `sp_period_lock_cogs_validate` / `require_open`) |
+| B3 DONE + OpId mới | Không PeriodLock / không tạo-xóa CT; nhất quán → `NoopAlreadyConfirmed`; thiếu/mâu thuẫn history/voucher/engine → reject (cần REOPEN) |
+| PeriodLock reuse | `CallPeriodLockExpTo154Async` = validate + calculate + create_voucher trên `DapperSession` G-K — **không** dual-commit |
+| Atomicity | `SupportsSharedGkSession=true`; nested COGS SP **không** START/COMMIT; `CREATE TEMPORARY` không implicit commit (source review) |
+| Rules | Chỉ N154/C621–627; cấm 154→155/632; không `CONFIRMED` toàn kỳ |
+| Idempotency | Cùng OpId+FP → Noop; OpId cũ khác FP → Conflict; STABLE_KEY `EXP_TO_154_ONLY:{COMPANY}:{PERIOD}` |
+| Tests | CURRENT_RUN_ID / PERIOD_COST_ID / BI COGS DONE / B3 DONE+OpId mới / retry OpId / FP conflict / fail transfer↔history Rollback / không downstream / gate OFF |
 | Gate | `ProductionCost:EnableWrites` mặc định **OFF** |
 
 ### 10.2 Skeleton
@@ -586,31 +589,32 @@ Phạm vi: Confirm Bước 3 only — `ConfirmTransferAsync` + B2 authoritative-
 | Hạng mục | Ghi chú |
 |----------|---------|
 | Preview transfer từ DB | Throw khi gate ON |
-| Mirror `acc_period_lock_step` COGS_SUMMARY DONE | Chưa (chỉ G-K `production_cost_step`) — PeriodLock SP tự xử lý step PL trong create path riêng nếu DEV gọi PL UI |
 | Confirm B4 / B5 / Reopen persist | Chưa (2C-06D+) |
 
-### 10.3 Pending DEV/TEST (user tự làm — agent không chạy)
+### 10.3 Pending MySQL integration (DEV/TEST — agent không chạy)
 
-| Việc | Ghi chú |
-|------|---------|
-| SOURCE PeriodLock COGS + `sp_pc_assert_allocation_ready_for_exp` | Nếu chưa trên DEV |
-| Integration MySQL Confirm B3 | Sau SOURCE; **EnableWrites=OFF** đến nghiệm thu |
-| Preview-from-DB B2 | Cần trước khi bỏ `AllocationConfirmSourceGuard` |
-| EnableWrites | **Giữ OFF** |
+| Việc | Ghi chú | Phân loại |
+|------|---------|-----------|
+| SOURCE PeriodLock COGS + `sp_pc_assert_allocation_ready_for_exp` | Nếu chưa trên DEV | **Pending integration** |
+| Integration MySQL Confirm B3 | Sau SOURCE; **EnableWrites=OFF** đến nghiệm thu | **Pending integration** |
+| Runtime TX: nested PeriodLock không COMMIT / không implicit commit | Source đã xác nhận; chờ chứng minh trên MySQL DEV | **Pending integration** |
+| Preview-from-DB B2 | Cần trước khi bỏ `AllocationConfirmSourceGuard` | **Pending** |
+| EnableWrites | **Giữ OFF** | **OFF** |
 
-### 10.4 Files changed (2C-06C)
+### 10.4 Files changed (2C-06C + safety fix)
 
 - `AllocationConfirmSourceGuard.cs` — mới
-- `TransferConfirmPlanner.cs` / `TransferConfirmAtomicity.cs` — mới
+- `TransferConfirmPlanner.cs` / `TransferConfirmAtomicity.cs` / `CostEngineExclusive.cs`
+- `ProductionCostWriteContext.cs` — `AssertPeriodCurrentRunMatches`
 - `ProductionCostWriteService.cs` — ConfirmTransferAsync + B2 guard
-- `IProductionCostWriteRepository.cs` / `ProductionCostWriteRepository.cs` — PeriodLock cùng session + step/voucher UPSERT
+- `IProductionCostWriteRepository.cs` / `ProductionCostWriteRepository.cs` — BI COGS status, voucher/history probe, PeriodLock cùng session
 - `ProductionCostModels.cs` — `ProductionCostPeriodEngineSnapshot`
-- `ProductionCostTransferConfirmTests.cs` + stubs + csproj links
+- `ProductionCostTransferConfirmTests.cs` + stubs
 - `ACCEPTANCE_2C_06.md` — mục này
 
 ### 10.5 Build / test
 
-#### Host build
+#### Host build (source-tested)
 
 ```text
 dotnet build API_AMNOTE_WEB.csproj -o artifacts/host-2c06c-check
@@ -618,33 +622,34 @@ dotnet build API_AMNOTE_WEB.csproj -o artifacts/host-2c06c-check
 HOST_EXIT=0
 ```
 
-#### Unit test
+#### Unit test (source-tested)
 
 ```text
 dotnet test --filter "FullyQualifiedName~ProductionCost|FullyQualifiedName~InventoryOutPrice"
-→ Passed: 133, Failed: 0
+→ Passed: 140, Failed: 0
 TEST_EXIT=0
 ```
 
 ### 10.6 Quy tắc B3 đã giữ
 
 1. B2 phải ALLOC_CONFIRMED / COST_ALLOCATION=DONE trước B3.  
-2. PeriodLock EXP_TO_154_ONLY trên cùng TX G-K — không dual-commit.  
-3. Không N155/C154, N632/C154, 154→155/632.  
-4. CostEngineExclusive: ENGINE=BI claim → chặn G-K.  
-5. History/OperationId idempotent.  
-6. STEP B3 DONE; không CONFIRMED toàn kỳ.  
-7. Fail giữa kết chuyển và history → Rollback.
+2. request RUN_ID = PERIOD.CURRENT_RUN_ID; PERIOD_COST_ID khớp — không STEP B3 DONE cho RUN không current.  
+3. PeriodLock EXP_TO_154_ONLY trên cùng TX G-K — không dual-commit.  
+4. Không N155/C154, N632/C154, 154→155/632.  
+5. CostEngineExclusive + COGS_SUMMARY authoritative — khớp validate.  
+6. History/OperationId idempotent; B3 DONE + OpId mới không PeriodLock lại.  
+7. STEP B3 DONE; không CONFIRMED toàn kỳ.  
+8. Fail giữa kết chuyển và history → Rollback.
 
 ### 10.7 Verdict / dừng
 
 | Phần | Trạng thái |
 |------|------------|
-| B2 authoritative source guard | **Implemented** |
-| ConfirmTransferAsync B3 | **Implemented (source)** |
-| Shared-session PeriodLock | **Implemented** |
-| Unit tests B3 | **Implemented** |
+| B2 authoritative source guard | **Implemented (source-tested)** |
+| ConfirmTransferAsync B3 + safety fix | **Implemented (source-tested)** |
+| Shared-session PeriodLock (no COMMIT in COGS SP) | **Implemented (source-reviewed)** |
+| Unit tests B3 safety | **Implemented (source-tested)** |
 | SOURCE + integration MySQL | **Pending DEV/TEST** |
 | EnableWrites | **OFF** |
 
-**Dừng nghiệm thu trước 2C-06D.** Không Confirm thật / không SOURCE / không bật WriteGate.
+**Dừng nghiệm thu 2C-06C (safety fix) trước 2C-06D.** Không Confirm thật / không SOURCE / không bật WriteGate.
