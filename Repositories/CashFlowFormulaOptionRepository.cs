@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using API_AMNOTE_WEB.Data;
@@ -225,6 +226,7 @@ namespace API_AMNOTE_WEB.Repositories
             var menuCode = Common.NormalizeNullableText(request.MenuCode);
 
             await using var session = await _db.CreateSessionAsync(Net_DB.Net_DB_Company);
+            var previewWatch = Stopwatch.StartNew();
             try
             {
                 await ApplyDraftInTransactionAsync(
@@ -238,6 +240,7 @@ namespace API_AMNOTE_WEB.Repositories
                     normalizedUserId,
                     cancellationToken);
 
+                var reportWatch = Stopwatch.StartNew();
                 var dataTable = await configuredReportService.ExecuteReportDataTableInSessionAsync(
                     normalizedCompanyCd,
                     previewReportCode,
@@ -246,8 +249,16 @@ namespace API_AMNOTE_WEB.Repositories
                     session.Connection,
                     session.Transaction,
                     cancellationToken);
+                reportWatch.Stop();
+                var mappedPreview = MapFormulaPreviewDto(dataTable);
+                previewWatch.Stop();
+                _logger.LogInformation(
+                    "Formula preview {PreviewReportCode} report query {ReportMs} ms, draft plus report {TotalMs} ms.",
+                    previewReportCode,
+                    reportWatch.ElapsedMilliseconds,
+                    previewWatch.ElapsedMilliseconds);
 
-                return MapFormulaPreviewDto(dataTable);
+                return mappedPreview;
             }
             finally
             {
@@ -565,7 +576,8 @@ namespace API_AMNOTE_WEB.Repositories
             string companyCd,
             ReportTemplateDefinition definition,
             string reportVersion,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool normalizeForEditor = true)
         {
             var sql = definition.HasDirectRules
                 ? $"""
@@ -671,7 +683,12 @@ namespace API_AMNOTE_WEB.Repositories
                 transaction: transaction,
                 cancellationToken: cancellationToken);
 
-            var rows = await connection.QueryAsync<CashFlowFormulaOptionRowDto>(command);
+            var rows = (await connection.QueryAsync<CashFlowFormulaOptionRowDto>(command)).ToList();
+            if (!normalizeForEditor)
+            {
+                return rows;
+            }
+
             var normalizedRows = rows
                 .Select(row => NormalizeLoadedRow(row, definition.ReportCode))
                 .ToList();
@@ -1160,6 +1177,55 @@ namespace API_AMNOTE_WEB.Repositories
                 transaction: transaction,
                 cancellationToken: cancellationToken);
             await connection.ExecuteAsync(insert);
+        }
+
+        private static bool PersistedDetailMatchesDraft(
+            CashFlowFormulaOptionRowDto persisted,
+            NormalizedRow draft,
+            ReportTemplateDefinition definition)
+        {
+            if (!SameStoredText(persisted.ELEMENT_TYPE, draft.ELEMENT_TYPE)
+                || persisted.LEVEL_NO != draft.LEVEL_NO
+                || !SameStoredText(persisted.ITEM_CODE, draft.ITEM_CODE)
+                || !SameStoredText(persisted.CAPTION, draft.CAPTION)
+                || !SameStoredText(persisted.LABEL_TEXT, draft.LABEL_TEXT)
+                || !SameStoredText(persisted.DATA_SOURCE_TYPE, draft.DATA_SOURCE_TYPE)
+                || !SameStoredText(persisted.FORMULA_EXPR, draft.FORMULA_EXPR)
+                || !SameStoredText(persisted.ACCOUNT_RULE, draft.ACCOUNT_RULE)
+                || persisted.SORT_ORDER != draft.SORT_ORDER
+                || !SameStoredText(persisted.FONT_BOLD, draft.FONT_BOLD)
+                || !SameStoredText(persisted.FONT_ITALIC, draft.FONT_ITALIC)
+                || !SameStoredText(persisted.IS_VISIBLE, draft.IS_VISIBLE))
+            {
+                return false;
+            }
+
+            if (definition.HasDirectRules)
+            {
+                return persisted.DIRECT_RULE_FLOW_SIGN == draft.DIRECT_RULE_FLOW_SIGN
+                    && SameStoredText(persisted.DIRECT_RULE_ACC_PREFIX, draft.DIRECT_RULE_ACC_PREFIX)
+                    && persisted.DIRECT_RULE_PRIORITY == draft.DIRECT_RULE_PRIORITY
+                    && persisted.DIRECT_RULE_FLOW_SIGN_2 == draft.DIRECT_RULE_FLOW_SIGN_2
+                    && SameStoredText(persisted.DIRECT_RULE_ACC_PREFIX_2, draft.DIRECT_RULE_ACC_PREFIX_2)
+                    && persisted.DIRECT_RULE_PRIORITY_2 == draft.DIRECT_RULE_PRIORITY_2;
+            }
+
+            if (definition.HasDualFormulas)
+            {
+                return SameStoredText(persisted.CODE_NO1, draft.CODE_NO1)
+                    && SameStoredText(persisted.CODE_NO2, draft.CODE_NO2)
+                    && SameStoredText(persisted.CALC_METHOD_NO1, draft.CALC_METHOD_NO1)
+                    && SameStoredText(persisted.CALC_METHOD_NO2, draft.CALC_METHOD_NO2)
+                    && SameStoredText(persisted.FORMULA_NO1, draft.FORMULA_NO1)
+                    && SameStoredText(persisted.FORMULA_NO2, draft.FORMULA_NO2);
+            }
+
+            return SameStoredText(persisted.CALC_METHOD, draft.CALC_METHOD);
+        }
+
+        private static bool SameStoredText(string? persisted, string? draft)
+        {
+            return string.Equals(persisted, draft, StringComparison.Ordinal);
         }
 
         private static async Task<int> UpdateDetailRowAsync(
@@ -2095,8 +2161,32 @@ namespace API_AMNOTE_WEB.Repositories
                     ?? DefaultCashAccountPrefixes
                 : null;
 
+            var applyWatch = Stopwatch.StartNew();
+            var persistedRows = await GetDetailRowsAsync(
+                connection,
+                transaction,
+                normalizedCompanyCd,
+                definition,
+                normalizedVersion,
+                cancellationToken,
+                normalizeForEditor: false);
+            var persistedByItemKey = persistedRows
+                .GroupBy(row => row.ITEM_KEY ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+
+            var updatedRows = 0;
+            var insertedRows = 0;
+            var skippedRows = 0;
             foreach (var row in normalizedRows)
             {
+                if (persistedByItemKey.TryGetValue(row.ITEM_KEY, out var matches)
+                    && matches.Count > 0
+                    && matches.All(match => PersistedDetailMatchesDraft(match, row, definition)))
+                {
+                    skippedRows++;
+                    continue;
+                }
+
                 var affectedRows = await UpdateDetailRowAsync(
                     connection,
                     transaction,
@@ -2118,8 +2208,24 @@ namespace API_AMNOTE_WEB.Repositories
                         row,
                         normalizedUserId,
                         cancellationToken);
+                    insertedRows++;
+                }
+                else
+                {
+                    updatedRows += affectedRows;
                 }
             }
+
+            applyWatch.Stop();
+            _logger.LogInformation(
+                "Formula draft {ReportCode}/{ReportVersion} company {CompanyCd}: updated {UpdatedRows}, inserted {InsertedRows}, skipped {SkippedRows} in {ElapsedMs} ms.",
+                definition.ReportCode,
+                normalizedVersion,
+                normalizedCompanyCd,
+                updatedRows,
+                insertedRows,
+                skippedRows,
+                applyWatch.ElapsedMilliseconds);
 
             await SoftDeleteMissingDetailRowsAsync(
                 connection,
