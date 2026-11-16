@@ -1,9 +1,10 @@
+using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Helpers;
 
 namespace API_AMNOTE_WEB.TaxWithholding;
 
-public sealed class PitXslTemplateRepository(DapperExecutor db)
+public sealed class PitXslTemplateRepository(DapperExecutor db) : IPitXslTemplateRepository
 {
     public async Task<IReadOnlyList<PitXslTemplate>> ListAsync(string companyCd, string? templateCd = null)
         => (await db.QueryAsync<PitXslTemplate>(

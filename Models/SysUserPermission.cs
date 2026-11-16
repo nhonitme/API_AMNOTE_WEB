@@ -23,6 +23,15 @@ namespace API_AMNOTE_WEB.Models
         public string ISDEL { get; set; } = "0";
         public string PERMISSION_SOURCE { get; set; } = string.Empty;
 
+        public string DEFAULT_CAN_VIEW { get; set; } = "0";
+        public string DEFAULT_CAN_ADD { get; set; } = "0";
+        public string DEFAULT_CAN_EDIT { get; set; } = "0";
+        public string DEFAULT_CAN_DELETE { get; set; } = "0";
+        public string DEFAULT_CAN_PRINT { get; set; } = "0";
+        public string DEFAULT_CAN_EXPORT { get; set; } = "0";
+        public string DEFAULT_CAN_IMPORT { get; set; } = "0";
+        public string DEFAULT_CAN_APPROVE { get; set; } = "0";
+
         public bool HasPermission(string permissionKey)
         {
             if (string.IsNullOrWhiteSpace(permissionKey))

@@ -54,6 +54,15 @@ namespace API_AMNOTE_WEB.Repositories
                 throw new ArgumentNullException(nameof(request));
             }
 
+            if (request.RESET_TO_DEFAULT)
+            {
+                var changed = await session.ExecuteAsync(
+                    "CALL reset_sys_user_permission(@p_COMPANY_CD, @p_USERID, @p_MENU_CODE)",
+                    new { p_COMPANY_CD = companyCd, p_USERID = request.USERID, p_MENU_CODE = request.MENU_CODE });
+                // Resetting an already inherited row is a successful idempotent operation.
+                return Math.Max(1, changed);
+            }
+
             const string query = @"CALL set_sys_user_permission(
                 @p_COMPANY_CD,
                 @p_USERID,

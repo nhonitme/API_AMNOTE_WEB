@@ -89,6 +89,9 @@ namespace API_AMNOTE_WEB.Controllers
                 return ValidationError("Request body must be provided");
             }
 
+            if (request.USERLV.HasValue && !Common.IsValidUserLevel(request.USERLV.Value))
+                return ValidationError("USERLV: 10 ADMIN, 20 MANAGER, 30 STAFF, 40 VIEW");
+
             var normalizedUserId = Common.NormalizeRequiredText(request.USERID);
             if (string.IsNullOrWhiteSpace(normalizedUserId))
             {
@@ -161,6 +164,9 @@ namespace API_AMNOTE_WEB.Controllers
             {
                 return NotFound((await Common.getLanguage("USERID", currentLang)) + " " + (await Common.getLanguage("NOT_FOUND", currentLang)));
             }
+
+            if (!Common.IsValidUserLevel(request.USERLV ?? existing.USERLV ?? Common.DefaultUserLevel))
+                return ValidationError("USERLV: 10 ADMIN, 20 MANAGER, 30 STAFF, 40 VIEW");
 
             var nextUserName = request.USERNM == null ? existing.USERNM : Common.NormalizeRequiredText(request.USERNM);
             if (string.IsNullOrWhiteSpace(nextUserName))

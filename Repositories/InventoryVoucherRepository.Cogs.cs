@@ -58,10 +58,8 @@ namespace API_AMNOTE_WEB.Repositories
                     throw new InvalidOperationException("COGS period is not open.");
                 case "PERIOD_LOCKED":
                     throw new InvalidOperationException("COGS period is locked or processing.");
-                case "LEGACY_LINKS":
-                    throw new InvalidOperationException("Migrate historical inventory links on this OT before linking another issue.");
-                case "LEGACY_UNLINK":
-                    throw new InvalidOperationException("Historical COGS link requires migration before unlinking.");
+                case "INVALID_LINK":
+                    throw new InvalidOperationException($"Issue voucher {transferId}: missing or invalid COGS detail link.");
                 case "NOT_FOUND":
                     throw new InvalidOperationException($"Issue voucher {transferId}: missing or invalid COGS header/link.");
                 default:
@@ -88,6 +86,8 @@ namespace API_AMNOTE_WEB.Repositories
         {
             var total = Math.Round(cogsAmount ?? outputs.Sum(x => Math.Round(x.AMOUNT_CC, 2, MidpointRounding.AwayFromZero)), 2, MidpointRounding.AwayFromZero);
             if (cogsAmount < 0 || total < 0) throw new ArgumentException("COGS amount must not be negative.");
+            if (existing != null && existing.DETAILS.Count != 1)
+                throw new InvalidOperationException($"Issue voucher {transferId}: exactly one linked COGS detail is required.");
             if (requestedDetailId is > 0 && existing != null && requestedDetailId != existing.DETAILS.Single().CHITDETAIL_ID)
                 throw new InvalidOperationException("Unlink the existing COGS detail before selecting another detail.");
             if (existing == null && requestedDetailId is > 0)

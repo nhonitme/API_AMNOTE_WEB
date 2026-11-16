@@ -1,3 +1,4 @@
+using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
@@ -8,12 +9,13 @@ using API_AMNOTE_WEB.Services;
 namespace API_AMNOTE_WEB.TaxWithholding;
 
 public sealed class PitXslService(
-    PitXslTemplateRepository repository,
-    PitIncomePayerRepository incomePayerRepository,
+    IPitXslTemplateRepository repository,
+    IPitIncomePayerRepository incomePayerRepository,
     ICompanyInfoRepository companyInfoRepository,
     IEInvoiceHtmlToPdfService htmlToPdfService,
+    ISystemRepository systemRepository,
     IWebHostEnvironment environment,
-    ILogger<PitXslService> logger)
+    ILogger<PitXslService> logger) : IPitXslService
 {
     public const string DefaultFtpFileName = "Mau03-TNCN.xsl";
     private static readonly Regex SeriesPattern = new(@"^CT\d{2}[A-Z]{2}$", RegexOptions.Compiled);
@@ -179,7 +181,7 @@ public sealed class PitXslService(
             };
         }
         var xml = BuildPreviewXml(template, incomePayer);
-        return Transform(companyCd, xml, template);
+        return await TransformAsync(companyCd, xml, template);
     }
 
     public async Task<byte[]> PreviewPdfAsync(
@@ -250,8 +252,15 @@ public sealed class PitXslService(
         return document.ToString(SaveOptions.DisableFormatting);
     }
 
-    public string Transform(string companyCd, string xml, PitXslTemplate template)
+    public async Task<string> TransformAsync(string companyCd, string xml, PitXslTemplate template)
     {
+        var incomeType = XDocument.Parse(xml).Root?.Element("DLCTu")?.Element("NDCTu")?.Element("TTNCNKTru")?.Element("KTNhap")?.Value;
+        var incomeTypeName = incomeType ?? "";
+        if (incomeType != null && PitDocumentRules.IsIncomeType(incomeType))
+        {
+            var codes = await systemRepository.GetSysCodeAsync(PitDocumentRules.IncomeTypeCodeType);
+            incomeTypeName = codes.FirstOrDefault(code => code.CODE_CD == incomeType)?.CODE_NAME ?? incomeType;
+        }
         var logo = EInvoicePrintImageHelper.ResolveTransformImage(template.XSL_CONTENT, template.LOGO_PATH, "logoImage", environment, logger);
         var background = EInvoicePrintImageHelper.ResolveTransformImage(template.XSL_CONTENT, template.BACKGROUND_PATH, "backgroundImage", environment, logger);
         var nen = EInvoicePrintImageHelper.ResolveTransformImage(template.XSL_CONTENT, template.NEN_PATH, "nenImage", environment, logger);
@@ -261,7 +270,8 @@ public sealed class PitXslService(
             logoImage: logo,
             backgroundImage: background,
             nenImage: nen,
-            lookupCompanyCd: companyCd);
+            lookupCompanyCd: companyCd,
+            extraParameters: new Dictionary<string, string> { ["pitIncomeTypeName"] = incomeTypeName });
     }
 
     private async Task<string> ReadDefaultSampleAsync()

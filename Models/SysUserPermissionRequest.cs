@@ -5,6 +5,7 @@ namespace API_AMNOTE_WEB.Models
         public string? COMPANY_CD { get; set; }
         public string? USERID { get; set; }
         public string? MENU_CODE { get; set; }
+        public bool RESET_TO_DEFAULT { get; set; }
 
         public string? CAN_VIEW { get; set; }
         public string? CAN_ADD { get; set; }

@@ -1,3 +1,6 @@
+using API_AMNOTE_WEB.TaxWithholding;
+using API_AMNOTE_WEB.TaxWithholding.Interfaces;
+
 using API_AMNOTE_WEB.Einvoice.Helpers;
 
 using API_AMNOTE_WEB.Data;
@@ -43,6 +46,7 @@ using System.Threading.RateLimiting;
 Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 var builder = WebApplication.CreateBuilder(args);
+
 
 builder.Services.Configure<MobileDeviceOptions>(builder.Configuration.GetSection("MobileDevicePolicy"));
 
@@ -334,16 +338,22 @@ builder.Services.AddHttpClient(ViettelEInvoiceGatewayClient.InboundHttpClientNam
 });
 builder.Services.AddScoped<IViettelEInvoiceGatewayClient, ViettelEInvoiceGatewayClient>();
 builder.Services.AddHostedService<EInvoiceMessagePollingBackgroundService>();
-builder.Services.AddScoped<API_AMNOTE_WEB.TaxWithholding.PitRepository>();
-builder.Services.AddScoped<API_AMNOTE_WEB.TaxWithholding.PitIncomePayerRepository>();
-builder.Services.AddScoped<API_AMNOTE_WEB.TaxWithholding.PitIncomePayerService>();
-builder.Services.AddScoped<API_AMNOTE_WEB.TaxWithholding.PitXslTemplateRepository>();
-builder.Services.AddScoped<API_AMNOTE_WEB.TaxWithholding.PitXslService>();
-builder.Services.AddScoped<API_AMNOTE_WEB.TaxWithholding.PitMessageOutboundService>();
 builder.Services.AddScoped<API_AMNOTE_WEB.Transmission.IMessageReceiveApplyHandler, API_AMNOTE_WEB.Transmission.EInvoiceMessageReceiveApplyHandler>();
-builder.Services.AddScoped<API_AMNOTE_WEB.Transmission.IMessageReceiveApplyHandler, API_AMNOTE_WEB.TaxWithholding.PitMessageReceiveApplyHandler>();
+builder.Services.AddScoped<IPitRepository, PitRepository>();
+builder.Services.AddScoped<IPitCertificateRepository, PitCertificateRepository>();
+builder.Services.AddScoped<IPitDeclarationRepository, PitDeclarationRepository>();
+builder.Services.AddScoped<IPitErrorNoticeRepository, PitErrorNoticeRepository>();
+builder.Services.AddScoped<IPitIncomePayerRepository, PitIncomePayerRepository>();
+builder.Services.AddScoped<IPitXslTemplateRepository, PitXslTemplateRepository>();
+builder.Services.AddScoped<IPitService, PitService>();
+builder.Services.AddScoped<IPitCertificateService, PitCertificateService>();
+builder.Services.AddScoped<IPitDeclarationService, PitDeclarationService>();
+builder.Services.AddScoped<IPitErrorNoticeService, PitErrorNoticeService>();
+builder.Services.AddScoped<IPitIncomePayerService, PitIncomePayerService>();
+builder.Services.AddScoped<IPitXslService, PitXslService>();
+builder.Services.AddScoped<IPitMessageOutboundService, PitMessageOutboundService>();
+builder.Services.AddScoped<API_AMNOTE_WEB.Transmission.IMessageReceiveApplyHandler, PitMessageReceiveApplyHandler>();
 builder.Services.AddScoped<API_AMNOTE_WEB.Transmission.MessageReceiveApplyCoordinator>();
-builder.Services.AddScoped<API_AMNOTE_WEB.TaxWithholding.PitService>();
 builder.Services.AddHostedService<EInvoiceMttOutboxBackgroundService>();
 builder.Services.AddScoped<IEInvoiceService, EInvoiceService>();
 builder.Services.AddSingleton<IEInvoiceHtmlToPdfService, EInvoiceHtmlToPdfService>();

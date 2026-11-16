@@ -361,38 +361,20 @@ namespace API_AMNOTE_WEB.Helpers
         /// <summary>
         /// USERLV: smaller number = higher privilege (10 ADMIN … 40 VIEW).
         /// </summary>
-        public static int MapLegacyUserLevel(int userLevel) =>
-            userLevel switch
-            {
-                10 or 20 or 30 or 40 => userLevel,
-                9 => 10,
-                3 => 20,
-                2 => 30,
-                1 => 40,
-                _ => DefaultUserLevel
-            };
-
         public static int NormalizeUserLevel(int? requestedLevel, int? existingLevel = null)
         {
-            if (requestedLevel.HasValue && requestedLevel.Value > 0)
-            {
-                return MapLegacyUserLevel(requestedLevel.Value);
-            }
-
-            if (existingLevel.HasValue && existingLevel.Value > 0)
-            {
-                return MapLegacyUserLevel(existingLevel.Value);
-            }
-
-            return DefaultUserLevel;
+            var level = requestedLevel ?? existingLevel ?? DefaultUserLevel;
+            if (!IsValidUserLevel(level))
+                throw new ArgumentException("USERLV: 10 ADMIN, 20 MANAGER, 30 STAFF, 40 VIEW");
+            return level;
         }
 
         public static string DeriveRoleCode(int userLevel) =>
             NormalizeUserLevel(userLevel) switch
             {
-                <= 10 => "ADMIN",
-                <= 20 => "MANAGER",
-                <= 30 => "STAFF",
+                10 => "ADMIN",
+                20 => "MANAGER",
+                30 => "STAFF",
                 _ => "VIEW"
             };
 

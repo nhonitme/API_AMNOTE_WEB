@@ -82,12 +82,6 @@ namespace API_AMNOTE_WEB.Repositories
                         p_USERID = userId
                     }) ?? 0L;
 
-                // Fallback when procedure dump has not yet been migrated to return ID.
-                if (targetId <= 0 && normalizedRequest.ID.HasValue && normalizedRequest.ID.Value > 0)
-                {
-                    targetId = normalizedRequest.ID.Value;
-                }
-
                 if (targetId <= 0)
                 {
                     session.Rollback();

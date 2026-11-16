@@ -1,3 +1,4 @@
+using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 using API_AMNOTE_WEB.Controllers;
 using API_AMNOTE_WEB.Helpers;
 using Microsoft.AspNetCore.Authorization;
@@ -6,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace API_AMNOTE_WEB.TaxWithholding;
 
 [ApiController, Authorize, Route("api/pit-withholding/income-payer")]
-public sealed class PitIncomePayerController(PitIncomePayerService service) : BaseApiController
+public sealed class PitIncomePayerController(IPitIncomePayerService service) : BaseApiController
 {
     [HttpGet]
     public async Task<IActionResult> Get()

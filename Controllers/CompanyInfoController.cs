@@ -29,8 +29,6 @@ namespace API_AMNOTE_WEB.Controllers
         [Authorize]
         public async Task<IActionResult> GetCompanyInfo([FromQuery] string? COMPANY_CD = null)
         {
-            await EnsurePermissionAsync(MenuCode, "VIEW");
-
             var companyCd = string.IsNullOrWhiteSpace(COMPANY_CD) ? GetCompanyCode() : COMPANY_CD.Trim();
             var companyInfo = await _repository.GetCompanyInfoAsync(companyCd);
 

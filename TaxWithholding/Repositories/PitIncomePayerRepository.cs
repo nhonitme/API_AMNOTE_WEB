@@ -1,9 +1,10 @@
+using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Helpers;
 
 namespace API_AMNOTE_WEB.TaxWithholding;
 
-public sealed class PitIncomePayerRepository(DapperExecutor db)
+public sealed class PitIncomePayerRepository(DapperExecutor db) : IPitIncomePayerRepository
 {
     public async Task<PitIncomePayer?> GetAsync(string companyCd)
         => (await db.QueryAsync<PitIncomePayer>(

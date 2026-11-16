@@ -1,3 +1,4 @@
+using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 using API_AMNOTE_WEB.Controllers;
 using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Models;
@@ -7,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace API_AMNOTE_WEB.TaxWithholding;
 
 [ApiController, Authorize, Route("api/pit-withholding/xsl-templates")]
-public sealed class PitXslTemplateController(PitXslService service) : BaseApiController
+public sealed class PitXslTemplateController(IPitXslService service) : BaseApiController
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? templateCd)

@@ -33,7 +33,6 @@ namespace API_AMNOTE_WEB.Repositories
         private sealed class CogsDetailRow
         {
             public long INVENTORY_ID { get; set; }
-            public bool IS_LEGACY { get; set; }
             public long OUTPUT_ID { get; set; }
             public long CHITDETAIL_ID { get; set; }
             public string CHITDETAIL_CD { get; set; } = string.Empty;
@@ -89,34 +88,30 @@ namespace API_AMNOTE_WEB.Repositories
             ILookup<long, CogsDetailRow> details)
         {
             var candidates = contexts[transferId].ToList();
-            if (candidates.Count == 1 && !candidates[0].CHIT_ID_COGS.HasValue) return null;
+            if (candidates.Count == 1 && !candidates[0].CHIT_ID_COGS.HasValue
+                && !candidates[0].CHITDETAIL_ID_COGS.HasValue) return null;
             if (candidates.Count != 1 || !candidates[0].HEADER_VALID)
                 throw new InvalidOperationException($"Issue voucher {transferId}: missing or invalid COGS header/link.");
             var row = candidates[0];
+            if (row.CHIT_ID_COGS is null or <= 0 || row.CHITDETAIL_ID_COGS is null or <= 0)
+                throw new InvalidOperationException($"Issue voucher {transferId}: missing or invalid COGS detail link.");
             totals.TryGetValue(row.CHIT_ID, out var total);
             var count = total?.DETAIL_COUNT ?? 0;
             if ((total?.PERSISTED_TOTAL ?? 0) != row.AMOUNT)
                 throw new InvalidOperationException($"Issue voucher {transferId}: OT total does not match its active details.");
-            var legacy = !row.CHITDETAIL_ID_COGS.HasValue && count > 1;
             var header = new InventoryCogsDto
             {
                 CHIT_ID = row.CHIT_ID, CHIT_CD = row.CHIT_CD, CHIT_NO = row.CHIT_NO,
                 CHIT_YMD = row.CHIT_YMD, AMOUNT = row.AMOUNT, IS_LOCK = row.IS_LOCK,
-                DETAILS = details[transferId].Where(d => d.IS_LEGACY == legacy &&
-                    (legacy || d.CHITDETAIL_ID == row.CHITDETAIL_ID_COGS ||
-                        (!row.CHITDETAIL_ID_COGS.HasValue && count == 1)))
+                DETAILS = details[transferId].Where(d => d.CHITDETAIL_ID == row.CHITDETAIL_ID_COGS)
                     .Select(d => new InventoryCogsDetailDto
                     {
                         OUTPUT_ID = d.OUTPUT_ID, CHITDETAIL_ID = d.CHITDETAIL_ID,
                         CHITDETAIL_CD = d.CHITDETAIL_CD, DEBIT = d.DEBIT, CREDIT = d.CREDIT, AMOUNT = d.AMOUNT
                     }).ToList()
             };
-            if (legacy) InventoryCogsValidation.ValidateLegacy(transferId, header, outputs, count);
-            else
-            {
-                InventoryCogsValidation.Validate(transferId, header, outputs, count);
-                header.AMOUNT = header.DETAILS[0].AMOUNT;
-            }
+            InventoryCogsValidation.Validate(transferId, header, outputs, count);
+            header.AMOUNT = header.DETAILS[0].AMOUNT;
             return header;
         }
     }

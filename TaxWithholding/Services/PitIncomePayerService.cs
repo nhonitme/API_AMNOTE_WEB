@@ -1,8 +1,9 @@
+using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 using System.Net.Mail;
 
 namespace API_AMNOTE_WEB.TaxWithholding;
 
-public sealed class PitIncomePayerService(PitIncomePayerRepository repository)
+public sealed class PitIncomePayerService(IPitIncomePayerRepository repository) : IPitIncomePayerService
 {
     public Task<PitIncomePayer?> GetAsync(string companyCd)
         => repository.GetAsync(companyCd);

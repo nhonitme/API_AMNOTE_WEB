@@ -140,7 +140,16 @@ namespace API_AMNOTE_WEB.Controllers
                 BuildChildren(root, allNodes);
             }
 
-            return rootNodes.OrderBy(node => node.SORT_ORDER).ToList();
+            return rootNodes.Where(PruneEmptyGroups).OrderBy(node => node.SORT_ORDER).ToList();
+        }
+
+        private static bool PruneEmptyGroups(MenuTreeNode node)
+        {
+            node.CHILDREN = node.CHILDREN.Where(PruneEmptyGroups).ToList();
+            return node.CHILDREN.Count > 0
+                || (!node.IS_DISABLED && (!string.IsNullOrWhiteSpace(node.ROUTE_PATH)
+                    // The frontend resolves this legacy menu to the dashboard even without ROUTE_PATH.
+                    || string.Equals(node.MENU_CODE?.Trim(), "GRP_OVERVIEW", StringComparison.OrdinalIgnoreCase)));
         }
 
         private void BuildChildren(MenuTreeNode parent, List<MenuTreeNode> allNodes)

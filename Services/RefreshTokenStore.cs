@@ -36,6 +36,8 @@ namespace API_AMNOTE_WEB.Services
             DateTime expiresAtUtc,
             string companyCd)
         {
+            if (userPkId <= 0)
+                throw new ArgumentException("A positive user PK is required for a refresh session.", nameof(userPkId));
             var hash = TokenService.Sha256Hex(refreshRaw);
             var rolesJson = JsonSerializer.Serialize(roles ?? Array.Empty<string>());
             var normalizedCompanyCd = Common.NormalizeRequiredText(companyCd);
@@ -90,32 +92,8 @@ namespace API_AMNOTE_WEB.Services
 
             var userId = (string)row.USER_ID;
             var userNameRaw = (string)row.USER_NAME;
-            var userPkId = 0L;
-            var username = userId;
-
-            if (!string.IsNullOrWhiteSpace(userNameRaw))
-            {
-                var separatorIndex = userNameRaw.IndexOf('|');
-                if (separatorIndex > 0
-                    && long.TryParse(userNameRaw[..separatorIndex], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPk)
-                    && parsedPk > 0)
-                {
-                    userPkId = parsedPk;
-                    username = userNameRaw[(separatorIndex + 1)..];
-                    if (string.IsNullOrWhiteSpace(username))
-                    {
-                        username = userId;
-                    }
-                }
-                else if (long.TryParse(userNameRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var legacyPk) && legacyPk > 0)
-                {
-                    userPkId = legacyPk;
-                }
-                else
-                {
-                    username = userNameRaw;
-                }
-            }
+            if (!TryParseIdentity(userNameRaw, userId, out var userPkId, out var username))
+                return null;
 
             return new RefreshTokenSession
             {
@@ -125,6 +103,21 @@ namespace API_AMNOTE_WEB.Services
                 Username = username,
                 Roles = roles
             };
+        }
+
+        internal static bool TryParseIdentity(string? payload, string userId, out long userPkId, out string username)
+        {
+            userPkId = 0;
+            username = string.Empty;
+            var separator = payload?.IndexOf('|') ?? -1;
+            if (separator <= 0 || string.IsNullOrWhiteSpace(userId)
+                || !long.TryParse(payload![..separator], NumberStyles.None, CultureInfo.InvariantCulture, out var parsedPk)
+                || parsedPk <= 0)
+                return false;
+            userPkId = parsedPk;
+            username = payload![(separator + 1)..];
+            if (string.IsNullOrWhiteSpace(username)) username = userId;
+            return true;
         }
 
         public async Task<bool> RotateAsync(string oldRefreshRaw, string newRefreshRaw, DateTime newExpiresUtc)

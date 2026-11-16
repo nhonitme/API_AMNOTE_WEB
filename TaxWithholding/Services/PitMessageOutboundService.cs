@@ -1,3 +1,4 @@
+using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 using System.Xml.Linq;
 using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Helpers;
@@ -6,7 +7,7 @@ using API_AMNOTE_WEB.Transmission;
 
 namespace API_AMNOTE_WEB.TaxWithholding;
 
-public sealed class PitMessageOutboundService(DapperExecutor db, IEInvoiceMessageRepository messages, PitRepository repository)
+public sealed class PitMessageOutboundService(DapperExecutor db, IEInvoiceMessageRepository messages, IPitRepository repository) : IPitMessageOutboundService
 {
     public async Task DispatchAsync(string dbName, string companyCd)
     {

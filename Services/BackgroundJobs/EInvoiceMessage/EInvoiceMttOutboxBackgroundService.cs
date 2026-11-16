@@ -33,7 +33,7 @@ public sealed class EInvoiceMttOutboxBackgroundService(IServiceScopeFactory scop
                     catch (Exception ex) { logger.LogWarning(ex,"MTT outbox retry pending for {Company}",target.COMPANY_CD); }
                     try
                     {
-                        await scope.ServiceProvider.GetRequiredService<API_AMNOTE_WEB.TaxWithholding.PitMessageOutboundService>()
+                        await scope.ServiceProvider.GetRequiredService<API_AMNOTE_WEB.TaxWithholding.Interfaces.IPitMessageOutboundService>()
                             .DispatchAsync(target.DB_NAME, target.COMPANY_CD);
                     }
                     catch (Exception ex)

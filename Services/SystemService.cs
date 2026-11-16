@@ -13,8 +13,8 @@ namespace API_AMNOTE_WEB.Services
         private const string SysCodeCacheScope = "system-sys-codes";
         private const string SysCodeAllCacheKey = "all";
         private const string ExcelTemplateColumnCacheScope = "system-excel-template-column-infos";
-        private const string UserPermissionCacheScope = "system-user-permissions";
         private const string EtcDataCacheScope = "system-etc-data";
+        private const string UserPermissionCacheScope = "system-user-permissions";
         private static readonly ConcurrentDictionary<string, Lazy<Task<List<SysCodeInfo>>>> SysCodeLoads = new(StringComparer.OrdinalIgnoreCase);
 
         private readonly ISystemRepository _repository;
@@ -123,11 +123,7 @@ namespace API_AMNOTE_WEB.Services
                 return new List<SysUserPermission>();
             }
 
-            var permissions = await _cache.GetOrCreateAsync(
-                UserPermissionCacheScope,
-                normalizedCompanyCd,
-                BuildUserPermissionCacheKey(normalizedUserId),
-                () => LoadUserPermissionsAsync(normalizedCompanyCd, normalizedUserId));
+            var permissions = await GetUserPermissionsCachedAsync(normalizedCompanyCd, normalizedUserId);
 
             if (normalizedMenuCode == null)
             {
@@ -149,11 +145,7 @@ namespace API_AMNOTE_WEB.Services
                 return new List<SysUserPermission>();
             }
 
-            return await _cache.RefreshAsync(
-                UserPermissionCacheScope,
-                normalizedCompanyCd,
-                BuildUserPermissionCacheKey(normalizedUserId),
-                () => LoadUserPermissionsAsync(normalizedCompanyCd, normalizedUserId));
+            return await GetUserPermissionsCachedAsync(normalizedCompanyCd, normalizedUserId, refresh: true);
         }
 
         public async Task<int> SetUserPermissionAsync(string companyCd, SysUserPermissionRequest request)
@@ -165,7 +157,8 @@ namespace API_AMNOTE_WEB.Services
 
             var normalizedCompanyCd = Common.NormalizeRequiredText(companyCd);
             var normalizedRequest = BuildPermissionRequest(normalizedCompanyCd, request);
-            var oldRecord = (await LoadUserPermissionsAsync(normalizedCompanyCd, normalizedRequest.USERID ?? string.Empty))
+            var targetUserId = normalizedRequest.USERID ?? string.Empty;
+            var oldRecord = (await GetUserPermissionsCachedAsync(normalizedCompanyCd, targetUserId))
                 .FirstOrDefault(item => string.Equals(Common.NormalizeNullableText(item.MENU_CODE), normalizedRequest.MENU_CODE, StringComparison.OrdinalIgnoreCase));
             var oldData = oldRecord == null ? string.Empty : JsonSerializer.Serialize(oldRecord);
             var newData = JsonSerializer.Serialize(normalizedRequest);
@@ -188,7 +181,7 @@ namespace API_AMNOTE_WEB.Services
                     $"Update permissions for {normalizedRequest.USERID}:{normalizedRequest.MENU_CODE}");
 
                 session.Commit();
-                await RefreshUserPermissionsAsync(normalizedCompanyCd, normalizedRequest.USERID ?? string.Empty);
+                await RefreshUserPermissionsAsync(normalizedCompanyCd, targetUserId);
                 _logger.LogInformation("System user permissions updated. Company: {CompanyCd}, UserId: {UserId}, MenuCode: {MenuCode}", normalizedCompanyCd, normalizedRequest.USERID, normalizedRequest.MENU_CODE);
                 return result;
             }
@@ -256,6 +249,17 @@ namespace API_AMNOTE_WEB.Services
             var remaining = memoryCache.Count;
             memoryCache.Compact(1.0);
             return remaining;
+        }
+
+        private async Task<List<SysUserPermission>> GetUserPermissionsCachedAsync(string companyCd, string userId, bool refresh = false)
+        {
+            var key = $"userId={userId}";
+            Task<List<SysUserPermission>> Load() => LoadUserPermissionsAsync(companyCd, userId);
+
+            var rows = refresh
+                ? await _cache.RefreshAsync(UserPermissionCacheScope, companyCd, key, Load)
+                : await _cache.GetOrCreateAsync(UserPermissionCacheScope, companyCd, key, Load);
+            return rows.ToList();
         }
 
         private async Task<List<SysUserPermission>> LoadUserPermissionsAsync(string companyCd, string userId)
@@ -331,13 +335,9 @@ namespace API_AMNOTE_WEB.Services
                 CAN_EXPORT = Common.NormalizeFlagString(request.CAN_EXPORT, "0"),
                 CAN_IMPORT = Common.NormalizeFlagString(request.CAN_IMPORT, "0"),
                 CAN_APPROVE = Common.NormalizeFlagString(request.CAN_APPROVE, "0"),
-                USERID_MODIFY = Common.NormalizeRequiredText(request.USERID_MODIFY)
+                USERID_MODIFY = Common.NormalizeRequiredText(request.USERID_MODIFY),
+                RESET_TO_DEFAULT = request.RESET_TO_DEFAULT
             };
-        }
-
-        private static string BuildUserPermissionCacheKey(string userId)
-        {
-            return $"userId={userId}";
         }
 
         private static string? NormalizeSysCodeType(string? codeType)

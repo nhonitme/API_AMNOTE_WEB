@@ -210,8 +210,6 @@ namespace API_AMNOTE_WEB.Repositories
                             if (existingCogs == null)
                                 throw new InvalidOperationException($"Issue voucher {existingHeader.TRANSFER_ID}: linked COGS voucher was not found.");
                             EnsureCogsUnlocked(existingCogs, existingHeader.TRANSFER_ID);
-                            if (!existingHeader.CHITDETAIL_ID_COGS.HasValue)
-                                throw new InvalidOperationException("Historical COGS link requires migration before editing.");
                             if (!isCogsEnabled && request.CLEAR_COGS_LINK != true)
                                 throw new InvalidOperationException("Confirm clearing the linked OT COGS voucher before turning off IS_COGS.");
                         }

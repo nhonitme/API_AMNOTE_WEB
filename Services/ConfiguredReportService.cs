@@ -772,6 +772,22 @@ namespace API_AMNOTE_WEB.Services
             AddValue(namedValues, normalizedValues, "reportOptionCode", reportOptionCode);
             AddValue(namedValues, normalizedValues, "REPORT_OPTION_CODE", reportOptionCode);
             AddValue(namedValues, normalizedValues, "p_REPORT_OPTION_CODE", reportOptionCode);
+
+            // Cost-list In chi tiết → rpt_cost_list.@p_INCLUDE_DETAIL ('1' all rows, '0' LEVEL_NO <= 1).
+            var includeDetailRaw =
+                GetQueryValue(query, "includeDetail") ??
+                GetQueryValue(query, "INCLUDE_DETAIL") ??
+                GetQueryValue(query, "includeDetailRows") ??
+                GetQueryValue(query, "INCLUDE_DETAIL_ROWS");
+            var includeDetailToken = Common.NormalizeToken(includeDetailRaw);
+            var includeDetail =
+                string.IsNullOrEmpty(includeDetailToken) ||
+                includeDetailToken is "1" or "true" or "yes" or "y"
+                    ? "1"
+                    : "0";
+            AddValue(namedValues, normalizedValues, "includeDetail", includeDetail);
+            AddValue(namedValues, normalizedValues, "INCLUDE_DETAIL", includeDetail);
+            AddValue(namedValues, normalizedValues, "p_INCLUDE_DETAIL", includeDetail);
             AddValue(namedValues, normalizedValues, "menuCode", effectiveMenuCode);
             AddValue(namedValues, normalizedValues, "MENU_CODE", effectiveMenuCode);
             AddValue(namedValues, normalizedValues, "p_MENU_CODE", effectiveMenuCode);

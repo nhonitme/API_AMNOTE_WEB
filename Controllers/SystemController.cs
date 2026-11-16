@@ -105,6 +105,8 @@ namespace API_AMNOTE_WEB.Controllers
         {
             var companyCode = GetCompanyCode();
             userId ??= GetUserId();
+            if (!string.Equals(userId.Trim(), GetUserId().Trim(), StringComparison.OrdinalIgnoreCase))
+                await EnsurePermissionAsync("MD_USER", "VIEW");
 
             var result = await _systemService.GetUserPermissionsAsync(companyCode, userId, menuCode ?? string.Empty);
             return Success(result);
@@ -114,6 +116,7 @@ namespace API_AMNOTE_WEB.Controllers
         [Authorize]
         public async Task<IActionResult> UpdateUserPermissions([FromBody] SysUserPermissionRequest request, [FromQuery] string? lang = null)
         {
+            await EnsurePermissionAsync("MD_USER", "EDIT");
             lang ??= GetCurrentLanguage();
 
             if (request == null || string.IsNullOrWhiteSpace(request.USERID) || string.IsNullOrWhiteSpace(request.MENU_CODE))
