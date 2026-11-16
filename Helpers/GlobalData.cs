@@ -3,7 +3,7 @@
     public static class GlobalData
     {
         //Database
-        public static string serverAdress = "44A33CF6F9EA3856AE350547D4F6F4A4"; 
+        public static string serverAdress = "4193E09878337B2C0A4625CCA14AABFC"; 
         public static string serverAdressAPI = "E67262C7C40CE5CF3880F4812856B97C";
         public static string dBConnectPort = "70ECD28A7D0DF81B3B09A3668F558263";
         public static string dBConnectID = "9A79FEE344001A5F1EBD758CF51F89D2";
