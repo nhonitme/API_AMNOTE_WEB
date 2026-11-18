@@ -29,8 +29,8 @@ public sealed partial class ProductionCostWriteRepository : IProductionCostWrite
 
     /// <inheritdoc />
     /// <remarks>
-    /// Reverse giá/chứng từ G-K trong cùng TX. Không hoàn nguyên được (giá đã lệch snapshot,
-    /// PeriodLock B1/B6 đang DONE) thì throw — không đánh dấu REOPEN thành công.
+    /// Reverse giá/chứng từ G-K và B-I trong cùng TX. Chỉ chặn khi dữ liệu lệch
+    /// snapshot, thiếu thủ tục reverse hoặc trạng thái không nhất quán; không báo REOPEN giả.
     /// </remarks>
     public bool SupportsSafeReopenSideEffectReverse => true;
 
