@@ -29,8 +29,8 @@ public sealed partial class ProductionCostWriteRepository : IProductionCostWrite
 
     /// <inheritdoc />
     /// <remarks>
-    /// Reverse giá/chứng từ G-K trong cùng TX. Không hoàn nguyên được (giá đã lệch snapshot,
-    /// PeriodLock B1/B6 đang DONE) thì throw — không đánh dấu REOPEN thành công.
+    /// Reverse giá/chứng từ G-K và B-I trong cùng TX. Chỉ chặn khi dữ liệu lệch
+    /// snapshot, thiếu thủ tục reverse hoặc trạng thái không nhất quán; không báo REOPEN giả.
     /// </remarks>
     public bool SupportsSafeReopenSideEffectReverse => true;
 
@@ -161,6 +161,64 @@ FOR UPDATE";
             if (string.IsNullOrWhiteSpace(row.StepCode))
                 continue;
             map[row.StepCode.Trim()] = (row.Status ?? string.Empty).Trim();
+        }
+
+        // B1/B6 are executed by B-I PeriodLock, not by a dedicated G-K Confirm.
+        // Looking only at production_cost_step misses a B-I DONE row and would
+        // silently omit it from G-K's reverse cascade.
+        const string biSql = @"
+SELECT B.STEP_CODE AS StepCode, B.STATUS AS Status
+FROM acc_period_lock_step B
+INNER JOIN production_cost_run R
+    ON R.COMPANY_CD = B.COMPANY_CD AND R.PERIOD_YM = B.PERIOD_YM
+WHERE R.COMPANY_CD = @CompanyCd AND R.RUN_ID = @RunId AND R.ISDEL = '0'
+  AND B.STEP_CODE IN ('FA_PREPAID_LOCK', 'COGS_SUMMARY', 'PROFIT_LOSS_REPORT')
+FOR UPDATE";
+        var biRows = await session.QueryAsync<StepStatusRow>(
+            biSql, new { CompanyCd = companyCd.Trim(), RunId = runId });
+        var biMap = biRows
+            .Where(row => !string.IsNullOrWhiteSpace(row.StepCode))
+            .ToDictionary(
+                row => row.StepCode!.Trim(),
+                row => (row.Status ?? string.Empty).Trim(),
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (var code in new[] { ProductionCostStepCode.FaPrepaidLock, ProductionCostStepCode.ProfitLossReport })
+        {
+            if (biMap.TryGetValue(code, out var biStatus))
+            {
+                if (biStatus.Equals("OPEN", StringComparison.OrdinalIgnoreCase)
+                    && map.TryGetValue(code, out var gkStatus)
+                    && gkStatus.Equals(ProductionCostStepStatus.Reopened, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue; // G-K working version is already REOPENED.
+                }
+
+                map[code] = biStatus;
+            }
+            else if (map.TryGetValue(code, out var stale)
+                     && stale.Equals(ProductionCostStepStatus.Done, StringComparison.OrdinalIgnoreCase))
+            {
+                map[code] = ProductionCostStepStatus.NotStarted; // No authoritative B-I DONE.
+            }
+        }
+
+        // B3 maps to B-I COGS_SUMMARY only if this period belongs to GK engine.
+        // B-I-owned COGS must never be mistaken for a G-K B3 success.
+        var engine = await session.QueryFirstOrDefaultAsync<string>(@"
+SELECT P.COST_ENGINE
+FROM production_cost_period P
+INNER JOIN production_cost_run R
+    ON R.COMPANY_CD=P.COMPANY_CD AND R.PERIOD_YM=P.PERIOD_YM
+WHERE R.COMPANY_CD=@CompanyCd AND R.RUN_ID=@RunId AND R.ISDEL='0'
+  AND P.ISDEL='0'
+LIMIT 1",
+            new { CompanyCd = companyCd.Trim(), RunId = runId });
+        if (string.Equals(engine, ProductionCostEngine.Gk, StringComparison.OrdinalIgnoreCase)
+            && biMap.TryGetValue("COGS_SUMMARY", out var cogsStatus)
+            && string.Equals(cogsStatus, "DONE", StringComparison.OrdinalIgnoreCase))
+        {
+            map[ProductionCostStepCode.ExpTo154Only] = ProductionCostStepStatus.Done;
         }
 
         return map;

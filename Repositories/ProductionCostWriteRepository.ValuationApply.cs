@@ -392,13 +392,25 @@ WHERE COMPANY_CD=@CompanyCd AND RUN_ID=@RunId AND RUN_VERSION=@RunVersion AND IS
             throw new InvalidOperationException(ReopenImpactGuard.BlockedReasonPrefix);
 
         var cascade = cascadeReverse.Select(GkStepOrder.Normalize).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        await BlockPeriodLockStepsWeCannotReverseAsync(session, companyCd, periodYm, cascade);
+
+        // B6 → B5 → B3 → B1. All operations use the caller-owned C# transaction.
+        // The PeriodLock core procedures NEVER issue START TRANSACTION / COMMIT.
+        if (cascade.Contains(ProductionCostStepCode.ProfitLossReport))
+            await ReverseBiPeriodLockStepAsync(session, companyCd, periodYm, "PROFIT_LOSS_REPORT", userId);
 
         if (cascade.Contains(ProductionCostStepCode.Valuation))
             await ReverseValuationAsync(session, companyCd, periodYm, runId, runVersion, userId);
 
         if (cascade.Contains(ProductionCostStepCode.ExpTo154Only))
             await ReverseExpTo154Async(session, companyCd, periodYm, userId);
+
+        if (cascade.Contains(ProductionCostStepCode.FaPrepaidLock))
+            await ReverseBiPeriodLockStepAsync(session, companyCd, periodYm, "FA_PREPAID_LOCK", userId);
+
+        if (cascade.Contains(ProductionCostStepCode.ProfitLossReport)
+            || cascade.Contains(ProductionCostStepCode.ExpTo154Only)
+            || cascade.Contains(ProductionCostStepCode.FaPrepaidLock))
+            await SyncPeriodLockMonthAsync(session, companyCd, periodYm, userId);
     }
 
     private async Task ReverseValuationAsync(
@@ -532,7 +544,34 @@ SELECT CHIT_ID FROM production_cost_voucher_ref
 WHERE COMPANY_CD=@CompanyCd AND STABLE_KEY=@StableKey AND ISDEL='0' LIMIT 1 FOR UPDATE",
             new { CompanyCd = companyCd.Trim(), StableKey = stableKey });
         if (chitId is not > 0)
+        {
+            // B3 may have claimed GK without writing a voucher (zero amount).
+            // Never silently keep COST_ENGINE=GK / B-I DONE after REOPEN.
+            // But first reject an untracked active voucher: it cannot be safely reversed.
+            var orphanCount = await session.QueryFirstOrDefaultAsync<int>(@"
+SELECT COUNT(1) FROM chitinfo
+WHERE COMPANY_CD=@CompanyCd
+  AND INPUT_TYPE='LOCK' AND LOCK_STEP_CODE='COGS_SUMMARY' AND ISDEL='0'
+  AND CHIT_YMD BETWEEN CONCAT(@PeriodYm, '01')
+                   AND DATE_FORMAT(LAST_DAY(STR_TO_DATE(CONCAT(@PeriodYm, '01'), '%Y%m%d')), '%Y%m%d')",
+                new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim() });
+            if (orphanCount > 0)
+                throw new InvalidOperationException(
+                    "B3 có chứng từ COGS_SUMMARY chưa liên kết production_cost_voucher_ref; cần đối chiếu trước khi REOPEN.");
+
+            // The B-I COGS unlock routine already supports EXPECTED_ENGINE='GK'
+            // and has no START/COMMIT. This also releases an empty GK claim.
+            await session.ExecuteAsync(@"
+CALL sp_period_lock_cogs_unlock(@CompanyCd, @PeriodYm, @Reason, @UserId, 'GK')",
+                new
+                {
+                    CompanyCd = companyCd.Trim(),
+                    PeriodYm = periodYm.Trim(),
+                    Reason = "G-K REOPEN (no active EXP_TO_154 voucher)",
+                    UserId = userId ?? string.Empty
+                });
             return;
+        }
 
         var affected = await session.ExecuteAsync(@"
 UPDATE chitinfo SET ISDEL='1', UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
@@ -552,49 +591,109 @@ WHERE COMPANY_CD=@CompanyCd AND CHIT_ID=@ChitId AND ISDEL='0'",
 UPDATE production_cost_voucher_ref SET ISDEL='1', UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
 WHERE COMPANY_CD=@CompanyCd AND STABLE_KEY=@StableKey AND ISDEL='0'",
             new { CompanyCd = companyCd.Trim(), StableKey = stableKey, UserId = userId ?? string.Empty });
-        await session.ExecuteAsync(@"
+        // The same GK engine ownership check used by B-I ensures a mismatched
+        // or already-released period cannot be silently reported as REOPENED.
+        var periodReleased = await session.ExecuteAsync(@"
 UPDATE production_cost_period
 SET COST_ENGINE='NONE', COGS_RULE=NULL, STATUS='OPEN', UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
 WHERE COMPANY_CD=@CompanyCd AND PERIOD_YM=@PeriodYm AND ISDEL='0'
   AND COST_ENGINE='GK' AND COGS_RULE='EXP_TO_154_ONLY'",
             new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim(), UserId = userId ?? string.Empty });
-        await session.ExecuteAsync(@"
+        if (periodReleased != 1)
+            throw new InvalidOperationException(
+                "Không giải phóng được COST_ENGINE=GK của B3. Đã rollback thao tác REOPEN.");
+
+        var stepOpened = await session.ExecuteAsync(@"
 UPDATE acc_period_lock_step
 SET STATUS='OPEN', FINISHED_AT=NULL, MESSAGE='G-K REOPEN EXP_TO_154_ONLY', UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
-WHERE COMPANY_CD=@CompanyCd AND PERIOD_YM=@PeriodYm AND STEP_CODE='COGS_SUMMARY'",
+WHERE COMPANY_CD=@CompanyCd AND PERIOD_YM=@PeriodYm AND STEP_CODE='COGS_SUMMARY' AND STATUS='DONE'",
             new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim(), UserId = userId ?? string.Empty });
+        if (stepOpened != 1)
+            throw new InvalidOperationException(
+                "Không đồng bộ được COGS_SUMMARY=DONE -> OPEN. Đã rollback thao tác REOPEN.");
     }
 
-    private static async Task BlockPeriodLockStepsWeCannotReverseAsync(
-        DapperSession session, string companyCd, string periodYm, HashSet<string> cascade)
+    /// <summary>
+    /// Reuse the *same* PeriodLock bookkeeping/voucher reversal as the B-I menu.
+    /// The _core SQL variants are deliberately transaction-free; the public B-I
+    /// wrappers keep their previous START/COMMIT behavior.
+    /// </summary>
+    private static async Task ReverseBiPeriodLockStepAsync(
+        DapperSession session, string companyCd, string periodYm, string stepCode, string? userId)
     {
-        if (cascade.Contains(ProductionCostStepCode.FaPrepaidLock))
-        {
-            var status = await session.QueryFirstOrDefaultAsync<string>(@"
-SELECT STATUS FROM acc_period_lock_step
-WHERE COMPANY_CD=@CompanyCd AND PERIOD_YM=@PeriodYm AND STEP_CODE='FA_PREPAID_LOCK' LIMIT 1",
-                new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim() });
-            if (string.Equals(status, "DONE", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException(
-                    "REOPEN bị chặn: FA_PREPAID_LOCK đang DONE trên PeriodLock. " +
-                    "Mở sổ bằng chức năng khóa sổ hiện có. G-K không đánh dấu thành công khi chưa hoàn nguyên TSCĐ/CPTT.");
-            }
-        }
+        if (stepCode != "FA_PREPAID_LOCK" && stepCode != "PROFIT_LOSS_REPORT")
+            throw new ArgumentException("Bước PeriodLock không được hỗ trợ.", nameof(stepCode));
 
-        if (cascade.Contains(ProductionCostStepCode.ProfitLossReport))
-        {
-            var status = await session.QueryFirstOrDefaultAsync<string>(@"
+        const string statusSql = @"
 SELECT STATUS FROM acc_period_lock_step
-WHERE COMPANY_CD=@CompanyCd AND PERIOD_YM=@PeriodYm AND STEP_CODE='PROFIT_LOSS_REPORT' LIMIT 1",
-                new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim() });
-            if (string.Equals(status, "DONE", StringComparison.OrdinalIgnoreCase))
+WHERE COMPANY_CD=@CompanyCd AND PERIOD_YM=@PeriodYm AND STEP_CODE=@StepCode
+LIMIT 1 FOR UPDATE";
+        var args = new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim(), StepCode = stepCode };
+        var status = await session.QueryFirstOrDefaultAsync<string>(statusSql, args);
+
+        // A G-K step may already be REOPENED. Do not delete vouchers twice.
+        if (string.IsNullOrWhiteSpace(status) || string.Equals(status, "OPEN", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (!string.Equals(status, "DONE", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Không thể mở {stepCode}: B-I đang ở trạng thái {status}. Kiểm tra job PeriodLock đang xử lý.");
+
+        var coreProcedure = stepCode == "FA_PREPAID_LOCK"
+            ? "sp_period_lock_fa_prepaid_unlock_core"
+            : "sp_period_lock_pl_unlock_core";
+        // Names come exclusively from the known two-item whitelist above.
+        var procedureExists = await session.QueryFirstOrDefaultAsync<int>(@"
+SELECT COUNT(1) FROM information_schema.ROUTINES
+WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_TYPE='PROCEDURE'
+  AND ROUTINE_NAME=@ProcedureName",
+            new { ProcedureName = coreProcedure });
+        if (procedureExists != 1)
+            throw new InvalidOperationException(
+                $"Thiếu {coreProcedure} tại DB công ty. Cần cài thủ tục PeriodLock bản mới trước khi mở G-K.");
+
+        await session.ExecuteAsync(
+            $"CALL {coreProcedure}(@CompanyCd, @PeriodYm, @Reason, @UserId)",
+            new
             {
-                throw new InvalidOperationException(
-                    "REOPEN bị chặn: PROFIT_LOSS_REPORT đang DONE trên PeriodLock. " +
-                    "Mở sổ bằng chức năng khóa sổ hiện có. G-K không đánh dấu thành công khi chưa hoàn nguyên lãi lỗ.");
-            }
-        }
+                CompanyCd = companyCd.Trim(),
+                PeriodYm = periodYm.Trim(),
+                Reason = "G-K REOPEN",
+                UserId = userId ?? string.Empty
+            });
+
+        var actual = await session.QueryFirstOrDefaultAsync<string>(statusSql, args);
+        if (!string.Equals(actual, "OPEN", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Hoàn nguyên {stepCode} chưa cập nhật B-I sang OPEN. Toàn bộ REOPEN được rollback.");
+    }
+
+    private static async Task SyncPeriodLockMonthAsync(
+        DapperSession session, string companyCd, string periodYm, string? userId)
+    {
+        var args = new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim() };
+        var status = await session.QueryFirstOrDefaultAsync<string>(
+            "CALL sp_period_lock_month_derive_status(@CompanyCd, @PeriodYm)", args);
+        if (string.IsNullOrWhiteSpace(status))
+            throw new InvalidOperationException("Không xác định được trạng thái tháng B-I sau G-K REOPEN.");
+
+        await session.ExecuteAsync(@"
+CALL sp_period_lock_month_upsert(
+    @CompanyCd,
+    @PeriodYm,
+    CONCAT(@PeriodYm, '01'),
+    DATE_FORMAT(LAST_DAY(STR_TO_DATE(CONCAT(@PeriodYm, '01'), '%Y%m%d')), '%Y%m%d'),
+    @Status,
+    @Message,
+    @UserId
+)", new
+        {
+            CompanyCd = companyCd.Trim(),
+            PeriodYm = periodYm.Trim(),
+            Status = status,
+            Message = "G-K REOPEN: đồng bộ trạng thái kỳ từ các bước B-I",
+            UserId = userId ?? string.Empty
+        });
     }
 
     private async Task EnsurePriceAuditTableAsync(DapperSession session)
