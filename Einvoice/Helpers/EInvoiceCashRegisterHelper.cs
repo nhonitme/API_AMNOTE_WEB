@@ -13,8 +13,8 @@ namespace API_AMNOTE_WEB.Einvoice.Helpers
         {
             if (IsCashRegister(series))
                 throw new InvalidOperationException(
-                    "Hóa đơn MTT cần luồng cấp mã và ký gói dữ liệu riêng (206/216). " +
-                    "Hãy chọn hóa đơn và ký gói XML tại menu Hóa đơn máy tính tiền.");
+                    "Hóa đơn máy tính tiền cần phát hành và ký gửi riêng. " +
+                    "Hãy chọn hóa đơn tại menu Hóa đơn máy tính tiền để ký và gửi cơ quan thuế.");
         }
     }
 }

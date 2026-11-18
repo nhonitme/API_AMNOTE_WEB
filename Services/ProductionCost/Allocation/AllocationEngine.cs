@@ -2,19 +2,14 @@ using API_AMNOTE_WEB.Models;
 
 namespace API_AMNOTE_WEB.Services.ProductionCost.Allocation;
 
-/// <summary>
-/// Engine phân bổ 622/627 — thuần, không DB.
-/// Round(P_A × T_i / ΣT, d); dòng cuối nhận phần dư để Σ = P_A.
-/// </summary>
 public static class AllocationEngine
 {
     public static IReadOnlyList<AllocationPoolInput> ApplyDefaultReductions(
-        IEnumerable<AllocationPoolInput> pool,
-        string? companyCd = null)
+        IEnumerable<AllocationPoolInput> pool)
     {
         return pool.Select(row =>
         {
-            var reduction = AllocationMath.ComputeReduction(row.CreditAmount, row.DebitAmount154, companyCd);
+            var reduction = AllocationMath.ComputeReduction(row.CreditAmount, row.DebitAmount154);
             return ClonePool(row, reduction, AllocationMath.ComputeAllocationCosts(row.TotalAmount, reduction));
         }).ToList();
     }
@@ -49,12 +44,6 @@ public static class AllocationEngine
         };
     }
 
-    /// <summary>
-    /// byDepartment:
-    /// - Pool DEPARTMENT_ID &gt; 0: phân bổ một lần trong đúng phòng ban đó.
-    /// - Pool DEPARTMENT_ID = 0 (dùng chung): phân bổ đúng một lần trên toàn bộ đối tượng.
-    /// Không fallback shared-pool theo từng phòng (tránh nhân nhiều lần P_A).
-    /// </summary>
     private static IReadOnlyList<AllocationLineResult> RunByDepartment(
         IReadOnlyList<AllocationPoolInput> pool,
         IReadOnlyList<AllocationProductInput> products,
@@ -86,7 +75,6 @@ public static class AllocationEngine
             if (products.Count == 0)
                 throw new InvalidOperationException("Pool dùng chung (DEPARTMENT_ID=0) cần ít nhất một đối tượng.");
 
-            // Đúng một lần — không lặp theo từng phòng ban.
             outLines.AddRange(AllocateGroup(
                 sharedPools,
                 products.ToList(),
@@ -95,8 +83,6 @@ public static class AllocationEngine
                 poolDepartmentId: 0));
         }
 
-        // Giữ thứ tự sản phẩm gốc; khóa (ProductId, DepartmentId, AccountCd, PoolDepartmentId)
-        // để không mất dòng khi cùng PRODUCT+ACCOUNT ở nhiều DEPARTMENT.
         var seen = new HashSet<(long ProductId, long DepartmentId, string AccountCd, long PoolDepartmentId)>();
         var ordered = new List<AllocationLineResult>();
         foreach (var p in products)
@@ -109,7 +95,6 @@ public static class AllocationEngine
             }
         }
 
-        // Dòng còn lại (nếu có) — không drop
         foreach (var line in outLines)
         {
             var key = (line.ProductId, line.DepartmentId, line.AccountCd, line.PoolDepartmentId);
@@ -133,7 +118,6 @@ public static class AllocationEngine
         var bases = products.Select(p => BasisOf(p, allocateType)).ToArray();
         var totalBasis = bases.Sum();
 
-        // ΣT = 0 nhưng còn chi phí cần phân bổ → lỗi rõ, không âm thầm = 0.
         if (totalBasis == 0m && pool.Any(p => p.AllocationCosts != 0m))
         {
             throw new InvalidOperationException(
@@ -221,7 +205,6 @@ public static class AllocationEngine
         return lines;
     }
 
-    /// <summary>Mỗi dòng pool: Σ ALLOCATED_AMOUNT (sau làm tròn) = ALLOCATION_COSTS.</summary>
     public static void AssertPoolTotalsMatch(
         IReadOnlyList<AllocationPoolInput> pool,
         IReadOnlyList<AllocationLineResult> details,

@@ -427,6 +427,19 @@ builder.Services.AddHttpClient(API_AMNOTE_WEB.Services.TaxLookup.TaxLookupServic
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 builder.Services.AddScoped<API_AMNOTE_WEB.Services.TaxLookup.ITaxLookupService, API_AMNOTE_WEB.Services.TaxLookup.TaxLookupService>();
+
+builder.Services.Configure<API_AMNOTE_WEB.Services.AmnoteAiOptions>(
+    builder.Configuration.GetSection(API_AMNOTE_WEB.Services.AmnoteAiOptions.SectionName));
+builder.Services.AddHttpClient(API_AMNOTE_WEB.Services.AiExternalClient.HttpClientName, client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(5);
+});
+builder.Services.AddScoped<API_AMNOTE_WEB.Services.AiExternalClient>();
+builder.Services.AddScoped<API_AMNOTE_WEB.Interfaces.ILicenseAiRepository, API_AMNOTE_WEB.Repositories.LicenseAiRepository>();
+builder.Services.AddScoped<API_AMNOTE_WEB.Interfaces.ILicenseAiService, API_AMNOTE_WEB.Services.LicenseAiService>();
+builder.Services.AddScoped<API_AMNOTE_WEB.Interfaces.IAiSystemService, API_AMNOTE_WEB.Services.AiSystemService>();
+builder.Services.AddScoped<API_AMNOTE_WEB.Interfaces.IAiPostingRuleRepository, API_AMNOTE_WEB.Repositories.AiPostingRuleRepository>();
+builder.Services.AddScoped<API_AMNOTE_WEB.Interfaces.IAiPostingRuleService, API_AMNOTE_WEB.Services.AiPostingRuleService>();
 builder.Services.AddScoped<API_AMNOTE_WEB.Interfaces.IGdtImportRepository, API_AMNOTE_WEB.Repositories.GdtImportRepository>();
 builder.Services.AddScoped<API_AMNOTE_WEB.Interfaces.IGdtImportService, API_AMNOTE_WEB.Services.Tax.GdtImportService>();
 builder.Services.AddScoped<RefreshTokenStore>();

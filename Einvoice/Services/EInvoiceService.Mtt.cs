@@ -48,13 +48,13 @@ public partial class EInvoiceService
     {
         ValidateCompany(companyCd);
         var ids = request.INVOICE_IDS.Distinct().ToArray();
-        if (ids.Length == 0) throw new ArgumentException("Chọn hóa đơn MTT để xuất XML.");
+        if (ids.Length == 0) throw new ArgumentException("Chọn hóa đơn máy tính tiền để tải dữ liệu gửi cơ quan thuế.");
         var batch = (await _db.QueryAsync<MttBatchRow>(Net_DB.Net_DB_Company,
             "CALL getEInvoiceMttBatchXml(@companyCd,@id)", new { companyCd, id = ids[0] })).SingleOrDefault();
         if (batch == null) return (await PrepareMttBatchAsync(companyCd, userId, request)).RAW_XML;
         var batchIds = JsonSerializer.Deserialize<List<MttItem>>(batch.ITEMS_JSON)!.Select(i => i.Id).ToHashSet();
         if (!batchIds.SetEquals(ids))
-            throw new InvalidOperationException("Chọn đầy đủ hóa đơn của cùng một gói đã ký để xuất một XML có chữ ký hợp lệ.");
+            throw new InvalidOperationException("Chọn đầy đủ các hóa đơn đã ký cùng một lần gửi để tải dữ liệu hợp lệ.");
         return batch.SIGNED_XML!;
     }
 
@@ -68,9 +68,9 @@ public partial class EInvoiceService
         if (!EInvoiceCashRegisterHelper.IsCashRegister(invoice.KHHDON))
             throw new InvalidOperationException("Chỉ phát hành được hóa đơn máy tính tiền.");
         if (invoice.IS_SIGNED == 1)
-            throw new InvalidOperationException("Hóa đơn MTT đã ký gửi CQT.");
+            throw new InvalidOperationException("Hóa đơn máy tính tiền đã ký gửi cơ quan thuế.");
         if (IsMttIssued(invoice))
-            throw new InvalidOperationException("Hóa đơn MTT đã phát hành.");
+            throw new InvalidOperationException("Hóa đơn máy tính tiền đã phát hành.");
         if (invoice.BKE_INFO != null)
             throw new InvalidOperationException("Hóa đơn có bảng kê thay thế/điều chỉnh cần luồng thông điệp riêng.");
 
@@ -82,7 +82,7 @@ public partial class EInvoiceService
         var registration = (await _db.QueryAsync<MttRegistration>(Net_DB.Net_DB_Company,
             "CALL getEInvoiceMttRegistration(@companyCd,@mst)", new { companyCd, mst = seller.SELLER_TAX_CD })).SingleOrDefault();
         if (registration == null || (type == "206" ? registration.CMTMTTIEN : registration.KCMTMTTIEN) != 1)
-            throw new InvalidOperationException("Chưa có tờ khai được CQT chấp nhận cho hình thức hóa đơn MTT này.");
+            throw new InvalidOperationException("Chưa có tờ khai được cơ quan thuế chấp nhận cho hình thức hóa đơn máy tính tiền này.");
 
         await using var session = await _db.CreateSessionAsync(Net_DB.Net_DB_Company);
         try
@@ -129,7 +129,7 @@ public partial class EInvoiceService
         }
 
         return await GetByIdAsync(companyCd, invoiceId)
-            ?? throw new InvalidOperationException("Failed to fetch issued MTT invoice");
+            ?? throw new InvalidOperationException("Không tải được hóa đơn máy tính tiền đã phát hành.");
     }
 
     public async Task<EInvoiceMttBatchPayload> PrepareMttBatchAsync(string companyCd, string userId, EInvoiceMttBatchRequest request)
@@ -137,7 +137,7 @@ public partial class EInvoiceService
         ValidateCompany(companyCd);
         var ids = request.INVOICE_IDS.Distinct().ToArray();
         if (ids.Length == 0 || ids.Length > 1000 || ids.Any(id => id <= 0))
-            throw new ArgumentException("Chọn từ 1 đến 1000 hóa đơn MTT để ký một gói XML.");
+            throw new ArgumentException("Chọn từ 1 đến 1000 hóa đơn máy tính tiền để ký và gửi cơ quan thuế.");
         var date = VietnamToday();
         var batchId = EInvoiceMessageXmlBuilder.GenerateMessageCode();
         var items = new List<MttItem>();
@@ -148,11 +148,11 @@ public partial class EInvoiceService
         {
             var invoice = await GetEntityByIdAsync(companyCd, id) ?? throw new KeyNotFoundException($"Không tìm thấy hóa đơn {id}.");
             if (invoice.IS_SIGNED == 1 || !EInvoiceCashRegisterHelper.IsCashRegister(invoice.KHHDON))
-                throw new InvalidOperationException("Gói MTT chỉ nhận hóa đơn máy tính tiền đã phát hành, chưa ký gửi.");
+                throw new InvalidOperationException("Chỉ gửi được hóa đơn máy tính tiền đã phát hành và chưa ký gửi.");
             if (!IsMttIssued(invoice))
-                throw new InvalidOperationException("Hóa đơn MTT chưa phát hành. Phát hành trước khi ký gửi CQT.");
+                throw new InvalidOperationException("Hóa đơn máy tính tiền chưa phát hành. Phát hành trước khi ký gửi cơ quan thuế.");
             if (!invoice.NLAP.HasValue || invoice.NLAP.Value.Date != date)
-                throw new InvalidOperationException("Chỉ gửi trong ngày các hóa đơn MTT có ngày lập hôm nay.");
+                throw new InvalidOperationException("Chỉ gửi trong ngày các hóa đơn máy tính tiền có ngày lập hôm nay.");
             if (invoice.BKE_INFO != null)
                 throw new InvalidOperationException("Hóa đơn có bảng kê thay thế/điều chỉnh cần luồng thông điệp riêng.");
             await ApplySellerDefaultsAsync(companyCd, invoice);
@@ -160,16 +160,16 @@ public partial class EInvoiceService
             if (seller == null) throw new InvalidOperationException("Chưa có thông tin người bán.");
             var messageType = ResolveMttMessageType(invoice.KHHDON);
             if (messageType == "206" && !HasText(invoice.MCCQT))
-                throw new InvalidOperationException("Hóa đơn MTT có mã thiếu MCCQT. Phát hành lại.");
+                throw new InvalidOperationException("Hóa đơn máy tính tiền có mã còn thiếu mã cơ quan thuế. Phát hành lại.");
             if (batchSeller == null)
             {
                 batchSeller = seller;
                 type = messageType;
             }
             else if (seller.SELLER_ID != batchSeller.SELLER_ID || invoice.KHHDON != items[0].Series || invoice.KHMSHDON != items[0].Form)
-                throw new InvalidOperationException("Chọn các hóa đơn cùng người bán, mẫu số và ký hiệu trong một gói MTT.");
+                throw new InvalidOperationException("Chọn các hóa đơn cùng người bán, mẫu số và ký hiệu trong một lần gửi.");
             else if (messageType != type)
-                throw new InvalidOperationException("Gói MTT không trộn loại có mã và không mã.");
+                throw new InvalidOperationException("Không gửi chung hóa đơn máy tính tiền có mã và không mã.");
 
             var root = XElement.Parse(await BuildRawXmlAsync(companyCd, invoice));
             root.Element("DSCKS")?.Remove();
@@ -188,7 +188,7 @@ public partial class EInvoiceService
             includeEmptyTaxpayerSignature: true,
             includeXmlDeclaration: false).RequestXml;
         if (Encoding.UTF8.GetByteCount(xml) > 2 * 1024 * 1024 - 16384)
-            throw new InvalidOperationException("Gói XML vượt giới hạn 2 MB. Chọn ít hóa đơn hơn.");
+            throw new InvalidOperationException("Dữ liệu gửi vượt giới hạn 2 MB. Chọn ít hóa đơn hơn.");
         await _db.ExecuteAsync(Net_DB.Net_DB_Company,
             "CALL setEInvoiceMttBatch(@companyCd,@batchId,@userId,@date,@xml,@items)",
             new { companyCd, batchId, userId, date, xml, items = JsonSerializer.Serialize(items) });
@@ -201,9 +201,9 @@ public partial class EInvoiceService
         var match = Regex.Match(code, @"^M[1-9]-\d{2}-([A-Z0-9]{5})-\d{11}$");
         var prefix = match.Success ? match.Groups[1].Value : code;
         if (!Regex.IsMatch(prefix, "^[A-Z0-9]{5}$"))
-            throw new InvalidOperationException("Chưa có MCCQT MTT hợp lệ từ tờ khai được chấp nhận (103).");
+            throw new InvalidOperationException("Chưa có mã cơ quan thuế hợp lệ từ tờ khai đã được chấp nhận.");
         if (!Regex.IsMatch(form ?? "", "^[1-9]$") || uniqueNumber <= 0 || uniqueNumber > 99999999999L)
-            throw new InvalidOperationException("Không thể tạo MCCQT MTT: mẫu số hoặc số định danh vượt giới hạn.");
+            throw new InvalidOperationException("Không thể tạo mã cơ quan thuế: mẫu số hoặc số định danh vượt giới hạn.");
         return $"M{form}-{date:yy}-{prefix}-{uniqueNumber:00000000000}";
     }
 
@@ -212,12 +212,12 @@ public partial class EInvoiceService
         ValidateCompany(companyCd);
         var batch = (await _db.QueryAsync<MttBatchRow>(Net_DB.Net_DB_Company,
             "CALL getEInvoiceMttBatch(@companyCd,@batchId,@userId)", new { companyCd, batchId, userId })).SingleOrDefault()
-            ?? throw new KeyNotFoundException("Không tìm thấy gói MTT của người dùng.");
+            ?? throw new KeyNotFoundException("Không tìm thấy dữ liệu gửi cơ quan thuế của người dùng.");
         var items = JsonSerializer.Deserialize<List<MttItem>>(batch.ITEMS_JSON)!;
         if (batch.SIGNED_XML == null)
         {
             if (batch.NLAP.Date != VietnamToday())
-                throw new InvalidOperationException("Đã sang ngày mới. Tạo lại gói XML để ngày lập trùng ngày ký.");
+                throw new InvalidOperationException("Đã sang ngày mới. Tạo lại dữ liệu gửi để ngày lập trùng ngày ký.");
             ValidateMttSignature(batch.RAW_XML, request.XML, batch.NLAP);
             var certificateSerial=TaxDocumentSignatureValidator.GetVerifiedCertificateSerialAtXPath(
                 request.XML,"*[local-name()='CKSNNT']/*[local-name()='Signature']");
@@ -228,7 +228,7 @@ public partial class EInvoiceService
                 "CALL isApprovedSigningCertificate(@company,'EINVOICE',@tax,@serial)",
                 new{company=companyCd,tax=sellerInvoice.SELLER_TAX_CD??"",serial=certificateSerial});
             if(approvedCertificate!=1)
-                throw new InvalidOperationException("Chứng thư số chưa được CQT chấp nhận, đã ngừng sử dụng hoặc hết hiệu lực.");
+                throw new InvalidOperationException("Chứng thư số chưa được cơ quan thuế chấp nhận, đã ngừng sử dụng hoặc hết hiệu lực.");
             var roots = XDocument.Parse(request.XML, LoadOptions.PreserveWhitespace).Root!.Element("DLieu")!.Elements("HDon").ToArray();
             await using var session = await _db.CreateSessionAsync(Net_DB.Net_DB_Company);
             try
@@ -250,10 +250,10 @@ public partial class EInvoiceService
                             new { companyCd, id = item.Id })
                             ?? throw new KeyNotFoundException($"Không tìm thấy hóa đơn {item.Id}.");
                         if (issued.IS_SIGNED == 1)
-                            throw new InvalidOperationException("Hóa đơn MTT đã ký gửi. Tạo lại gói.");
+                            throw new InvalidOperationException("Hóa đơn máy tính tiền đã ký gửi. Tạo lại dữ liệu gửi.");
                         if (!string.Equals(issued.SHDON?.Trim(), item.Number, StringComparison.Ordinal)
                             || !string.Equals(issued.MCCQT?.Trim() ?? "", item.Code?.Trim() ?? "", StringComparison.Ordinal))
-                            throw new InvalidOperationException("Số hóa đơn hoặc MCCQT đã thay đổi. Phát hành/tạo lại gói.");
+                            throw new InvalidOperationException("Số hóa đơn hoặc mã cơ quan thuế đã thay đổi. Phát hành hoặc tạo lại dữ liệu gửi.");
 
                         var path = await _xmlStorageService.UploadInvoiceXmlAsync(
                             companyCd, item.Id, roots[pair.index].ToString(SaveOptions.DisableFormatting), batch.NLAP);
@@ -276,15 +276,15 @@ public partial class EInvoiceService
 
     internal static void ValidateMttSignature(string expected, string signed, DateTime date)
     {
-        if (Encoding.UTF8.GetByteCount(signed) > 2 * 1024 * 1024) throw new ArgumentException("Gói XML đã ký vượt giới hạn 2 MB.");
+        if (Encoding.UTF8.GetByteCount(signed) > 2 * 1024 * 1024) throw new ArgumentException("Dữ liệu đã ký vượt giới hạn 2 MB.");
         var xml = new XmlDocument { PreserveWhitespace = true, XmlResolver = null };
         xml.LoadXml(signed);
-        var root = XDocument.Parse(signed).Root ?? throw new ArgumentException("XML MTT không hợp lệ.");
+        var root = XDocument.Parse(signed).Root ?? throw new ArgumentException("Dữ liệu gửi cơ quan thuế không hợp lệ.");
         XNamespace ds = SignedXml.XmlDsigNamespaceUrl;
         var signature = root.Element("CKSNNT")?.Elements(ds + "Signature").SingleOrDefault()
-            ?? throw new ArgumentException("Thiếu chữ ký gói MTT tại TDiep/CKSNNT.");
+            ?? throw new ArgumentException("Thiếu chữ ký số trên dữ liệu gửi cơ quan thuế.");
         var idValues = xml.SelectNodes("//*[@Id]")!.Cast<XmlElement>().Select(e => e.GetAttribute("Id")).ToArray();
-        if (idValues.Distinct().Count() != idValues.Length) throw new ArgumentException("XML có Id trùng nhau.");
+        if (idValues.Distinct().Count() != idValues.Length) throw new ArgumentException("Dữ liệu ký có định danh trùng nhau.");
         var references = signature.Element(ds + "SignedInfo")!.Elements(ds + "Reference").Select(e => (string?)e.Attribute("URI")).ToArray();
         var dataId = (string?)root.Element("DLieu")?.Attribute("Id");
         XNamespace xades = "http://uri.etsi.org/01903/v1.3.2#";
@@ -293,12 +293,12 @@ public partial class EInvoiceService
         if (references.Length != 2 || !references.Contains("#" + dataId) || properties == null || !references.Contains("#" + (string?)properties.Attribute("Id"))
             || !DateTimeOffset.TryParse(time, CultureInfo.InvariantCulture, DateTimeStyles.None, out var signedAt)
             || signedAt.ToOffset(TimeSpan.FromHours(7)).Date != date.Date)
-            throw new ArgumentException("Chữ ký phải bao gồm DLieu, SignedProperties và ngày ký trùng ngày lập.");
+            throw new ArgumentException("Chữ ký phải gồm nội dung gửi, thuộc tính chữ ký và ngày ký trùng ngày lập.");
         var verifier = new SignedXml(xml);
         verifier.LoadXml((XmlElement)xml.DocumentElement!.SelectSingleNode("*[local-name()='CKSNNT']/*[local-name()='Signature']")!);
-        if (!verifier.CheckSignature()) throw new ArgumentException("Chữ ký số gói MTT không hợp lệ.");
+        if (!verifier.CheckSignature()) throw new ArgumentException("Chữ ký số trên dữ liệu gửi cơ quan thuế không hợp lệ.");
         root.Element("CKSNNT")!.RemoveNodes();
         if (!XNode.DeepEquals(root, XDocument.Parse(expected).Root))
-            throw new ArgumentException("Nội dung gói MTT đã thay đổi. Tạo lại gói và ký lại.");
+            throw new ArgumentException("Nội dung dữ liệu gửi đã thay đổi. Tạo lại và ký lại.");
     }
 }

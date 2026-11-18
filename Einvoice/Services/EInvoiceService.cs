@@ -243,7 +243,7 @@ namespace API_AMNOTE_WEB.Services
                 throw new InvalidOperationException("E-invoice is already signed");
 
             if (EInvoiceCashRegisterHelper.IsCashRegister(existing.KHHDON) && HasText(existing.SHDON))
-                throw new InvalidOperationException("Hóa đơn MTT đã phát hành không được sửa.");
+                throw new InvalidOperationException("Hóa đơn máy tính tiền đã phát hành không được sửa.");
 
             if (existing.BKE_INFO?.IS_SIGNED == 1)
                 throw new InvalidOperationException("Signed bảng kê cannot be modified");
@@ -2037,7 +2037,7 @@ namespace API_AMNOTE_WEB.Services
                 throw new InvalidOperationException("E-invoice is already signed");
 
             if (EInvoiceCashRegisterHelper.IsCashRegister(invoice.KHHDON) && HasText(invoice.SHDON))
-                throw new InvalidOperationException("Hóa đơn MTT đã phát hành không được xóa.");
+                throw new InvalidOperationException("Hóa đơn máy tính tiền đã phát hành không được xóa.");
         }
 
         private static void ValidateCompany(string companyCd)
