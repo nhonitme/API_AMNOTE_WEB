@@ -7,6 +7,7 @@ public interface IPitXslTemplateRepository
     Task<IReadOnlyList<PitXslTemplate>> ListAsync(string companyCd, string? templateCd = null);
 
     Task<PitXslTemplate?> GetAsync(string companyCd, long xslId);
+    Task<PitXslTemplate?> GetMetadataAsync(string companyCd, long xslId);
 
     Task<long> SaveAsync(string companyCd, string userId, long xslId, PitXslTemplateSaveRequest request);
 

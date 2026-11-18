@@ -132,7 +132,8 @@ namespace API_AMNOTE_WEB.Controllers
                     MaskValue(requestTaxCode),
                     MaskValue(requestLookupCode),
                     GetRemoteIp());
-                return File(pdf, "application/pdf", BuildFileName(downloadInfo, "pdf"));
+                Response.Headers.CacheControl = "private, no-store";
+                return File(pdf, "application/pdf");
             }, notFoundMessage: "E-invoice not found");
         }
 

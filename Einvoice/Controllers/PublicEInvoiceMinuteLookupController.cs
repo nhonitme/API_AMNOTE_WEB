@@ -56,9 +56,9 @@ namespace API_AMNOTE_WEB.Controllers
             }
 
             var requestFormat = (Common.NormalizeNullableText(format) ?? "json").ToLowerInvariant();
-            if (requestFormat is not ("json" or "pdf" or "xml" or "xsl" or "html"))
+            if (requestFormat is not ("json" or "pdf" or "xml"))
             {
-                return ValidationError("format must be json, pdf, xml, xsl, or html");
+                return ValidationError("format must be json, pdf, or xml");
             }
 
             _logger.LogInformation(
@@ -98,7 +98,8 @@ namespace API_AMNOTE_WEB.Controllers
                         downloadInfo.BBAN_ID,
                         HttpContext.RequestAborted);
 
-                    return File(pdf, "application/pdf", BuildFileName(downloadInfo, "pdf"));
+                    Response.Headers.CacheControl = "private, no-store";
+                    return File(pdf, "application/pdf");
                 }, notFoundMessage: "E-invoice minute PDF not found");
             }
 
@@ -113,24 +114,7 @@ namespace API_AMNOTE_WEB.Controllers
                 return File(Encoding.UTF8.GetBytes(xml), "application/xml", BuildFileName(downloadInfo, "xml"));
             }
 
-            if (requestFormat == "xsl")
-            {
-                var xsl = await _service.GetPublicXslAsync(requestTaxCode!, requestLookupCode!);
-                if (string.IsNullOrWhiteSpace(xsl))
-                {
-                    return NotFound("E-invoice minute XSL not found");
-                }
-
-                return File(Encoding.UTF8.GetBytes(xsl), "application/xml", BuildFileName(downloadInfo, "xsl"));
-            }
-
-            var html = await _service.GetPublicHtmlAsync(requestTaxCode!, requestLookupCode!);
-            if (string.IsNullOrWhiteSpace(html))
-            {
-                return NotFound("E-invoice minute HTML not found");
-            }
-
-            return Content(html, "text/html; charset=utf-8");
+            return ValidationError("Unsupported download format.");
         }
 
         [HttpPost("signature")]

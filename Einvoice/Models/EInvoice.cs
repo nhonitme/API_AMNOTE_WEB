@@ -226,7 +226,9 @@ namespace API_AMNOTE_WEB.Models
         public int USE_MULTI_TAX_RATE { get; set; }
         public long XSL_ID { get; set; }
         public string? XSL_TEMPLATE_NM { get; set; }
+        public string? XSL_FTP_PATH { get; set; }
         public string? XSL_CONTENT { get; set; }
+        public string? XSL_DESIGN_FTP_PATH { get; set; }
         public string? XSL_DESIGN_CONTENT { get; set; }
         public int VERSION_NO { get; set; }
         public int HAS_XSL_TEMPLATE { get; set; }

@@ -65,30 +65,5 @@ namespace API_AMNOTE_WEB.Controllers
             return Success(new { deleted = result }, "Deleted successfully");
         }
 
-        [HttpGet("export")]
-        public async Task<IActionResult> ExportStoreKindInfo([FromQuery] int? STORE_KIND_ID = null, [FromQuery] string? lang = null)
-        {
-            await EnsurePermissionAsync(MenuCode, "EXPORT");
-
-            var currentLang = ResolveLang(lang);
-            var companyCd = Common.GetCompanyCode();
-            var data = (await _service.GetListAsync(companyCd, STORE_KIND_ID)).ToList();
-
-            if (!data.Any())
-                return NotFound(await BuildMessageAsync("STORE_KIND_CD", "NO_DATA_TO_EXPORT", currentLang));
-
-            const string screenCd = MenuCode;
-            const string gridId = "store-kind-grid";
-            var exportColumns = await Common.GetExcelExportColumnInfosAsync("StoreKindInfo", screenCd, gridId);
-            if (exportColumns.Count == 0)
-                return BadRequest(await Common.GetMissingExcelExportColumnsMessageAsync(currentLang));
-
-            var columnMapping = await Common.BuildExcelColumnMappingAsync(exportColumns, currentLang);
-            var sysCodeDisplayMap = await Common.BuildExcelSysCodeDisplayMapAsync(exportColumns, companyCd, currentLang);
-            var stream = await ExcelHelper.ExportToExcelAsync(data, columnMapping, formatTypes: null, sysCodeDisplayMap: sysCodeDisplayMap);
-            var fileName = $"store_kind_info_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
-
-            return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }
     }
 }

@@ -553,7 +553,7 @@ namespace API_AMNOTE_WEB.Services
                 if (text.Contains("Không tìm thấy", StringComparison.OrdinalIgnoreCase)
                     || text.Contains("đã phát hành", StringComparison.OrdinalIgnoreCase)
                     || text.Contains("Invoice template", StringComparison.OrdinalIgnoreCase)
-                    || text.Contains("Design with XSL_CONTENT", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("Design with XSL_FTP_PATH", StringComparison.OrdinalIgnoreCase)
                     || text.Contains("Template IS_ACTIVE", StringComparison.OrdinalIgnoreCase))
                 {
                     message = text;

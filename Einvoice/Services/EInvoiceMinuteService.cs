@@ -22,7 +22,7 @@ namespace API_AMNOTE_WEB.Services
         private readonly IEInvoiceMinuteRepository _repository;
         private readonly IEInvoiceSettingRepository _settingRepository;
         private readonly IEInvoiceTemplateRepository _templateRepository;
-        private readonly IEInvoiceHtmlToPdfService _htmlToPdfService;
+        private readonly ElectronicDocumentPdfService _pdf;
         private readonly IMailService _mailService;
         private readonly IMailSettingRepository _mailSettingRepository;
         private readonly DapperExecutor _db;
@@ -33,7 +33,7 @@ namespace API_AMNOTE_WEB.Services
             IEInvoiceMinuteRepository repository,
             IEInvoiceSettingRepository settingRepository,
             IEInvoiceTemplateRepository templateRepository,
-            IEInvoiceHtmlToPdfService htmlToPdfService,
+            ElectronicDocumentPdfService pdf,
             IMailService mailService,
             IMailSettingRepository mailSettingRepository,
             DapperExecutor db,
@@ -43,7 +43,7 @@ namespace API_AMNOTE_WEB.Services
             _repository = repository;
             _settingRepository = settingRepository;
             _templateRepository = templateRepository;
-            _htmlToPdfService = htmlToPdfService;
+            _pdf = pdf;
             _mailService = mailService;
             _mailSettingRepository = mailSettingRepository;
             _db = db;
@@ -165,8 +165,8 @@ namespace API_AMNOTE_WEB.Services
                 ?? throw new KeyNotFoundException("E-invoice minute not found");
 
             var signedXml = Common.NormalizeNullableText(minute.SIGNED_XML);
-            if (IsSigned(minute) && HasText(signedXml))
-                return signedXml!;
+            if (IsSigned(minute))
+                return HasText(signedXml) ? signedXml! : throw new InvalidOperationException("Signed minute XML is missing.");
 
             return await BuildRawXmlAsync(companyCd, minute);
         }
@@ -202,35 +202,6 @@ namespace API_AMNOTE_WEB.Services
         {
             var result = await FindPublicMinuteAsync(taxCode, lookupCode);
             return result == null ? null : Common.NormalizeNullableText(result.Minute.SIGNED_XML);
-        }
-
-        public async Task<string?> GetPublicXslAsync(string taxCode, string lookupCode)
-        {
-            var downloadInfo = await GetPublicDownloadInfoAsync(taxCode, lookupCode);
-            if (downloadInfo == null)
-            {
-                return null;
-            }
-
-            return await GetMinuteXslTemplateAsync();
-        }
-
-        public async Task<string?> GetPublicHtmlAsync(string taxCode, string lookupCode)
-        {
-            var result = await FindPublicMinuteAsync(taxCode, lookupCode);
-            if (result == null)
-            {
-                return null;
-            }
-
-            var xml = Common.NormalizeNullableText(result.Minute.SIGNED_XML);
-            if (!HasText(xml))
-            {
-                return null;
-            }
-
-            var xsl = await GetMinuteXslTemplateAsync();
-            return EInvoiceXmlHtmlTransformService.Transform(xml!, xsl, lookupCompanyCd: result.CompanyCd);
         }
 
         public async Task<EInvoiceMinutePublicLookupDto?> SavePublicBuyerSignatureAsync(
@@ -470,25 +441,14 @@ namespace API_AMNOTE_WEB.Services
             return attachments;
         }
 
-        private async Task<byte[]> ExportMinutePdfAsync(string companyCd, long bbanId, CancellationToken cancellationToken)
-        {
-            var xml = await GetPreviewXmlAsync(companyCd, bbanId);
-            var template = await _templateRepository.GetActiveTemplateAsync(
-                    EInvoiceXslPreviewHelper.TemplateTypeXsl,
-                    EInvoiceMinutePreviewService.DefaultMinuteTemplateCd)
-                ?? throw new InvalidOperationException(
-                    $"E-invoice minute XSL template '{EInvoiceMinutePreviewService.DefaultMinuteTemplateCd}' is not configured.");
-
-            var xsl = Common.NormalizeNullableText(template.CONTENT);
-            if (string.IsNullOrWhiteSpace(xsl))
+        private Task<byte[]> ExportMinutePdfAsync(string companyCd, long bbanId, CancellationToken cancellationToken)
+            => _pdf.GetAsync(companyCd, "minute", bbanId, null, async _ =>
             {
-                throw new InvalidOperationException(
-                    $"E-invoice minute XSL template '{EInvoiceMinutePreviewService.DefaultMinuteTemplateCd}' is empty.");
-            }
-
-            var html = EInvoiceXmlHtmlTransformService.Transform(xml, xsl, lookupCompanyCd: companyCd);
-            return await _htmlToPdfService.ConvertAsync(html, cancellationToken);
-        }
+                var xml = await GetPreviewXmlAsync(companyCd, bbanId);
+                var template = await _templateRepository.GetActiveTemplateAsync("XSL", EInvoiceMinutePreviewService.DefaultMinuteTemplateCd)
+                    ?? throw new InvalidOperationException("Minute XSL is not configured.");
+                return EInvoiceXmlHtmlTransformService.Transform(xml, template.CONTENT, lookupCompanyCd: companyCd);
+            }, cancellationToken);
 
         public async Task<EInvoiceMinuteDto> SaveSignatureAsync(string companyCd, string userId, long bbanId, EInvoiceMinuteSignRequest request)
         {
@@ -622,6 +582,7 @@ namespace API_AMNOTE_WEB.Services
             try
             {
                 await _repository.SetSignatureAsync(session, companyCd, userId, bbanId, signedXml, checksum);
+                await _pdf.PinSharedTemplateAsync(session, companyCd, "minute", bbanId);
                 session.Commit();
             }
             catch
@@ -719,10 +680,6 @@ namespace API_AMNOTE_WEB.Services
             cancellationToken.ThrowIfCancellationRequested();
 
             var minute = result.Minute;
-            var xml = Common.NormalizeNullableText(minute.SIGNED_XML)
-                ?? throw new InvalidOperationException("Signed minute XML is not available");
-            var xsl = await GetMinuteXslTemplateAsync();
-            var html = EInvoiceXmlHtmlTransformService.Transform(xml, xsl, lookupCompanyCd: result.CompanyCd);
             var detail = EInvoiceMinuteMapper.ToDto(minute);
 
             return new EInvoiceMinutePublicLookupDto
@@ -749,30 +706,12 @@ namespace API_AMNOTE_WEB.Services
                 CAN_SIGN = IsSigned(minute) && minute.NMUA_IS_SIGNED != 1,
                 CAN_DOWNLOAD_PDF = true,
                 CAN_DOWNLOAD_XML = true,
-                CAN_DOWNLOAD_XSL = true,
-                CAN_DOWNLOAD_HTML = true,
-                XML = xml,
-                XSL = xsl,
-                HTML = html,
                 REASONS = detail.REASONS,
                 LINES_BEFORE = detail.LINES_BEFORE,
                 LINES_AFTER = detail.LINES_AFTER,
                 TOTAL_BEFORE = detail.TOTAL_BEFORE,
                 TOTAL_AFTER = detail.TOTAL_AFTER,
             };
-        }
-
-        private async Task<string> GetMinuteXslTemplateAsync()
-        {
-            var template = await _templateRepository.GetActiveTemplateAsync(
-                    EInvoiceXslPreviewHelper.TemplateTypeXsl,
-                    EInvoiceMinutePreviewService.DefaultMinuteTemplateCd)
-                ?? throw new InvalidOperationException(
-                    $"E-invoice minute XSL template '{EInvoiceMinutePreviewService.DefaultMinuteTemplateCd}' is not configured.");
-
-            return Common.NormalizeNullableText(template.CONTENT)
-                ?? throw new InvalidOperationException(
-                    $"E-invoice minute XSL template '{EInvoiceMinutePreviewService.DefaultMinuteTemplateCd}' is empty.");
         }
 
         private static void ApplyLookupCode(EInvoiceMinuteInfo minute, EInvoiceMinuteInfo? existing = null)

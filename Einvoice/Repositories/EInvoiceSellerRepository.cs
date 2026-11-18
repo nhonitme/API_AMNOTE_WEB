@@ -10,13 +10,19 @@ namespace API_AMNOTE_WEB.Repositories
         private const string SellerCacheScope = "einvoice-seller";
         private const string GetSellersQuery = "CALL getEInvoiceSeller(@p_COMPANY_CD, @p_KHHDON, @p_SELLER_ID, @p_XSL_ID, @p_KEYWORD, @p_INCLUDE_INACTIVE, @p_INCLUDE_XSL, @p_INCLUDE_ALL_TEMPLATES)";
 
+        private readonly API_AMNOTE_WEB.Services.ElectronicDocumentRenderContext _renderContext;
         private readonly DapperExecutor _db;
+        private readonly API_AMNOTE_WEB.Services.ElectronicDocumentStorage _files;
         private readonly IMasterDataCacheService _cache;
+        private readonly ICompanyInfoRepository _companyInfo;
 
-        public EInvoiceSellerRepository(DapperExecutor db, IMasterDataCacheService cache)
+        public EInvoiceSellerRepository(DapperExecutor db, IMasterDataCacheService cache, ICompanyInfoRepository companyInfo, API_AMNOTE_WEB.Services.ElectronicDocumentStorage files, API_AMNOTE_WEB.Services.ElectronicDocumentRenderContext renderContext)
         {
             _db = db;
+            _files = files;
+            _renderContext = renderContext;
             _cache = cache;
+            _companyInfo = companyInfo;
         }
 
         public async Task<IEnumerable<EInvoiceSellerInfo>> GetSellersAsync(
@@ -30,6 +36,15 @@ namespace API_AMNOTE_WEB.Repositories
             bool includeAllTemplates = false)
         {
             var normalizedKhhdon = Common.NormalizeNullableText(khhdon) ?? string.Empty;
+            // Only the unfiltered setting request initializes the company profile.
+            var isSettingRequest = includeAllTemplates && includeInactive
+                && string.IsNullOrEmpty(normalizedKhhdon) && sellerId.GetValueOrDefault() == 0
+                && xslId.GetValueOrDefault() == 0 && string.IsNullOrWhiteSpace(keyword);
+            EInvoiceSellerInfo? profile = null;
+            if (isSettingRequest)
+            {
+                profile = await GetOrCreateCompanyProfileAsync(companyCd);
+            }
             var cacheKey = BuildCacheKey(normalizedKhhdon, sellerId, xslId, keyword, includeInactive, includeXslContent, includeAllTemplates);
             var rows = await _cache.GetOrCreateAsync(
                 SellerCacheScope,
@@ -37,7 +52,45 @@ namespace API_AMNOTE_WEB.Repositories
                 cacheKey,
                 async () => (await QuerySellersAsync(companyCd, normalizedKhhdon, sellerId, xslId, keyword, includeInactive, includeXslContent, includeAllTemplates)).ToList());
 
-            return rows;
+            // getEInvoiceSeller joins templates; a new company may have no template yet.
+            return rows.Count == 0 && profile != null ? new[] { profile } : rows;
+        }
+
+        private async Task<EInvoiceSellerInfo?> ReadCompanyProfileAsync(string companyCd)
+            => (await _db.QueryAsync<EInvoiceSellerInfo>(Net_DB.Net_DB_Company,
+                "SELECT * FROM einvoice_seller_info WHERE COMPANY_CD = @company LIMIT 1",
+                new { company = companyCd })).FirstOrDefault();
+
+        private async Task<EInvoiceSellerInfo?> GetOrCreateCompanyProfileAsync(string companyCd)
+        {
+            var existing = await ReadCompanyProfileAsync(companyCd);
+            if (existing != null) return existing;
+
+            var company = await _companyInfo.GetCompanyInfoAsync(companyCd);
+            if (company == null) return null;
+
+            // MySQL 8.4.11: never overwrite a profile created/saved by a concurrent request.
+            await _db.ExecuteAsync(Net_DB.Net_DB_Company, """
+                INSERT INTO einvoice_seller_info
+                    (COMPANY_CD, SELLER_CD, SELLER_NM, SELLER_TAX_CD, SELLER_ADDRESS,
+                     SDTHOAI, DCTDTU, FAX, WEBSITE, CREATE_BY, CREATE_AT)
+                VALUES (@company, @company, @name, @tax, @address,
+                        @phone, @email, @fax, @website, @user, NOW())
+                ON DUPLICATE KEY UPDATE COMPANY_CD = @company
+                """, new
+            {
+                company = companyCd,
+                name = company.COMPANY_NM?.Trim() ?? "",
+                tax = company.TAX_CD?.Trim() ?? "",
+                address = company.ADDRESS?.Trim() ?? "",
+                phone = Common.NormalizeNullableText(company.TEL),
+                email = Common.NormalizeNullableText(company.EMAIL),
+                fax = Common.NormalizeNullableText(company.FAX) is { } fax ? fax[..Math.Min(fax.Length, 20)] : null,
+                website = Common.NormalizeNullableText(company.WEBSITE),
+                user = Common.GetUserId()
+            });
+            await ClearSellersCacheAsync(companyCd);
+            return await ReadCompanyProfileAsync(companyCd);
         }
 
         public async Task<EInvoiceSellerInfo?> GetSellerWithXslAsync(
@@ -55,7 +108,24 @@ namespace API_AMNOTE_WEB.Repositories
                 includeInactive: includeInactive,
                 includeXslContent: true);
 
-            return rows.FirstOrDefault();
+            var selected = rows.FirstOrDefault();
+            // Cached catalog instances are shared. A historical render must not mutate
+            // their active template/asset references for other requests.
+            var row = selected == null ? null : System.Text.Json.JsonSerializer.Deserialize<EInvoiceSellerInfo>(
+                System.Text.Json.JsonSerializer.Serialize(selected));
+            if (row != null)
+            {
+                if (_renderContext.Template is { } snapshot)
+                {
+                    row.XSL_FTP_PATH = snapshot.XslPath;
+                    row.LOGO_PATH = snapshot.Logo; row.BACKGROUND_PATH = snapshot.Background;
+                    row.INVOICE_BACKGROUND_PATH = snapshot.Nen; row.INVOICE_BORDER_PATH = snapshot.Border;
+                }
+                row.XSL_CONTENT = _files.ReadXsl(row.XSL_FTP_PATH);
+                if (_renderContext.Template == null && !string.IsNullOrWhiteSpace(row.XSL_DESIGN_FTP_PATH))
+                    row.XSL_DESIGN_CONTENT = _files.ReadXsl(row.XSL_DESIGN_FTP_PATH);
+            }
+            return row;
         }
 
         public async Task<EInvoiceSellerInfo?> UpdateSellerInfoAsync(

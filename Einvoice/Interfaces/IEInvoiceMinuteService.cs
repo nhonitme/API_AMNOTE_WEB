@@ -8,8 +8,6 @@ namespace API_AMNOTE_WEB.Interfaces
         Task<EInvoiceMinutePublicLookupDto?> LookupPublicAsync(string taxCode, string lookupCode, CancellationToken cancellationToken = default);
         Task<EInvoiceMinutePublicDownloadInfo?> GetPublicDownloadInfoAsync(string taxCode, string lookupCode);
         Task<string?> GetPublicXmlAsync(string taxCode, string lookupCode);
-        Task<string?> GetPublicXslAsync(string taxCode, string lookupCode);
-        Task<string?> GetPublicHtmlAsync(string taxCode, string lookupCode);
         Task<EInvoiceMinutePublicLookupDto?> SavePublicBuyerSignatureAsync(string taxCode, string lookupCode, EInvoiceMinuteSignRequest request, CancellationToken cancellationToken = default);
         Task<EInvoiceMinuteDto> CreateAsync(string companyCd, string userId, EInvoiceMinuteSaveRequest request);
         Task<EInvoiceMinuteDto> UpdateAsync(string companyCd, string userId, long bbanId, EInvoiceMinuteSaveRequest request);

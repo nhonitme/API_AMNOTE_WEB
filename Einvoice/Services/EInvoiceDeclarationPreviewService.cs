@@ -10,19 +10,19 @@ namespace API_AMNOTE_WEB.Services
 
         private readonly IEInvoiceDeclarationRepository _declarationRepository;
         private readonly IEInvoiceTemplateRepository _templateRepository;
-        private readonly IEInvoiceHtmlToPdfService _htmlToPdfService;
+        private readonly ElectronicDocumentPdfService _pdf;
 
         public EInvoiceDeclarationPreviewService(
             IEInvoiceDeclarationRepository declarationRepository,
             IEInvoiceTemplateRepository templateRepository,
-            IEInvoiceHtmlToPdfService htmlToPdfService)
+            ElectronicDocumentPdfService pdf)
         {
             _declarationRepository = declarationRepository;
             _templateRepository = templateRepository;
-            _htmlToPdfService = htmlToPdfService;
+            _pdf = pdf;
         }
 
-        public async Task<string> GetHtmlAsync(string companyCd, long tkhaiId, CancellationToken cancellationToken = default)
+        private async Task<string> BuildHtmlAsync(string companyCd, long tkhaiId, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var built = await BuildPreviewAsync(companyCd, tkhaiId);
@@ -31,8 +31,8 @@ namespace API_AMNOTE_WEB.Services
 
         public async Task<byte[]> ExportPdfAsync(string companyCd, long tkhaiId, CancellationToken cancellationToken = default)
         {
-            var html = await GetHtmlAsync(companyCd, tkhaiId, cancellationToken);
-            return await _htmlToPdfService.ConvertAsync(html, cancellationToken);
+            return await _pdf.GetAsync(companyCd, "declaration", tkhaiId, null,
+                ct => BuildHtmlAsync(companyCd, tkhaiId, ct), cancellationToken);
         }
 
         private Task<EInvoiceXslPreviewResult> BuildPreviewAsync(string companyCd, long tkhaiId)
@@ -62,7 +62,9 @@ namespace API_AMNOTE_WEB.Services
         }
 
         private static string ResolveDeclarationXml(EInvoiceDeclarationInfo declaration)
-            => EInvoiceXslPreviewHelper.ResolveStoredOrBuiltXml(
+            => declaration.IS_SIGNED == 1 && string.IsNullOrWhiteSpace(declaration.XML)
+                ? throw new InvalidOperationException("Signed document XML is missing.")
+                : EInvoiceXslPreviewHelper.ResolveStoredOrBuiltXml(
                 declaration,
                 entity => entity.XML,
                 EInvoiceDeclarationXmlBuilder.Build,

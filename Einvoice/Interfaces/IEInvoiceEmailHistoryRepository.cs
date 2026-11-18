@@ -6,6 +6,8 @@ namespace API_AMNOTE_WEB.Interfaces
     {
         Task<IReadOnlyList<EInvoiceEmailHistoryInfo>> GetInvoiceHistoryAsync(string companyCd, long invoiceId, int limit = 200);
 
+        Task<IReadOnlyList<EInvoiceEmailHistoryInfo>> GetHistoryAsync(string companyCd, string refType, long refId, int limit = 200);
+
         Task InsertAsync(EInvoiceEmailHistoryCreateRequest request);
     }
 }

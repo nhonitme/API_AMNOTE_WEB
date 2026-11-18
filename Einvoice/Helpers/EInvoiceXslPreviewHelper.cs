@@ -35,7 +35,8 @@ namespace API_AMNOTE_WEB.Einvoice.Helpers
             var entity = await request.LoadEntityAsync(companyCd, documentId)
                 ?? throw new KeyNotFoundException(request.NotFoundMessage);
 
-            var templateCd = Common.NormalizeNullableText(request.GetTemplateCd(entity)) ?? request.DefaultTemplateCd;
+            var templateCd = Common.NormalizeNullableText(request.GetTemplateCd(entity))
+                ?? throw new InvalidOperationException("Document template code is missing.");
             var template = await templateRepository.GetActiveTemplateAsync(TemplateTypeXsl, templateCd)
                 ?? throw new InvalidOperationException($"{request.DocumentLabel} XSL template '{templateCd}' is not configured.");
 

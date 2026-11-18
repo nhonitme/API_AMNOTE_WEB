@@ -37,6 +37,15 @@ namespace API_AMNOTE_WEB.Controllers
             });
         }
 
+        [HttpGet("templates/{xslId:long}/designer/designs/{designId:long}")]
+        public async Task<IActionResult> GetTemplateDesignerDesign(long xslId, long designId,
+            [FromServices] IEInvoiceSellerXslTemplateRepository designs)
+        {
+            if (xslId <= 0 || designId <= 0) return ValidationError("XSL_ID and DESIGN_ID are required.");
+            return await FromSettingAsync(async () => Success(await designs.GetDesignAsync(Common.GetCompanyCode(), xslId, designId)
+                ?? throw new KeyNotFoundException("Invoice template design not found.")));
+        }
+
         [HttpPost("templates/{xslId:long}/designer/designs/{designId:long}/clone")]
         public async Task<IActionResult> CloneTemplateDesigner([FromRoute] long xslId, [FromRoute] long designId)
         {

@@ -5,20 +5,25 @@ using API_AMNOTE_WEB.Services;
 
 namespace API_AMNOTE_WEB.TaxWithholding;
 
-public sealed class PitService(
+public sealed partial class PitService(
     IPitRepository repository,
     IPitXslService xslTemplates,
     IPitMessageOutboundService transmission,
     ICompanyDatabaseResolver databases,
     IEInvoiceMessageRepository messages,
     IEInvoiceTemplateRepository einvoiceTemplates,
-    IEInvoiceHtmlToPdfService htmlToPdfService,
+    ElectronicDocumentPdfService pdf,
     IPitCertificateService certificates,
     IPitDeclarationService declarations,
     IPitErrorNoticeService notices,
+    IMailSettingRepository mailSettings,
+    IMailService mailService,
+    IEInvoiceEmailHistoryRepository mailHistory,
+    IConfiguration configuration,
     ILogger<PitService> logger) : IPitService
 {
     private const string DeclarationPrintTemplateCode = "01/ĐKTĐ-CTĐT";
+    private const string ErrorNoticePrintTemplateCode = "04/SS-CTĐT";
 
     public Task<(List<PitDocument> Items, int TotalRecords)> Search(
         string company,
@@ -76,19 +81,25 @@ public sealed class PitService(
     }
     public async Task<string> Xml(string company, string kind, long id)
     {
-        var row = await repository.Get(company, kind, id); return row.SIGNED_XML ?? PitXmlBuilder.Build(row);
+        var row = await repository.Get(company, kind, id);
+        return row.IS_SIGNED == 1 ? row.SIGNED_XML ?? throw new InvalidOperationException("XML đã ký bị thiếu.") : PitXmlBuilder.Build(row);
     }
-    public async Task<string> Print(string company, string kind, long id)
+    private async Task<string> BuildPrintHtml(string company, string kind, long id)
     {
         var row = await repository.Get(company, kind, id);
-        var xml = row.SIGNED_XML ?? PitXmlBuilder.Build(row);
-        if (kind == PitKinds.Declaration)
+        var xml = row.IS_SIGNED == 1
+            ? row.SIGNED_XML ?? throw new InvalidOperationException("XML đã ký bị thiếu.")
+            : PitXmlBuilder.Build(row);
+        if (kind == PitKinds.Certificate)
+            xml = PitCertificatePrintXmlHelper.EnsureLookupInfo(xml, row.MTRACUU);
+        if (kind is PitKinds.Declaration or PitKinds.ErrorNotice)
         {
-            var declarationTemplate = await einvoiceTemplates.GetActiveTemplateAsync("XSL", DeclarationPrintTemplateCode)
-                ?? throw new InvalidOperationException($"Chưa cấu hình mẫu in {DeclarationPrintTemplateCode}.");
-            if (string.IsNullOrWhiteSpace(declarationTemplate.CONTENT))
-                throw new InvalidOperationException($"Mẫu in {DeclarationPrintTemplateCode} chưa có nội dung XSL.");
-            return EInvoiceXmlHtmlTransformService.Transform(xml, declarationTemplate.CONTENT, lookupCompanyCd: company);
+            var templateCode = kind == PitKinds.Declaration ? DeclarationPrintTemplateCode : ErrorNoticePrintTemplateCode;
+            var template = await einvoiceTemplates.GetActiveTemplateAsync("XSL", templateCode)
+                ?? throw new InvalidOperationException($"Chưa cấu hình mẫu in {templateCode}.");
+            if (string.IsNullOrWhiteSpace(template.CONTENT))
+                throw new InvalidOperationException($"Mẫu in {templateCode} chưa có nội dung XSL.");
+            return EInvoiceXmlHtmlTransformService.Transform(xml, template.CONTENT, lookupCompanyCd: company);
         }
         if (kind != PitKinds.Certificate)
             throw new InvalidOperationException("Loại chứng từ này chưa hỗ trợ mẫu in XSL.");
@@ -102,8 +113,8 @@ public sealed class PitService(
         long id,
         CancellationToken cancellationToken = default)
     {
-        var html = await Print(company, kind, id);
-        return await htmlToPdfService.ConvertAsync(html, cancellationToken);
+        return await pdf.GetAsync(company, "pit-" + kind, id, null,
+            _ => BuildPrintHtml(company, kind, id), cancellationToken);
     }
 
 }

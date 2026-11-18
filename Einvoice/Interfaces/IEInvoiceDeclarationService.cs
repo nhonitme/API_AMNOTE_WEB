@@ -4,6 +4,7 @@ namespace API_AMNOTE_WEB.Interfaces
 {
     public interface IEInvoiceDeclarationService
     {
+        Task<string> GetXmlAsync(string companyCd, long tkhaiId);
         Task<IReadOnlyList<EInvoiceDeclarationDto>> SearchAsync(string companyCd, EInvoiceDeclarationSearchRequest request);
 
         Task<EInvoiceDeclarationDto?> GetByIdAsync(string companyCd, long tkhaiId);

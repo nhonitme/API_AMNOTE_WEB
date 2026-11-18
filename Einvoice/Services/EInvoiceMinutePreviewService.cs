@@ -11,19 +11,19 @@ namespace API_AMNOTE_WEB.Services
 
         private readonly IEInvoiceMinuteService _minuteService;
         private readonly IEInvoiceTemplateRepository _templateRepository;
-        private readonly IEInvoiceHtmlToPdfService _htmlToPdfService;
+        private readonly ElectronicDocumentPdfService _pdf;
 
         public EInvoiceMinutePreviewService(
             IEInvoiceMinuteService minuteService,
             IEInvoiceTemplateRepository templateRepository,
-            IEInvoiceHtmlToPdfService htmlToPdfService)
+            ElectronicDocumentPdfService pdf)
         {
             _minuteService = minuteService;
             _templateRepository = templateRepository;
-            _htmlToPdfService = htmlToPdfService;
+            _pdf = pdf;
         }
 
-        public async Task<string> GetHtmlAsync(string companyCd, long bbanId, CancellationToken cancellationToken = default)
+        private async Task<string> BuildHtmlAsync(string companyCd, long bbanId, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var built = await BuildPreviewAsync(companyCd, bbanId, cancellationToken);
@@ -32,8 +32,8 @@ namespace API_AMNOTE_WEB.Services
 
         public async Task<byte[]> ExportPdfAsync(string companyCd, long bbanId, CancellationToken cancellationToken = default)
         {
-            var html = await GetHtmlAsync(companyCd, bbanId, cancellationToken);
-            return await _htmlToPdfService.ConvertAsync(html, cancellationToken);
+            return await _pdf.GetAsync(companyCd, "minute", bbanId, null,
+                ct => BuildHtmlAsync(companyCd, bbanId, ct), cancellationToken);
         }
 
         private async Task<EInvoiceXslPreviewResult> BuildPreviewAsync(

@@ -7,11 +7,13 @@ namespace API_AMNOTE_WEB.Services
     public sealed class EInvoiceHtmlToPdfService : IEInvoiceHtmlToPdfService, IAsyncDisposable
     {
         private readonly SemaphoreSlim _browserGate = new(1, 1);
+        private readonly SemaphoreSlim _renderGate = new(2, 2);
         private IBrowser? _browser;
-        private bool _fetcherInitialized;
+        private readonly string _executablePath;
 
-        public EInvoiceHtmlToPdfService(IHostApplicationLifetime lifetime)
+        public EInvoiceHtmlToPdfService(IHostApplicationLifetime lifetime, IConfiguration configuration)
         {
+            _executablePath = configuration["ElectronicDocuments:ChromiumExecutablePath"] ?? "";
             lifetime.ApplicationStopping.Register(() =>
             {
                 DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -19,6 +21,13 @@ namespace API_AMNOTE_WEB.Services
         }
 
         public async Task<byte[]> ConvertAsync(string html, CancellationToken cancellationToken = default)
+        {
+            await _renderGate.WaitAsync(cancellationToken);
+            try { return await ConvertCoreAsync(html, cancellationToken); }
+            finally { _renderGate.Release(); }
+        }
+
+        private async Task<byte[]> ConvertCoreAsync(string html, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(html))
             {
@@ -29,6 +38,24 @@ namespace API_AMNOTE_WEB.Services
 
             var browser = await GetBrowserAsync(cancellationToken);
             await using var page = await browser.NewPageAsync();
+            using var cancellation = cancellationToken.Register(() => { _ = page.CloseAsync(); });
+            var deniedResource = 0;
+            await page.SetRequestInterceptionAsync(true);
+            page.Request += async (_, args) =>
+            {
+                try
+                {
+                    var url = args.Request.Url;
+                    if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) || url == "about:blank")
+                        await args.Request.ContinueAsync();
+                    else
+                    {
+                        Interlocked.Exchange(ref deniedResource, 1);
+                        await args.Request.AbortAsync();
+                    }
+                }
+                catch { Interlocked.Exchange(ref deniedResource, 1); }
+            };
 
             await page.SetContentAsync(html, new NavigationOptions
             {
@@ -38,6 +65,7 @@ namespace API_AMNOTE_WEB.Services
 
             await WaitForInvoiceLayoutAsync(page, cancellationToken);
             await WaitForImagesAsync(page, cancellationToken);
+            if (deniedResource != 0) throw new InvalidOperationException("PDF contains unversioned external resources. Embed images/fonts before publishing the template.");
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -67,10 +95,21 @@ namespace API_AMNOTE_WEB.Services
         {
             try
             {
+                // invoice-source is visibility:hidden until paginateInvoice fills #invoice-pages.
+                // Waiting only for .invoice-root returns too early and yields a blank ~1KB PDF.
                 await page.WaitForFunctionAsync(
                     @"() => {
-                        if (window.__invoicePaginated === true) return true;
-                        if (document.querySelector('.invoice-page, .invoice-root')) return true;
+                        const needsPagination = !!(
+                            document.getElementById('invoice-source')
+                            || document.getElementById('invoice-pages')
+                        );
+                        if (needsPagination) {
+                            return window.__invoicePaginated === true
+                                && !!document.querySelector('#invoice-pages .invoice-page');
+                        }
+                        if (window.__invoicePaginated === true) {
+                            return !!document.querySelector('.invoice-page');
+                        }
                         const body = document.body;
                         return !!body && body.innerText.trim().length > 0;
                     }",
@@ -83,7 +122,7 @@ namespace API_AMNOTE_WEB.Services
             catch (WaitTaskTimeoutException)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await Task.Delay(500, cancellationToken);
+                throw;
             }
         }
 
@@ -94,13 +133,14 @@ namespace API_AMNOTE_WEB.Services
                 await page.EvaluateFunctionAsync(@"async () => {
                     const images = Array.from(document.images ?? []);
                     await Promise.all(images.map((image) => {
-                        if (image.complete) {
+                        if (image.complete && image.naturalWidth > 0) {
                             return Promise.resolve();
                         }
+                        if (image.complete) throw new Error('A document image failed to load');
 
-                        return new Promise((resolve) => {
+                        return new Promise((resolve, reject) => {
                             image.addEventListener('load', resolve, { once: true });
-                            image.addEventListener('error', resolve, { once: true });
+                            image.addEventListener('error', reject, { once: true });
                         });
                     }));
                 }");
@@ -108,13 +148,16 @@ namespace API_AMNOTE_WEB.Services
             catch
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await Task.Delay(300, cancellationToken);
+                throw;
             }
         }
 
+        // Blank Chromium pages land around 1.1–1.5KB; real invoice pages are far larger.
+        private const int MinUsefulPdfBytes = 4096;
+
         private static bool IsValidPdf(byte[] pdf)
         {
-            return pdf.Length > 512
+            return pdf.Length >= MinUsefulPdfBytes
                 && pdf[0] == (byte)'%'
                 && pdf[1] == (byte)'P'
                 && pdf[2] == (byte)'D'
@@ -143,16 +186,13 @@ namespace API_AMNOTE_WEB.Services
                     _browser = null;
                 }
 
-                if (!_fetcherInitialized)
-                {
-                    var fetcher = new BrowserFetcher();
-                    await fetcher.DownloadAsync();
-                    _fetcherInitialized = true;
-                }
+                if (string.IsNullOrWhiteSpace(_executablePath) || !Path.IsPathFullyQualified(_executablePath) || !File.Exists(_executablePath))
+                    throw new InvalidOperationException("Configure ElectronicDocuments:ChromiumExecutablePath with an installed Chromium executable. Runtime browser installation is disabled.");
 
                 _browser = await Puppeteer.LaunchAsync(new LaunchOptions
                 {
                     Headless = true,
+                    ExecutablePath = _executablePath,
                     Args = new[] { "--no-sandbox", "--disable-setuid-sandbox" },
                 });
 

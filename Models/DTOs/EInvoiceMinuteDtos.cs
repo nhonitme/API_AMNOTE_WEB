@@ -142,11 +142,6 @@ namespace API_AMNOTE_WEB.Models
         public bool CAN_SIGN { get; set; }
         public bool CAN_DOWNLOAD_PDF { get; set; } = true;
         public bool CAN_DOWNLOAD_XML { get; set; } = true;
-        public bool CAN_DOWNLOAD_XSL { get; set; } = true;
-        public bool CAN_DOWNLOAD_HTML { get; set; } = true;
-        public string? XML { get; set; }
-        public string? XSL { get; set; }
-        public string? HTML { get; set; }
         public List<EInvoiceMinuteReasonDto> REASONS { get; set; } = new();
         public List<EInvoiceMinuteLineDto> LINES_BEFORE { get; set; } = new();
         public List<EInvoiceMinuteLineDto> LINES_AFTER { get; set; } = new();

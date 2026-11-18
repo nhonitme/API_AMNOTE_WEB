@@ -89,36 +89,5 @@ namespace API_AMNOTE_WEB.Controllers
             return Success(new { deleted = result }, "Deleted successfully");
         }
 
-        [HttpGet("export")]
-        [Authorize]
-        public async Task<IActionResult> ExportDepartmentInfo(
-            [FromQuery(Name = "departmentId")] long? departmentId = null,
-            [FromQuery(Name = "DEPARTMENT_ID")] long? legacyDepartmentId = null,
-            [FromQuery] string? lang = null)
-        {
-            await EnsurePermissionAsync("MD_DEPARTMENT", "EXPORT");
-            var currentLang = ResolveLang(lang);
-            var companyCd = Common.GetCompanyCode();
-            var targetDepartmentId = departmentId ?? legacyDepartmentId;
-            var data = (await _service.GetListAsync(companyCd, targetDepartmentId)).ToList();
-            if (!data.Any())
-            {
-                return NotFound((await Common.getLanguage("DEPARTMENT_CD", currentLang)) + " " + (await Common.getLanguage("NO_DATA_TO_EXPORT", currentLang)));
-            }
-
-            const string screenCd = "MD_COST_CENTER";
-            const string gridId = "cost-center-grid";
-            var exportColumns = await Common.GetExcelExportColumnInfosAsync("DepartmentInfo", screenCd, gridId);
-            if (exportColumns.Count == 0)
-                return BadRequest(await Common.GetMissingExcelExportColumnsMessageAsync(currentLang));
-
-            var columnMapping = await Common.BuildExcelColumnMappingAsync(exportColumns, currentLang);
-            var sysCodeDisplayMap = await Common.BuildExcelSysCodeDisplayMapAsync(exportColumns, companyCd, currentLang);
-
-            var stream = await ExcelHelper.ExportToExcelAsync(data, columnMapping, formatTypes: null, sysCodeDisplayMap: sysCodeDisplayMap);
-            var fileName = $"department_info_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
-
-            return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }
     }
 }

@@ -10,6 +10,7 @@ namespace API_AMNOTE_WEB.Services
 {
     public class EInvoiceSellerPreviewService : IEInvoiceSellerPreviewService
     {
+        private readonly IEInvoiceSellerXslTemplateRepository _designs;
         private readonly IEInvoiceSellerRepository _repository;
         private readonly IEInvoiceHtmlToPdfService _htmlToPdfService;
         private readonly IWebHostEnvironment _environment;
@@ -21,9 +22,10 @@ namespace API_AMNOTE_WEB.Services
             IEInvoiceHtmlToPdfService htmlToPdfService,
             IWebHostEnvironment environment,
             DapperExecutor db,
-            ILogger<EInvoiceSellerPreviewService> logger)
+            ILogger<EInvoiceSellerPreviewService> logger, IEInvoiceSellerXslTemplateRepository designs)
         {
             _repository = repository;
+            _designs = designs;
             _htmlToPdfService = htmlToPdfService;
             _environment = environment;
             _db = db;
@@ -177,9 +179,7 @@ namespace API_AMNOTE_WEB.Services
             var seller = await _repository.GetSellerWithXslAsync(companyCd, sellerId: sellerId, xslId: xslId, includeInactive: true)
                 ?? throw new KeyNotFoundException("E-invoice seller not found");
 
-            var xsl = Common.NormalizeNullableText(preferDesignXsl ? seller.XSL_DESIGN_CONTENT : seller.XSL_CONTENT)
-                ?? Common.NormalizeNullableText(seller.XSL_CONTENT)
-                ?? Common.NormalizeNullableText(seller.XSL_DESIGN_CONTENT);
+            var xsl = Common.NormalizeNullableText(preferDesignXsl ? seller.XSL_DESIGN_CONTENT : seller.XSL_CONTENT);
             var logoPath = seller.LOGO_PATH;
             var backgroundPath = seller.BACKGROUND_PATH;
             var nenPath = seller.INVOICE_BACKGROUND_PATH;
@@ -188,27 +188,11 @@ namespace API_AMNOTE_WEB.Services
             if (designId is > 0)
             {
                 var templateXslId = xslId is > 0 ? xslId.Value : seller.XSL_ID;
-                const string designSql = "CALL getEInvoiceSellerXslTemplateDesign(@p_COMPANY_CD, @p_XSL_ID, @p_DESIGN_ID);";
-                var design = (await _db.QueryAsync<EInvoiceTemplateDesignerDesign>(
-                    Net_DB.Net_DB_Company,
-                    designSql,
-                    new { p_COMPANY_CD = companyCd, p_XSL_ID = templateXslId, p_DESIGN_ID = designId })).FirstOrDefault();
-                if (design != null)
-                {
-                    xsl = Common.NormalizeNullableText(design.XSL_CONTENT) ?? xsl;
-                    logoPath = design.LOGO_PATH;
-                    backgroundPath = design.BACKGROUND_PATH;
-                    nenPath = design.INVOICE_BACKGROUND_PATH;
-                    vienPath = design.INVOICE_BORDER_PATH;
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "E-invoice designer preview design not found. designId={DesignId} xslId={XslId} sellerXslId={SellerXslId}. Falling back to default design image paths.",
-                        designId,
-                        templateXslId,
-                        seller.XSL_ID);
-                }
+                var design = await _designs.GetDesignAsync(companyCd, templateXslId, designId.Value)
+                    ?? throw new KeyNotFoundException("Invoice template design not found.");
+                xsl = design.XSL_CONTENT;
+                logoPath = design.LOGO_PATH; backgroundPath = design.BACKGROUND_PATH;
+                nenPath = design.INVOICE_BACKGROUND_PATH; vienPath = design.INVOICE_BORDER_PATH;
             }
 
             if (!string.IsNullOrWhiteSpace(xslContentOverride))

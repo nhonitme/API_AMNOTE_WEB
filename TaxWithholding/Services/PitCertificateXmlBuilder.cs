@@ -8,6 +8,7 @@ public static class PitCertificateXmlBuilder
     public static string Build(PitCertificateDto data, long id, int version, long? number)
     {
         PitCertificateValidator.Validate(data);
+        var lookupCode = NormalizeLookupCode(data.MTRACUU);
         var payload = new XElement("DLCTu", new XAttribute("Id", $"PIT-{id}-v{version}"),
             new XElement("TTChung",
                 new XElement("PBan", "2.1.1"),
@@ -23,7 +24,8 @@ public static class PitCertificateXmlBuilder
                     Value("KHCTCLQuan", data.KHCTCLQUAN),
                     Value("SCTCLQuan", data.SCTCLQUAN),
                     Value("NLCTCLQuan", data.NLCTCLQUAN),
-                    Value("GChu", data.GCHU)) : null),
+                    Value("GChu", data.GCHU)) : null,
+                BuildLookupInfo(lookupCode)),
             new XElement("NDCTu",
                 new XElement("TCTTNhap",
                     Value("Ten", data.TCTTNHAP_TEN),
@@ -52,5 +54,21 @@ public static class PitCertificateXmlBuilder
                     Value("SThue", data.STHUE))));
 
         return Serialize("CTu", payload, "TCTTNhap");
+    }
+
+    private static string? NormalizeLookupCode(string? value)
+    {
+        var text = value?.Trim();
+        return string.IsNullOrWhiteSpace(text) ? null : text.ToUpperInvariant();
+    }
+
+    private static XElement? BuildLookupInfo(string? lookupCode)
+    {
+        if (string.IsNullOrWhiteSpace(lookupCode)) return null;
+        return new XElement("TTKhac",
+            new XElement("TTin",
+                new XElement("TTruong", "MaTraCuu"),
+                new XElement("KDLieu", "string"),
+                new XElement("DLieu", lookupCode)));
     }
 }

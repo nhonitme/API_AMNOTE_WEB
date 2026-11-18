@@ -2,7 +2,7 @@ namespace API_AMNOTE_WEB.TaxWithholding;
 
 public static class PitDocumentMapper
 {
-    private static T Common<T>(T result, PitStorageRow row, long id, string kind, DateTime? date, string? tax, string? name, string? series = null, long? number = null, long? xsl = null) where T : PitDocument
+    private static T Common<T>(T result, PitStorageRow row, long id, string kind, DateTime? date, string? tax, string? name, string? series = null, long? number = null, long? xsl = null, string? lookupCode = null) where T : PitDocument
     {
         result.DOCUMENT_ID = id;
         result.KIND = kind;
@@ -13,6 +13,7 @@ public static class PitDocumentMapper
         result.SERIES = series;
         result.DOC_NO = number;
         result.XSL_ID = xsl;
+        result.MTRACUU = lookupCode;
         result.IS_SIGNED = row.IS_SIGNED;
         result.CQT_STATUS = row.CQT_STATUS;
         result.ERROR_MESSAGE = row.ERROR_MESSAGE;
@@ -60,7 +61,7 @@ public static class PitDocumentMapper
             TTNCTHUE = x.TTNCTHUE,
             TTNTTHUE = x.TTNTTHUE,
             STHUE = x.STHUE,
-        }, x, x.CTU_ID, PitKinds.Certificate, x.NLAP, x.TCTTNHAP_MST, x.NNT_TEN, x.KHCTU, x.SCTU, x.XSL_ID);
+        }, x, x.CTU_ID, PitKinds.Certificate, x.NLAP, x.TCTTNHAP_MST, x.NNT_TEN, x.KHCTU, x.SCTU, x.XSL_ID, x.MTRACUU);
 
     public static PitDeclarationDto MapDeclaration(PitDeclaration x)
         => Common(new PitDeclarationDto

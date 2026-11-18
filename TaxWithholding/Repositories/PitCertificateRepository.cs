@@ -12,7 +12,7 @@ public sealed class PitCertificateRepository(DapperExecutor db) : IPitCertificat
 
     public Task<long> SaveAsync(DapperSession s, string company, string user, long id, int version, long? xslId, PitCertificateDto d)
     {
-        return s.QuerySingleAsync<long>("CALL setPitCtu(@company,@id,@version,@xsl,@series,@date,@relatedKind,@relatedType,@relatedForm,@relatedSeries,@relatedNo,@relatedDate,@relatedNote,@payerName,@payerTax,@payerAddress,@payerPhone,@personName,@personTax,@personAddress,@nationality,@resident,@identity,@personPhone,@personEmail,@personNote,@incomeKind,@fromMonth,@toMonth,@year,@insurance,@charity,@taxable,@assessable,@withheld,@user)",
+        return s.QuerySingleAsync<long>("CALL setPitCtu(@company,@id,@version,@xsl,@series,@date,@relatedKind,@relatedType,@relatedForm,@relatedSeries,@relatedNo,@relatedDate,@relatedNote,@payerName,@payerTax,@payerAddress,@payerPhone,@personName,@personTax,@personAddress,@nationality,@resident,@identity,@personPhone,@personEmail,@personNote,@incomeKind,@fromMonth,@toMonth,@year,@insurance,@charity,@taxable,@assessable,@withheld,@user,@mtracuu)",
             new
             {
                 company,
@@ -51,6 +51,14 @@ public sealed class PitCertificateRepository(DapperExecutor db) : IPitCertificat
                 assessable = d.TTNTTHUE,
                 withheld = d.STHUE,
                 user,
+                mtracuu = string.IsNullOrWhiteSpace(d.MTRACUU) ? null : d.MTRACUU.Trim().ToUpperInvariant(),
             });
     }
+
+    public Task<PitCertificate?> GetByLookupAsync(string company, string lookupCode, string? dbName)
+        => db.QueryFirstOrDefaultAsync<PitCertificate>(
+            Net_DB.Net_DB_Company,
+            "CALL getPitCtuByLookup(@company,@mtracuu)",
+            new { company, mtracuu = lookupCode },
+            sDBName: dbName);
 }

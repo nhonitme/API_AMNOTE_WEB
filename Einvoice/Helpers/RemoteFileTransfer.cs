@@ -50,6 +50,9 @@ internal static class RemoteFileTransfer
     public static byte[] DownloadBytes(Endpoint endpoint, string remotePath)
         => Use(endpoint, transfer => transfer.Download(NormalizePath(remotePath)));
 
+    public static byte[] DownloadExactBytes(Endpoint endpoint, string remotePath)
+        => Use(endpoint, transfer => transfer.DownloadExact(NormalizePath(remotePath)));
+
     public static void DownloadFile(Endpoint endpoint, string remotePath, string localFilePath)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(localFilePath) ?? ".");
@@ -224,6 +227,7 @@ internal static class RemoteFileTransfer
     {
         void Upload(string remotePath, byte[] content);
         byte[] Download(string remotePath);
+        byte[] DownloadExact(string remotePath);
         void DownloadToFile(string remotePath, string localFilePath);
         IReadOnlyList<string> ListNames(string directory);
         bool Exists(string remotePath);
@@ -272,6 +276,12 @@ internal static class RemoteFileTransfer
             }
 
             throw new InvalidOperationException($"Cannot download FTP file: {remotePath}");
+        }
+
+        public byte[] DownloadExact(string remotePath)
+        {
+            if (_client.DownloadBytes(out var data, remotePath) && data is { Length: > 0 }) return data;
+            throw new InvalidOperationException($"Cannot download exact FTP reference: {remotePath}");
         }
 
         public void DownloadToFile(string remotePath, string localFilePath)
@@ -365,6 +375,8 @@ internal static class RemoteFileTransfer
             _client.DownloadFile(remotePath, memory);
             return memory.ToArray();
         }
+
+        public byte[] DownloadExact(string remotePath) => Download(remotePath);
 
         public void DownloadToFile(string remotePath, string localFilePath)
         {

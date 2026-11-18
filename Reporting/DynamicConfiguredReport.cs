@@ -83,6 +83,10 @@ namespace API_AMNOTE_WEB.Reporting
             Landscape = _layout.Landscape;
             Margins = new Margins(_layout.MarginLeft, _layout.MarginRight, _layout.MarginTop, _layout.MarginBottom);
             RequestParameters = false;
+            // Export formatted Text as-is so PDF and Excel share the same thousand-separator display
+            // (Value mode + locale parse can turn large amounts into scientific notation).
+            ExportOptions.Xlsx.TextExportMode = TextExportMode.Text;
+            ExportOptions.Xls.TextExportMode = TextExportMode.Text;
             BuildElementConfiguredReport(configuration, companyContext, sourceTable);
         }
 
@@ -1336,7 +1340,7 @@ namespace API_AMNOTE_WEB.Reporting
         {
             return _useEInvoiceSalesAppendixStyle
                 ? Color.FromArgb(221, 219, 241)
-                : Color.White;
+                : Color.FromArgb(196, 180, 156); // #C4B49C header (sampled from B01 Excel reference)
         }
 
         private XRTableCell CreateConfiguredTableDataCell(
@@ -1358,7 +1362,8 @@ namespace API_AMNOTE_WEB.Reporting
                 TextAlignment = ResolveWrappedDataCellAlignment(column.Alignment),
                 CanGrow = true,
                 WordWrap = true,
-                Multiline = true
+                Multiline = true,
+                XlsxFormatString = ResolveXlsxFormatString(column.FormatString)
             };
 
             cell.BeforePrint += (_, _) =>
@@ -1389,7 +1394,10 @@ namespace API_AMNOTE_WEB.Reporting
             cell.TextAlignment = ResolveWrappedDataCellAlignment(column.Alignment);
             var detailFontStyle = ResolveDataRowFontStyle(currentRow);
             cell.Font = CreateFont(_layout.FontFamily, _layout.DetailFontSize, detailFontStyle);
-            cell.BackColor = Color.Transparent;
+            cell.BackColor = detailFontStyle.HasFlag(DXFontStyle.Bold)
+                ? Color.FromArgb(252, 240, 204) // #FCF0CC bold row (sampled from B01 Excel reference)
+                : Color.Transparent;
+            cell.XlsxFormatString = ResolveXlsxFormatString(column.FormatString);
             cell.Text = ResolveConfiguredTableCellDisplayText(currentRow, column);
 
             if (!_useEInvoiceSalesAppendixStyle)
@@ -1540,16 +1548,112 @@ namespace API_AMNOTE_WEB.Reporting
                 }
             }
 
+            // Numeric FORMAT_TYPE must also format string payloads (Dapper/DataTable may keep amounts as text).
+            // Otherwise PDF/Excel show raw digits or Excel General → scientific notation.
+            if (format != null && LooksLikeNumericFormat(format))
+            {
+                var numeric = TryCoerceToDecimal(value);
+                if (numeric.HasValue)
+                {
+                    if (numeric.Value == 0m)
+                    {
+                        return string.Empty;
+                    }
+
+                    return string.Format(CultureInfo.InvariantCulture, format, numeric.Value);
+                }
+            }
+
             // string implements IFormattable in some runtimes but date masks do not apply to raw YMD text —
             // skip IFormattable path for string so we do not silently ignore FORMAT_TYPE=date.
             if (format != null && value is IFormattable && value is not string)
             {
-                return string.Format(System.Globalization.CultureInfo.InvariantCulture, format, value);
+                return string.Format(CultureInfo.InvariantCulture, format, value);
             }
 
             return value is IConvertible
-                ? Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty
+                ? Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty
                 : value.ToString() ?? string.Empty;
+        }
+
+        private static bool LooksLikeNumericFormat(string? format)
+        {
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                return false;
+            }
+
+            return format.Contains(":n", StringComparison.OrdinalIgnoreCase)
+                   || format.Contains(":N", StringComparison.Ordinal)
+                   || format.Contains("#,##0", StringComparison.Ordinal);
+        }
+
+        private static decimal? TryCoerceToDecimal(object? value)
+        {
+            switch (value)
+            {
+                case null:
+                case DBNull:
+                    return null;
+                case decimal decimalValue:
+                    return decimalValue;
+                case byte or sbyte or short or ushort or int or uint or long or ulong:
+                    return Convert.ToDecimal(value, CultureInfo.InvariantCulture);
+                case float or double:
+                    return Convert.ToDecimal(value, CultureInfo.InvariantCulture);
+            }
+
+            var text = Common.NormalizeNullableText(
+                Convert.ToString(value, CultureInfo.InvariantCulture));
+            if (text == null)
+            {
+                return null;
+            }
+
+            if (decimal.TryParse(
+                    text,
+                    NumberStyles.Number | NumberStyles.AllowLeadingSign | NumberStyles.AllowExponent,
+                    CultureInfo.InvariantCulture,
+                    out var invariantParsed))
+            {
+                return invariantParsed;
+            }
+
+            if (decimal.TryParse(
+                    text,
+                    NumberStyles.Number | NumberStyles.AllowLeadingSign | NumberStyles.AllowExponent,
+                    CultureHelper.Vietnamese,
+                    out var viParsed))
+            {
+                return viParsed;
+            }
+
+            return null;
+        }
+
+        private static string? ResolveXlsxFormatString(string? formatString)
+        {
+            var format = Common.NormalizeNullableText(formatString);
+            if (format == null)
+            {
+                return null;
+            }
+
+            var numericPlaces = Regex.Match(format, @"\{0:[nN](\d)\}");
+            if (numericPlaces.Success
+                && int.TryParse(numericPlaces.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var places)
+                && places >= 0
+                && places <= 12)
+            {
+                return places == 0 ? "#,##0" : $"#,##0.{new string('0', places)}";
+            }
+
+            if (format.Contains("#,##0", StringComparison.Ordinal))
+            {
+                return format.Trim('{', '}').Replace("0:", string.Empty, StringComparison.Ordinal);
+            }
+
+            return null;
         }
 
         private static bool LooksLikeDateFormat(string? format)
@@ -2317,7 +2421,7 @@ namespace API_AMNOTE_WEB.Reporting
                 CalculateWeight(column.ColumnName, dataType),
                 isNumeric ? TextAlignment.MiddleRight : isDate ? TextAlignment.MiddleCenter : TextAlignment.MiddleLeft,
                 isNumeric && !column.ColumnName.EndsWith("LV", StringComparison.OrdinalIgnoreCase),
-                ResolveFormatString(dataType));
+                ResolveFormatString(null, dataType, column.ColumnName));
         }
 
         private static ReportColumnDefinition CreateColumn(DataColumn column, ReportTableLayoutCell cell)
@@ -2331,7 +2435,7 @@ namespace API_AMNOTE_WEB.Reporting
                 ResolveTableCellWeight(cell),
                 alignment,
                 false,
-                ResolveFormatString(cell.FormatType, dataType));
+                ResolveFormatString(cell.FormatType, dataType, column.ColumnName));
         }
 
         private static IReadOnlyList<float> ResolveTableColumnWeights(IReadOnlyList<ReportTableLayoutCell> cells, int columnCount)
@@ -2531,11 +2635,28 @@ namespace API_AMNOTE_WEB.Reporting
             return 1.2f;
         }
 
-        private static string? ResolveFormatString(Type dataType)
+        private static bool IsBalanceSheetYearAmountField(string? columnName)
+        {
+            // NormalizeToken strips non-alphanumerics: END_YEAR → endyear.
+            return Common.NormalizeToken(columnName) switch
+            {
+                "endyear" or "beginyear"
+                    or "thisyearmoney" or "lastyearmoney"
+                    or "currentyear" or "previousyear" => true,
+                _ => false
+            };
+        }
+
+        private static string? ResolveFormatString(Type dataType, string? columnName = null)
         {
             if (dataType == typeof(DateTime))
             {
                 return "{0:yyyy-MM-dd HH:mm}";
+            }
+
+            if (IsBalanceSheetYearAmountField(columnName))
+            {
+                return "{0:n0}";
             }
 
             if (dataType == typeof(decimal) ||
@@ -2556,7 +2677,7 @@ namespace API_AMNOTE_WEB.Reporting
             return null;
         }
 
-        private static string? ResolveFormatString(string? formatType, Type dataType)
+        private static string? ResolveFormatString(string? formatType, Type dataType, string? columnName = null)
         {
             return Common.NormalizeToken(formatType) switch
             {
@@ -2567,7 +2688,7 @@ namespace API_AMNOTE_WEB.Reporting
                 "number4" => "{0:n4}",
                 "date" => "{0:dd/MM/yyyy}",
                 "datetime" => "{0:dd/MM/yyyy HH:mm}",
-                _ => ResolveFormatString(dataType)
+                _ => ResolveFormatString(dataType, columnName)
             };
         }
 

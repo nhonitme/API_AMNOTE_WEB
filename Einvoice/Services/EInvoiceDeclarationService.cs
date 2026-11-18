@@ -13,6 +13,7 @@ namespace API_AMNOTE_WEB.Services
         {
             "CTS", "TCGP", "TCTN", "DVHTPT", "DVDUQTCUU", "TNSDUNG", "DKTH"
         };
+        private readonly ElectronicDocumentPdfService _pdf;
         private readonly IEInvoiceDeclarationRepository _repository;
         private readonly IEInvoiceMessageRepository _messageRepository;
         private readonly DapperExecutor _db;
@@ -22,12 +23,21 @@ namespace API_AMNOTE_WEB.Services
             IEInvoiceDeclarationRepository repository,
             IEInvoiceMessageRepository messageRepository,
             DapperExecutor db,
-            ILogger<EInvoiceDeclarationService> logger)
+            ILogger<EInvoiceDeclarationService> logger, ElectronicDocumentPdfService pdf)
         {
             _repository = repository;
             _messageRepository = messageRepository;
             _db = db;
             _logger = logger;
+            _pdf = pdf;
+        }
+
+        public async Task<string> GetXmlAsync(string companyCd, long tkhaiId)
+        {
+            var declaration = await GetEntityByIdAsync(companyCd, tkhaiId) ?? throw new KeyNotFoundException("Document not found.");
+            if (declaration.IS_SIGNED == 1)
+                return Common.NormalizeNullableText(declaration.XML) ?? throw new InvalidOperationException("Signed document XML is missing.");
+            return EInvoiceDeclarationXmlBuilder.Build(declaration);
         }
 
         public async Task<IReadOnlyList<EInvoiceDeclarationDto>> SearchAsync(string companyCd, EInvoiceDeclarationSearchRequest request)
@@ -282,6 +292,7 @@ namespace API_AMNOTE_WEB.Services
             try
             {
                 await _repository.SetSignatureAsync(session, companyCd, userId, tkhaiId, signedXml, 1, null);
+                await _pdf.PinSharedTemplateAsync(session, companyCd, "declaration", tkhaiId);
                 session.Commit();
             }
             catch

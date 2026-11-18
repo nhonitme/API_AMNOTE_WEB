@@ -904,10 +904,9 @@ namespace API_AMNOTE_WEB.Services
 
             if (mailOptions.AttachPdf)
             {
-                var pdfBytes = await _printService.ExportPdfFromSignedXmlContentAsync(
+                var pdfBytes = await _printService.ExportPdfFromSignedXmlAsync(
                     companyCd,
                     invoiceId,
-                    signedXml,
                     cancellationToken);
                 attachments.Add(new MailAttachmentDto
                 {
@@ -1566,28 +1565,8 @@ namespace API_AMNOTE_WEB.Services
             };
         }
 
-        private async Task<EInvoicePublicLookupDto> ToPublicLookupDtoAsync(PublicInvoiceLookupResult result)
-        {
-            var dto = ToPublicLookupDto(result.Invoice);
-
-            try
-            {
-                dto.HTML = await ExecuteWithCompanyContextAsync(
-                    result.CompanyCd,
-                    () => _printService.GetHtmlAsync(result.CompanyCd, result.Invoice.INVOICE_ID));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "Public e-invoice HTML preview failed. Company: {CompanyCd}, InvoiceId: {InvoiceId}",
-                    result.CompanyCd,
-                    result.Invoice.INVOICE_ID);
-                dto.HTML = null;
-            }
-
-            return dto;
-        }
+        private Task<EInvoicePublicLookupDto> ToPublicLookupDtoAsync(PublicInvoiceLookupResult result)
+            => Task.FromResult(ToPublicLookupDto(result.Invoice));
 
         private async Task<T> ExecuteWithCompanyContextAsync<T>(string companyCd, Func<Task<T>> action)
         {

@@ -279,13 +279,6 @@ namespace API_AMNOTE_WEB.Helpers
             return stream;
         }
 
-        public static async Task<MemoryStream> BuildCustomerExcelExportAsync<T>(IEnumerable<T> data, string moduleCd, string lang)
-        {
-            var templateColumns = await Common.GetExcelTemplateColumnInfosAsync(moduleCd);
-            var columnMapping = await Common.BuildExcelColumnMappingAsync(templateColumns, lang);
-            return await ExportToExcelAsync(data, columnMapping);
-        }
-
         /// <summary>
         /// Export the import template (headers + column explanations) for a module.
         /// </summary>

@@ -40,9 +40,19 @@ public sealed class PitWithholdingController(IPitService service) : BaseApiContr
     [HttpPost("{kind}/{id:long}/signing-payload")] public async Task<IActionResult> Prepare(string kind, long id) => Success(await service.Prepare(Common.GetCompanyCode(), kind, id));
     [HttpPost("{kind}/{id:long}/signature")] public async Task<IActionResult> Sign(string kind, long id, PitSignRequest request) => Success(await service.Sign(Common.GetCompanyCode(), Common.GetUserId(), kind, id, request));
     [HttpGet("{kind}/{id:long}/xml")] public async Task<IActionResult> Xml(string kind, long id) => Content(await service.Xml(Common.GetCompanyCode(), kind, id), "application/xml; charset=utf-8");
-    [HttpGet("{kind}/{id:long}/print")] public async Task<IActionResult> Print(string kind, long id) => Content(await service.Print(Common.GetCompanyCode(), kind, id), "text/html; charset=utf-8");
     [HttpGet("{kind}/{id:long}/print/pdf")]
     public async Task<IActionResult> PrintPdf(string kind, long id, CancellationToken cancellationToken)
-        => File(await service.PrintPdf(Common.GetCompanyCode(), kind, id, cancellationToken), "application/pdf", $"PIT_{kind}_{id}.pdf");
+    {
+        Response.Headers.CacheControl = "private, no-store";
+        return File(await service.PrintPdf(Common.GetCompanyCode(), kind, id, cancellationToken), "application/pdf", $"PIT_{kind}_{id}.pdf");
+    }
     [HttpGet("{kind}/{id:long}/history")] public async Task<IActionResult> History(string kind, long id) => Success(await service.History(Common.GetCompanyCode(), kind, id));
+
+    [HttpGet("{kind}/{id:long}/mail-history")]
+    public async Task<IActionResult> MailHistory(string kind, long id)
+        => Success(await service.MailHistory(Common.GetCompanyCode(), kind, id));
+
+    [HttpPost("{kind}/{id:long}/send-mail")]
+    public async Task<IActionResult> SendMail(string kind, long id, PitSendMailRequest request, CancellationToken cancellationToken)
+        => Success(await service.SendMail(Common.GetCompanyCode(), Common.GetUserId(), kind, id, request, cancellationToken));
 }

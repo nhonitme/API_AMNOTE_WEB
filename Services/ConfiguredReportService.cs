@@ -381,8 +381,8 @@ namespace API_AMNOTE_WEB.Services
             var paperKind = Common.NormalizeNullableText(GetQueryValue(query, "printPaperKind"))?.ToUpperInvariant();
             if (orientation != null && orientation is not ("AUTO" or "PORTRAIT" or "LANDSCAPE"))
                 throw new ArgumentException("printPageOrientation must be AUTO, PORTRAIT, or LANDSCAPE.");
-            if (paperKind != null && paperKind is not ("AUTO" or "A4" or "A3"))
-                throw new ArgumentException("printPaperKind must be AUTO, A4, or A3.");
+            if (paperKind != null && paperKind is not ("AUTO" or "A4" or "A5" or "A3"))
+                throw new ArgumentException("printPaperKind must be AUTO, A4, A5, or A3.");
 
             if (orientation != null) configuration.PAGE_ORIENTATION = orientation;
             if (paperKind != null) configuration.PAPER_KIND = paperKind;

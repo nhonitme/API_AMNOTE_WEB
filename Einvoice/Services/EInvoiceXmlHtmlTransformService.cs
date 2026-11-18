@@ -1,11 +1,33 @@
 using Saxon.Api;
 using System.Text;
 using System.Xml;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace API_AMNOTE_WEB.Services
 {
     internal static class EInvoiceXmlHtmlTransformService
     {
+        private static readonly MemoryCache Stylesheets = new(new MemoryCacheOptions { SizeLimit = 32 });
+        private static readonly object CompileGate = new();
+        private sealed record CompiledStylesheet(Processor Processor, XsltExecutable Executable);
+
+        private static CompiledStylesheet Compile(string xsl)
+        {
+            var key = ElectronicDocumentStorage.Hash(xsl);
+            lock (CompileGate)
+            {
+                if (Stylesheets.TryGetValue<CompiledStylesheet>(key, out var cached)) return cached!;
+                ElectronicDocumentStorage.ValidateXsl(xsl);
+                var processor = new Processor();
+                processor.SetResourceResolver(_ => throw new InvalidOperationException("External XSL resources are prohibited. Bundle resources before publishing."), false);
+                var compiler = processor.NewXsltCompiler();
+                compiler.BaseUri = new Uri("file:///einvoice.xsl");
+                using var reader = XmlReader.Create(new StringReader(xsl), new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
+                var compiled = new CompiledStylesheet(processor, compiler.Compile(reader));
+                Stylesheets.Set(key, compiled, new MemoryCacheEntryOptions { Size = 1, SlidingExpiration = TimeSpan.FromMinutes(10) });
+                return compiled;
+            }
+        }
         public static string Transform(
             string xmlContent,
             string xslContent,
@@ -46,18 +68,10 @@ namespace API_AMNOTE_WEB.Services
 
             try
             {
-                var processor = new Processor();
-                var compiler = processor.NewXsltCompiler();
-                compiler.BaseUri = new Uri("file:///einvoice.xsl");
-
-                using var xslReader = XmlReader.Create(new StringReader(xslContent), new XmlReaderSettings
-                {
-                    DtdProcessing = DtdProcessing.Prohibit,
-                    XmlResolver = null,
-                });
-
-                var executable = compiler.Compile(xslReader);
-                var transformer = executable.Load();
+                var compiled = Compile(xslContent);
+                var processor = compiled.Processor;
+                var transformer = compiled.Executable.Load();
+                transformer.ResultDocumentHandler = (_, _) => throw new InvalidOperationException("Secondary XSL output files are prohibited.");
 
                 void SetParameter(string name, string? value)
                 {

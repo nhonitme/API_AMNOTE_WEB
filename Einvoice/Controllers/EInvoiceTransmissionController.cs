@@ -17,16 +17,17 @@ namespace API_AMNOTE_WEB.Controllers
             _previewService = previewService;
         }
 
-        [HttpGet("receive/{id:long}/preview/html")]
-        public async Task<IActionResult> GetReceivePreviewHtml([FromRoute] long id, [FromQuery] long? invoiceId = null)
+        [HttpGet("receive/{id:long}/preview/pdf")]
+        public async Task<IActionResult> GetReceivePreviewPdf([FromRoute] long id, [FromQuery] long? invoiceId = null)
         {
             if (id <= 0)
                 return ValidationError(await FieldRequiredAsync("RECEIVE_ID"));
 
             return await FromPreviewAsync(async () =>
             {
-                var html = await _previewService.BuildReceivePreviewHtmlAsync(Common.GetCompanyCode(), id, invoiceId);
-                return Content(html, "text/html; charset=utf-8");
+                var pdf = await _previewService.ExportPdfAsync(Common.GetCompanyCode(), id, HttpContext.RequestAborted);
+                Response.Headers.CacheControl = "private, no-store";
+                return File(pdf, "application/pdf");
             }, notFoundMessage: "E-invoice receive message not found", includeArgumentException: true);
         }
     }

@@ -50,6 +50,7 @@ public abstract class PitDocument
     public string? SERIES { get; set; }
     public long? XSL_ID { get; set; }
     public long? DOC_NO { get; set; }
+    public string? MTRACUU { get; set; }
     public int IS_SIGNED { get; set; }
     public int CQT_STATUS { get; set; }
     public string? ERROR_MESSAGE { get; set; }

@@ -8,7 +8,7 @@ using System.Xml.Linq;
 namespace API_AMNOTE_WEB.TaxWithholding;
 
 public sealed class PitRepository(DapperExecutor db,
-    IPitDeclarationRepository declarations, IPitCertificateRepository certificates, IPitErrorNoticeRepository notices) : IPitRepository
+    IPitDeclarationRepository declarations, IPitCertificateRepository certificates, IPitErrorNoticeRepository notices, ElectronicDocumentPdfService pdf) : IPitRepository
 {
     private sealed class DocumentNoRow { public long SCTU { get; set; } }
 
@@ -145,6 +145,7 @@ public sealed class PitRepository(DapperExecutor db,
                 "CALL setPitCtuSigningInfo(@company,@id,@docNo,@date)", new { company, id, docNo = next, date = signingDate });
         }
         await session.ExecuteAsync("CALL setPitSignature(@company,@target,@id,@version,@xml,@user)", new { company, target, id, version = request.DOC_VERSION, xml = request.XML, user });
+        if (kind != PitKinds.Certificate) await pdf.PinSharedTemplateAsync(session, company, "pit-" + kind, id);
         session.Commit();
     }
 

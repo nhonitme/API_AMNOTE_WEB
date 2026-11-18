@@ -3,6 +3,8 @@ namespace API_AMNOTE_WEB.TaxWithholding;
 public sealed class PitCertificate : PitStorageRow
 {
     public long CTU_ID { get; set; }
+    public string? TCTU { get; set; }
+    public string? MSCTU { get; set; }
     public string KHCTU { get; set; } = "";
     public long? SCTU { get; set; }
     public DateTime? NLAP { get; set; }
@@ -36,4 +38,5 @@ public sealed class PitCertificate : PitStorageRow
     public decimal TTNTTHUE { get; set; }
     public decimal STHUE { get; set; }
     public long? XSL_ID { get; set; }
+    public string? MTRACUU { get; set; }
 }

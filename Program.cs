@@ -1,3 +1,4 @@
+
 using API_AMNOTE_WEB.TaxWithholding;
 using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 
@@ -53,6 +54,7 @@ builder.Services.Configure<MobileDeviceOptions>(builder.Configuration.GetSection
 
 
 EInvoiceFtpClient.Configure(builder.Configuration);
+
 
 
 // .NET 8 default StopHost: any BackgroundService exception kills the whole API (seen as
@@ -357,6 +359,10 @@ builder.Services.AddScoped<API_AMNOTE_WEB.Transmission.MessageReceiveApplyCoordi
 builder.Services.AddHostedService<EInvoiceMttOutboxBackgroundService>();
 builder.Services.AddScoped<IEInvoiceService, EInvoiceService>();
 builder.Services.AddSingleton<IEInvoiceHtmlToPdfService, EInvoiceHtmlToPdfService>();
+builder.Services.AddScoped<ElectronicDocumentStorage>();
+builder.Services.AddScoped<ElectronicDocumentRenderContext>();
+builder.Services.AddScoped<ElectronicDocumentPdfService>();
+builder.Services.AddHostedService<ElectronicDocumentPdfWorker>();
 builder.Services.AddScoped<IEInvoicePrintService, EInvoicePrintService>();
 builder.Services.AddScoped<IEInvoiceSettingRepository, EInvoiceSettingRepository>();
 builder.Services.AddScoped<IEInvoiceSellerXslTemplateRepository, EInvoiceSellerXslTemplateRepository>();

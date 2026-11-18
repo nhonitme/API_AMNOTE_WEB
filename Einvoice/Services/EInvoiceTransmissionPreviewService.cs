@@ -8,6 +8,7 @@ namespace API_AMNOTE_WEB.Services
 {
     public class EInvoiceTransmissionPreviewService : IEInvoiceTransmissionPreviewService
     {
+        private readonly ElectronicDocumentPdfService _pdf;
         private readonly IEInvoiceMessageRepository _messageRepository;
         private readonly IEInvoiceRepository _invoiceRepository;
         private readonly IEInvoiceSellerRepository _sellerRepository;
@@ -19,16 +20,21 @@ namespace API_AMNOTE_WEB.Services
             IEInvoiceRepository invoiceRepository,
             IEInvoiceSellerRepository sellerRepository,
             IEInvoiceTemplateRepository templateRepository,
-            IWebHostEnvironment environment)
+            IWebHostEnvironment environment, ElectronicDocumentPdfService pdf)
         {
             _messageRepository = messageRepository;
+            _pdf = pdf;
             _invoiceRepository = invoiceRepository;
             _sellerRepository = sellerRepository;
             _templateRepository = templateRepository;
             _environment = environment;
         }
 
-        public async Task<string> BuildReceivePreviewHtmlAsync(string companyCd, long receiveId, long? invoiceId = null)
+        public Task<byte[]> ExportPdfAsync(string companyCd, long receiveId, CancellationToken cancellationToken = default)
+            => _pdf.GetAsync(companyCd, "transmission", receiveId, null,
+                _ => BuildReceivePreviewHtmlAsync(companyCd, receiveId), cancellationToken);
+
+        private async Task<string> BuildReceivePreviewHtmlAsync(string companyCd, long receiveId, long? invoiceId = null)
         {
             EInvoiceXslPreviewHelper.ValidateCompany(companyCd);
             if (receiveId <= 0)
@@ -180,26 +186,7 @@ namespace API_AMNOTE_WEB.Services
                 }
             }
 
-            var khhdon = Common.NormalizeNullableText(invoice.KHHDON);
-            var fallbackSellers = (await _sellerRepository.GetSellersAsync(
-                companyCd,
-                khhdon: khhdon,
-                includeInactive: false,
-                includeXslContent: true)).ToList();
-            if (fallbackSellers.Count == 0)
-            {
-                fallbackSellers = (await _sellerRepository.GetSellersAsync(
-                    companyCd,
-                    includeInactive: false,
-                    includeXslContent: true)).ToList();
-            }
-
-            if (fallbackSellers.Count == 0)
-            {
-                throw new InvalidOperationException("E-invoice seller is not configured");
-            }
-
-            return fallbackSellers.FirstOrDefault(x => x.XSL_IS_DEFAULT == 1) ?? fallbackSellers[0];
+            throw new InvalidOperationException("Document seller/XSL template is not configured.");
         }
     }
 }

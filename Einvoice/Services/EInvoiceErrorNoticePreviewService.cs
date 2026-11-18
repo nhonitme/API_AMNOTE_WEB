@@ -10,19 +10,19 @@ namespace API_AMNOTE_WEB.Services
 
         private readonly IEInvoiceErrorNoticeRepository _noticeRepository;
         private readonly IEInvoiceTemplateRepository _templateRepository;
-        private readonly IEInvoiceHtmlToPdfService _htmlToPdfService;
+        private readonly ElectronicDocumentPdfService _pdf;
 
         public EInvoiceErrorNoticePreviewService(
             IEInvoiceErrorNoticeRepository noticeRepository,
             IEInvoiceTemplateRepository templateRepository,
-            IEInvoiceHtmlToPdfService htmlToPdfService)
+            ElectronicDocumentPdfService pdf)
         {
             _noticeRepository = noticeRepository;
             _templateRepository = templateRepository;
-            _htmlToPdfService = htmlToPdfService;
+            _pdf = pdf;
         }
 
-        public async Task<string> GetHtmlAsync(string companyCd, long tbaoId, CancellationToken cancellationToken = default)
+        private async Task<string> BuildHtmlAsync(string companyCd, long tbaoId, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var built = await BuildPreviewAsync(companyCd, tbaoId);
@@ -31,8 +31,8 @@ namespace API_AMNOTE_WEB.Services
 
         public async Task<byte[]> ExportPdfAsync(string companyCd, long tbaoId, CancellationToken cancellationToken = default)
         {
-            var html = await GetHtmlAsync(companyCd, tbaoId, cancellationToken);
-            return await _htmlToPdfService.ConvertAsync(html, cancellationToken);
+            return await _pdf.GetAsync(companyCd, "error-notice", tbaoId, null,
+                ct => BuildHtmlAsync(companyCd, tbaoId, ct), cancellationToken);
         }
 
         private Task<EInvoiceXslPreviewResult> BuildPreviewAsync(string companyCd, long tbaoId)
@@ -62,7 +62,9 @@ namespace API_AMNOTE_WEB.Services
         }
 
         private static string ResolveErrorNoticeXml(EInvoiceErrorNoticeInfo notice)
-            => EInvoiceXslPreviewHelper.ResolveStoredOrBuiltXml(
+            => notice.IS_SIGNED == 1 && string.IsNullOrWhiteSpace(notice.XML)
+                ? throw new InvalidOperationException("Signed document XML is missing.")
+                : EInvoiceXslPreviewHelper.ResolveStoredOrBuiltXml(
                 notice,
                 entity => entity.XML,
                 EInvoiceErrorNoticeXmlBuilder.Build,

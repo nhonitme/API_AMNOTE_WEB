@@ -13,6 +13,7 @@ namespace API_AMNOTE_WEB.Services
     {
         private const string EInvoiceMailCode = "EINV";
 
+        private readonly ElectronicDocumentPdfService _pdf;
         private readonly IEInvoiceErrorNoticeRepository _repository;
         private readonly IEInvoiceMessageRepository _messageRepository;
         private readonly IEInvoiceTemplateRepository _templateRepository;
@@ -30,7 +31,7 @@ namespace API_AMNOTE_WEB.Services
             IMailService mailService,
             IMailSettingRepository mailSettingRepository,
             DapperExecutor db,
-            ILogger<EInvoiceErrorNoticeService> logger)
+            ILogger<EInvoiceErrorNoticeService> logger, ElectronicDocumentPdfService pdf)
         {
             _repository = repository;
             _messageRepository = messageRepository;
@@ -40,6 +41,15 @@ namespace API_AMNOTE_WEB.Services
             _mailSettingRepository = mailSettingRepository;
             _db = db;
             _logger = logger;
+            _pdf = pdf;
+        }
+
+        public async Task<string> GetXmlAsync(string companyCd, long tbaoId)
+        {
+            var notice = await GetEntityByIdAsync(companyCd, tbaoId) ?? throw new KeyNotFoundException("Document not found.");
+            if (notice.IS_SIGNED == 1)
+                return Common.NormalizeNullableText(notice.XML) ?? throw new InvalidOperationException("Signed document XML is missing.");
+            return EInvoiceErrorNoticeXmlBuilder.Build(notice);
         }
 
         public async Task<IReadOnlyList<EInvoiceErrorNoticeDto>> SearchAsync(string companyCd, EInvoiceErrorNoticeSearchRequest request)
@@ -482,6 +492,7 @@ namespace API_AMNOTE_WEB.Services
             try
             {
                 await _repository.SetSignatureAsync(session, companyCd, userId, tbaoId, signedXml, 1, null);
+                await _pdf.PinSharedTemplateAsync(session, companyCd, "error-notice", tbaoId);
                 session.Commit();
             }
             catch

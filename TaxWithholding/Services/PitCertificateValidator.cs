@@ -34,6 +34,16 @@ public static class PitCertificateValidator
         PitValidation.Money(data.TTNCTHUE, "Tổng thu nhập chịu thuế", data.TCCTU == 2);
         PitValidation.Money(data.TTNTTHUE, "Tổng thu nhập tính thuế", data.TCCTU == 2);
         PitValidation.Money(data.STHUE, "Số thuế TNCN đã khấu trừ", data.TCCTU == 2);
+        // QĐ 1233, định dạng dữ liệu: these PIT totals must be whole đồng.
+        foreach (var (amount, label) in new[] {
+            (data.TTNCTHUE, "Tổng thu nhập chịu thuế"),
+            (data.TTNTTHUE, "Tổng thu nhập tính thuế"),
+            (data.STHUE, "Số thuế TNCN đã khấu trừ")
+        })
+        {
+            if (decimal.Truncate(amount) != amount)
+                throw new ArgumentException($"{label} phải làm tròn đến đồng, không có phần thập phân theo Quyết định 1233.");
+        }
         var date = data.NLAP ?? DateTime.UtcNow.AddHours(7).Date;
         PitValidation.DocumentDate(date);
         if (!Regex.IsMatch(data.KHCTU, $"^CT{date:yy}[A-Z]{{2}}$")) throw new ArgumentException("Ký hiệu phải là CT + hai số năm lập + hai chữ in hoa (ví dụ CT26AA).");

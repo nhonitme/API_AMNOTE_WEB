@@ -1,15 +1,6 @@
-namespace API_AMNOTE_WEB.Interfaces
+namespace API_AMNOTE_WEB.Interfaces;
 
+public interface IEInvoiceTransmissionPreviewService
 {
-
-    public interface IEInvoiceTransmissionPreviewService
-
-    {
-
-        Task<string> BuildReceivePreviewHtmlAsync(string companyCd, long receiveId, long? invoiceId = null);
-
-    }
-
+    Task<byte[]> ExportPdfAsync(string companyCd, long receiveId, CancellationToken cancellationToken = default);
 }
-
-

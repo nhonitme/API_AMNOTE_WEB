@@ -17,7 +17,6 @@ public sealed class PitXslService(
     IWebHostEnvironment environment,
     ILogger<PitXslService> logger) : IPitXslService
 {
-    public const string DefaultFtpFileName = "Mau03-TNCN.xsl";
     private static readonly Regex SeriesPattern = new(@"^CT\d{2}[A-Z]{2}$", RegexOptions.Compiled);
 
     public async Task<IReadOnlyList<PitXslTemplate>> ListAsync(string companyCd, string? templateCd = null)
@@ -47,7 +46,9 @@ public sealed class PitXslService(
 
     public async Task<PitXslTemplate> RequireActiveCatalogAsync(string companyCd, long xslId)
     {
-        var row = await GetAsync(companyCd, xslId);
+        var row = await repository.GetMetadataAsync(companyCd, xslId)
+            ?? throw new KeyNotFoundException("Không tìm thấy mẫu số ký hiệu chứng từ TNCN.");
+        if (string.IsNullOrWhiteSpace(row.XSL_FTP_PATH)) throw new InvalidOperationException("Mẫu chưa có XSL trên FTP.");
         if (row.IS_ACTIVE != 1)
             throw new ArgumentException("Mẫu số ký hiệu đã ngừng sử dụng.");
         if (string.IsNullOrWhiteSpace(row.SERIES) || !SeriesPattern.IsMatch(row.SERIES.Trim().ToUpperInvariant()))
@@ -76,8 +77,12 @@ public sealed class PitXslService(
         if (string.IsNullOrWhiteSpace(request.TEMPLATE_NM))
             request.TEMPLATE_NM = $"Chứng từ khấu trừ TNCN · {series}";
 
-        if (xslId <= 0 && string.IsNullOrWhiteSpace(request.XSL_CONTENT))
-            request.XSL_CONTENT = await ReadDefaultSampleAsync();
+        if (xslId <= 0)
+        {
+            request.IS_ACTIVE = 0;
+            if (string.IsNullOrWhiteSpace(request.XSL_CONTENT))
+                throw new ArgumentException("Phải chọn nội dung XSL khi tạo mẫu.");
+        }
 
         if (!string.IsNullOrWhiteSpace(request.XSL_CONTENT)
             && !EInvoiceFtpClient.LooksLikeXmlOrXsl(request.XSL_CONTENT, out var reason))
@@ -165,7 +170,7 @@ public sealed class PitXslService(
     {
         var template = await GetAsync(companyCd, xslId);
         if (string.IsNullOrWhiteSpace(template.XSL_CONTENT))
-            template.XSL_CONTENT = await ReadDefaultSampleAsync();
+            throw new InvalidOperationException("Mẫu chưa có XSL trên FTP.");
 
         var incomePayer = await incomePayerRepository.GetAsync(companyCd);
         if (incomePayer == null)
@@ -195,27 +200,8 @@ public sealed class PitXslService(
 
     public async Task<PitXslTemplate> ResolveForPrintAsync(string companyCd, long? xslId)
     {
-        if (xslId is > 0)
-        {
-            var byId = await repository.GetAsync(companyCd, xslId.Value);
-            if (byId != null && byId.IS_ACTIVE == 1)
-            {
-                if (string.IsNullOrWhiteSpace(byId.XSL_CONTENT))
-                    byId.XSL_CONTENT = await ReadDefaultSampleAsync();
-                return byId;
-            }
-        }
-
-        var list = await repository.ListAsync(companyCd, PitXslCodes.Certificate);
-        var chosen = list.FirstOrDefault(x => x.IS_DEFAULT == 1 && x.IS_ACTIVE == 1)
-            ?? list.FirstOrDefault(x => x.IS_ACTIVE == 1)
-            ?? throw new InvalidOperationException("Chưa cấu hình mẫu số ký hiệu 03/TNCN. Vào Quản lý mẫu số ký hiệu chứng từ TNCN để thêm.");
-
-        var full = await repository.GetAsync(companyCd, chosen.XSL_ID)
-            ?? throw new InvalidOperationException("Không tải được mẫu số ký hiệu 03/TNCN.");
-        if (string.IsNullOrWhiteSpace(full.XSL_CONTENT))
-            full.XSL_CONTENT = await ReadDefaultSampleAsync();
-        return full;
+        if (xslId is not > 0) throw new InvalidOperationException("Chứng từ chưa được gắn mẫu XSL.");
+        return await GetAsync(companyCd, xslId.Value);
     }
 
     private static string BuildPreviewXml(PitXslTemplate template, PitIncomePayer incomePayer)
@@ -234,7 +220,12 @@ public sealed class PitXslService(
                         new XElement("MSCTu", PitXslCodes.Certificate),
                         new XElement("KHCTu", template.SERIES ?? ""),
                         new XElement("SCTu", "0"),
-                        new XElement("NLap", documentDate)),
+                        new XElement("NLap", documentDate),
+                        new XElement("TTKhac",
+                            new XElement("TTin",
+                                new XElement("TTruong", "MaTraCuu"),
+                                new XElement("KDLieu", "string"),
+                                new XElement("DLieu", "PCPREVIEW000000001")))),
                     new XElement("NDCTu",
                         new XElement("TCTTNhap",
                             new XElement("Ten", incomePayer.PAYER_NM),
@@ -274,34 +265,14 @@ public sealed class PitXslService(
             extraParameters: new Dictionary<string, string> { ["pitIncomeTypeName"] = incomeTypeName });
     }
 
-    private async Task<string> ReadDefaultSampleAsync()
-    {
-        if (!EInvoiceFtpClient.IsConfigured())
-            throw new InvalidOperationException("E-invoice FTP is not configured");
-        if (!EInvoiceFtpClient.TryBuildPitXslPath(DefaultFtpFileName, out var remotePath))
-            throw new InvalidOperationException("Default PIT XSL FTP path is invalid");
 
-        string content;
-        try
-        {
-            content = await Task.Run(() => EInvoiceFtpClient.DownloadText(remotePath));
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Default PIT XSL sample not found on FTP: {remotePath}", ex);
-        }
-
-        if (!EInvoiceFtpClient.LooksLikeXmlOrXsl(content, out var reason))
-            throw new InvalidOperationException(reason ?? "Default PIT XSL sample is invalid");
-        return content;
-    }
 
     private static string? RestrictPitImagePath(string imageKind, string companyCd, string? path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
         return EInvoiceFtpClient.TryResolveAccessibleImagePath(imageKind, companyCd, null, path, out var remotePath)
             ? remotePath
-            : null;
+            : throw new ArgumentException("Đường dẫn ảnh mẫu không hợp lệ hoặc không thuộc phạm vi công ty.");
     }
 
     private static string NormalizePitImageKind(string? imageKind)

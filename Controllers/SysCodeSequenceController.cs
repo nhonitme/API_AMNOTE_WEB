@@ -9,8 +9,6 @@ namespace API_AMNOTE_WEB.Controllers
     [ApiController]
     public class SysCodeSequenceController : BaseApiController
     {
-        private const string MenuCode = "MD_COMPANY";
-
         private readonly ISysCodeSequenceRepository _repository;
 
         public SysCodeSequenceController(ISysCodeSequenceRepository repository)
@@ -22,7 +20,6 @@ namespace API_AMNOTE_WEB.Controllers
         [Authorize]
         public async Task<IActionResult> Get([FromQuery] string? objectType = null)
         {
-            await EnsurePermissionAsync(MenuCode, "VIEW");
             var companyCd = Common.GetCompanyCode();
             var data = (await _repository.GetSequencesAsync(companyCd, objectType)).ToList();
             return Success(data);
@@ -32,7 +29,6 @@ namespace API_AMNOTE_WEB.Controllers
         [Authorize]
         public async Task<IActionResult> GetById([FromRoute] long id)
         {
-            await EnsurePermissionAsync(MenuCode, "VIEW");
             if (id <= 0)
             {
                 return ValidationError("ID is required");
@@ -117,7 +113,6 @@ namespace API_AMNOTE_WEB.Controllers
         [Authorize]
         public async Task<IActionResult> Create([FromBody] SysCodeSequenceRequest? request)
         {
-            await EnsurePermissionAsync(MenuCode, "ADD");
             if (request == null)
             {
                 return ValidationError("Request body must be provided");
@@ -138,7 +133,6 @@ namespace API_AMNOTE_WEB.Controllers
         [Authorize]
         public async Task<IActionResult> Update([FromRoute] long id, [FromBody] SysCodeSequenceRequest? request)
         {
-            await EnsurePermissionAsync(MenuCode, "EDIT");
             if (id <= 0)
             {
                 return ValidationError("ID is required");
@@ -164,7 +158,6 @@ namespace API_AMNOTE_WEB.Controllers
         [Authorize]
         public async Task<IActionResult> Delete([FromRoute] long id)
         {
-            await EnsurePermissionAsync(MenuCode, "DELETE");
             if (id <= 0)
             {
                 return ValidationError("ID is required");

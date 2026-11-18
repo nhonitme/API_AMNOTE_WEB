@@ -13,7 +13,7 @@ namespace API_AMNOTE_WEB.Einvoice.Helpers
     {
         public const string CodeType = "EINV_THDON";
 
-        private static readonly CultureInfo VietnameseCulture = CultureInfo.GetCultureInfo("vi-VN");
+        private static readonly CultureInfo VietnameseCulture = CultureHelper.Vietnamese;
 
         public static Task<string> ResolveAsync(string? khmsHdon, string? khhdon)
             => ResolveAsync(khmsHdon, khhdon, Common.GetCompanyCode());

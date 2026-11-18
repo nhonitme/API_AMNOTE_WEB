@@ -104,14 +104,11 @@ namespace API_AMNOTE_WEB.Data
 
         public async Task<(IReadOnlyList<T1> First, IReadOnlyList<T2> Second)> QueryMultipleAsync<T1, T2>(Net_DB db, string sql, object param = null, string? sDBName = null, int? commandTimeout = null)
         {
-            var sw = Stopwatch.StartNew();
             Common.LogQuery(sql, param);
             using var conn = _context.CreateConnection(db, sDBName);
             using var grid = await conn.QueryMultipleAsync(sql, param, commandTimeout: commandTimeout);
             var first = (await grid.ReadAsync<T1>()).ToList();
             var second = (await grid.ReadAsync<T2>()).ToList();
-            sw.Stop();
-            Common.LogQuery($"-- DONE {sql} ({sw.ElapsedMilliseconds} ms)", null);
             return (first, second);
         }
 
@@ -122,15 +119,12 @@ namespace API_AMNOTE_WEB.Data
             string? sDBName = null,
             int? commandTimeout = null)
         {
-            var sw = Stopwatch.StartNew();
             Common.LogQuery(sql, param);
             using var conn = _context.CreateConnection(db, sDBName);
             using var grid = await conn.QueryMultipleAsync(sql, param, commandTimeout: commandTimeout);
             var first = (await grid.ReadAsync<T1>()).ToList();
             var second = (await grid.ReadAsync<T2>()).ToList();
             var third = (await grid.ReadAsync<T3>()).ToList();
-            sw.Stop();
-            Common.LogQuery($"-- DONE {sql} ({sw.ElapsedMilliseconds} ms)", null);
             return (first, second, third);
         }
 

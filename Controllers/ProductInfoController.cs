@@ -100,35 +100,6 @@ namespace API_AMNOTE_WEB.Controllers
             return Success(new { deleted = result }, await Common.getLanguage("DELETE_SUCCESS", currentLang));
         }
 
-        [HttpGet("export")]
-        public async Task<IActionResult> ExportProductInfo([FromQuery] int? productId = null, [FromQuery] string? productCd = null, [FromQuery] string? lang = null)
-        {
-            await EnsurePermissionAsync(MenuCode, "EXPORT");
-
-            var currentLang = ResolveLang(lang);
-            var companyCd = Common.GetCompanyCode();
-            var rawExport = await _service.GetListAsync(companyCd, productId);
-            var data = FilterByProductCd(rawExport, Common.NormalizeNullableText(productCd)).ToList();
-
-            if (!data.Any())
-            {
-                return NotFound(await BuildMessageAsync("PRODUCT_CD", "NO_DATA_TO_EXPORT", currentLang));
-            }
-
-            const string screenCd = MenuCode;
-            const string gridId = "product-grid";
-            var exportColumns = await Common.GetExcelExportColumnInfosAsync("ProductInfo", screenCd, gridId);
-            if (exportColumns.Count == 0)
-                return BadRequest(await Common.GetMissingExcelExportColumnsMessageAsync(currentLang));
-
-            var columnMapping = await Common.BuildExcelColumnMappingAsync(exportColumns, currentLang);
-            var sysCodeDisplayMap = await Common.BuildExcelSysCodeDisplayMapAsync(exportColumns, companyCd, currentLang);
-            var stream = await ExcelHelper.ExportToExcelAsync(data, columnMapping, formatTypes: null, sysCodeDisplayMap: sysCodeDisplayMap);
-            var fileName = $"product_info_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
-
-            return File(stream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }
-
         private static IEnumerable<ProductInfoDto> FilterByProductCd(IEnumerable<ProductInfoDto> data, string? productCd)
         {
             if (string.IsNullOrWhiteSpace(productCd))

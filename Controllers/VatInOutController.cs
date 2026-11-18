@@ -41,16 +41,4 @@ public sealed class VatInOutController : BaseApiController
             pageNumber, pageSize, HttpContext.RequestAborted);
         return PagedSuccess(result.Items, pageNumber, pageSize, result.TotalRecords);
     }
-
-    [HttpGet("ExportData")]
-    public async Task<IActionResult> ExportData([FromQuery] VatInOutQuery filter)
-    {
-        await EnsurePermissionAsync("TAX_VAT_INOUT_LIST", "VIEW");
-        await EnsurePermissionAsync("TAX_VAT_INOUT_LIST", "EXPORT");
-        Normalize(filter);
-        // Same complete-export pattern as Chit/Inventory: one call, no page loop.
-        var result = await _repository.GetPagedAsync(Common.GetCompanyCode(), filter,
-            1, int.MaxValue, HttpContext.RequestAborted);
-        return Success(result.Items);
-    }
 }

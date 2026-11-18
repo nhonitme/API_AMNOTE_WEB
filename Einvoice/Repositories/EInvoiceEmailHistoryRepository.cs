@@ -18,9 +18,12 @@ namespace API_AMNOTE_WEB.Repositories
             _db = db;
         }
 
-        public async Task<IReadOnlyList<EInvoiceEmailHistoryInfo>> GetInvoiceHistoryAsync(string companyCd, long invoiceId, int limit = 200)
+        public Task<IReadOnlyList<EInvoiceEmailHistoryInfo>> GetInvoiceHistoryAsync(string companyCd, long invoiceId, int limit = 200)
+            => GetHistoryAsync(companyCd, EInvoiceEmailHistoryRefTypes.Invoice, invoiceId, limit);
+
+        public async Task<IReadOnlyList<EInvoiceEmailHistoryInfo>> GetHistoryAsync(string companyCd, string refType, long refId, int limit = 200)
         {
-            if (string.IsNullOrWhiteSpace(companyCd) || invoiceId <= 0)
+            if (string.IsNullOrWhiteSpace(companyCd) || string.IsNullOrWhiteSpace(refType) || refId <= 0)
             {
                 return Array.Empty<EInvoiceEmailHistoryInfo>();
             }
@@ -32,8 +35,8 @@ namespace API_AMNOTE_WEB.Repositories
                 new
                 {
                     p_COMPANY_CD = companyCd.Trim(),
-                    p_REF_TYPE = EInvoiceEmailHistoryRefTypes.Invoice,
-                    p_REF_ID = invoiceId,
+                    p_REF_TYPE = refType,
+                    p_REF_ID = refId,
                     p_LIMIT = normalizedLimit
                 });
 

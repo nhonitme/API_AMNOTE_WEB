@@ -7,6 +7,7 @@ namespace API_AMNOTE_WEB.Models
         public string TEMPLATE_CD { get; set; } = string.Empty;
         public string TEMPLATE_NM { get; set; } = string.Empty;
         public string? SUBJECT { get; set; }
+        public string? XSL_FTP_PATH { get; set; }
         public string CONTENT { get; set; } = string.Empty;
         public int IS_ACTIVE { get; set; }
         public int ISDEL { get; set; }

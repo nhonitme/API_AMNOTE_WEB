@@ -59,73 +59,6 @@ namespace API_AMNOTE_WEB.Helpers
             return !string.IsNullOrWhiteSpace(key) && BareChitDetailKeys.Contains(key.Trim());
         }
 
-        public static async Task<Dictionary<string, string>> GetColumnMappingAsync(IDictionary<string, string> templateColumns, string lang)
-        {
-            var keys = Common.NormalizeTemplateKeys(templateColumns?.Keys);
-            if (keys.Count == 0)
-            {
-                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            }
-
-            var translationKeys = keys
-                .Select(key => ResolveTranslationKey(key, templateColumns!))
-                .Append("DETAIL_INFO")
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            var labels = await Common.getLanguage(translationKeys, lang);
-            var detailPrefix = labels.TryGetValue("DETAIL_INFO", out var prefix) && !string.IsNullOrWhiteSpace(prefix)
-                ? prefix
-                : "Detail";
-
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var key in keys)
-            {
-                var translationKey = ResolveTranslationKey(key, templateColumns!);
-                var label = labels.TryGetValue(translationKey, out var translated) && !string.IsNullOrWhiteSpace(translated)
-                    ? translated
-                    : translationKey;
-
-                result[key] = IsChitDetailTemplateKey(key) ? $"{detailPrefix} {label}" : label;
-            }
-
-            return result;
-        }
-
-        public static Task<Dictionary<string, string>> GetColumnMappingAsync(IEnumerable<string> templateKeys, string lang)
-            => GetColumnMappingAsync(
-                (templateKeys ?? Enumerable.Empty<string>())
-                    .Where(key => !string.IsNullOrWhiteSpace(key))
-                    .GroupBy(key => key.Trim(), StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(g => g.Key, g => GetTranslationKey(g.Key), StringComparer.OrdinalIgnoreCase),
-                lang);
-
-        public static async Task<List<IDictionary<string, object?>>> BuildExportRowsAsync<THeader, TDetail>(
-            IEnumerable<THeader> headers,
-            Func<THeader, Task<IEnumerable<TDetail>>> detailLoader,
-            IEnumerable<string> templateKeys)
-        {
-            var keys = Common.NormalizeTemplateKeys(templateKeys);
-            var exportRows = new List<IDictionary<string, object?>>();
-
-            foreach (var header in headers ?? Enumerable.Empty<THeader>())
-            {
-                var details = OrderDetails(await detailLoader(header)).ToList();
-                if (details.Count == 0)
-                {
-                    exportRows.Add(BuildExportRow(header!, null, keys));
-                    continue;
-                }
-
-                foreach (var detail in details)
-                {
-                    exportRows.Add(BuildExportRow(header!, detail, keys));
-                }
-            }
-
-            return exportRows;
-        }
-
         public static List<string> NormalizeImportErrors(IEnumerable<string> errors)
         {
             return (errors ?? Enumerable.Empty<string>())
@@ -175,20 +108,6 @@ namespace API_AMNOTE_WEB.Helpers
             return (groupedRecords.Values.ToList(), errors);
         }
 
-        private static Dictionary<string, object?> BuildExportRow(object header, object? detail, IReadOnlyList<string> templateKeys)
-        {
-            var result = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var key in templateKeys)
-            {
-                result[key] = IsChitDetailTemplateKey(key)
-                    ? Common.GetPropertyValue(detail, GetDetailPropertyName(key))
-                    : Common.GetPropertyValue(header, key);
-            }
-
-            return result;
-        }
-
         private static void MergeHeaderValues(object request, IDictionary<string, object> row, IReadOnlyList<string> headerKeys, string supportedType)
         {
             SetPropertyValue(request, "CHIT_TYPE", supportedType);
@@ -234,13 +153,6 @@ namespace API_AMNOTE_WEB.Helpers
             return detail;
         }
 
-        private static IEnumerable<TDetail> OrderDetails<TDetail>(IEnumerable<TDetail>? details)
-        {
-            return (details ?? Enumerable.Empty<TDetail>())
-                .OrderBy(detail => GetComparableInt(detail, "SORT") ?? int.MaxValue)
-                .ThenBy(detail => GetComparableLong(detail, "CHITDETAIL_ID") ?? long.MaxValue);
-        }
-
         private static int GetDetailCount(object request)
         {
             var details = request.GetType().GetProperty("DETAILS")?.GetValue(request) as ICollection;
@@ -253,21 +165,6 @@ namespace API_AMNOTE_WEB.Helpers
             {
                 list.Add(detail);
             }
-        }
-
-        private static string ResolveTranslationKey(string key, IDictionary<string, string> templateColumns)
-        {
-            if (templateColumns.TryGetValue(key, out var label) && !string.IsNullOrWhiteSpace(label))
-            {
-                return label.Trim();
-            }
-
-            return GetTranslationKey(key);
-        }
-
-        private static string GetTranslationKey(string key)
-        {
-            return Common.IsDetailTemplateKey(key) ? key.Substring("DETAIL_".Length) : key;
         }
 
         private static string GetDetailPropertyName(string key)
@@ -294,44 +191,6 @@ namespace API_AMNOTE_WEB.Helpers
                 "DEBIT_CD" => "DEBIT",
                 "CREDIT_CD" => "CREDIT",
                 _ => propertyName
-            };
-        }
-
-        private static int? GetComparableInt(object? source, string propertyName)
-        {
-            var value = Common.GetPropertyValue(source, propertyName);
-            if (value == null)
-            {
-                return null;
-            }
-
-            return value switch
-            {
-                int intValue => intValue,
-                long longValue => Convert.ToInt32(longValue),
-                double doubleValue => Convert.ToInt32(doubleValue),
-                decimal decimalValue => Convert.ToInt32(decimalValue),
-                _ when int.TryParse(value.ToString(), out var parsed) => parsed,
-                _ => null
-            };
-        }
-
-        private static long? GetComparableLong(object? source, string propertyName)
-        {
-            var value = Common.GetPropertyValue(source, propertyName);
-            if (value == null)
-            {
-                return null;
-            }
-
-            return value switch
-            {
-                long longValue => longValue,
-                int intValue => intValue,
-                double doubleValue => Convert.ToInt64(doubleValue),
-                decimal decimalValue => Convert.ToInt64(decimalValue),
-                _ when long.TryParse(value.ToString(), out var parsed) => parsed,
-                _ => null
             };
         }
 

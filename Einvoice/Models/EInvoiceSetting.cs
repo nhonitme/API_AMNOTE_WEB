@@ -8,6 +8,7 @@ namespace API_AMNOTE_WEB.Models
         public int VERSION_NO { get; set; }
         public string SOURCE_TYPE { get; set; } = "USER";
         public string? DESIGN_NM { get; set; }
+        public string? XSL_FTP_PATH { get; set; }
         public string? XSL_CONTENT { get; set; }
         public string? LOGO_PATH { get; set; }
         public string? INVOICE_BACKGROUND_PATH { get; set; }
@@ -18,6 +19,7 @@ namespace API_AMNOTE_WEB.Models
     public class EInvoiceTemplateDesignerDraftSaveRequest
     {
         public long DESIGN_ID { get; set; }
+        public string? XSL_FTP_PATH { get; set; }
         public string? XSL_CONTENT { get; set; }
         public string? LOGO_PATH { get; set; }
         public string? BACKGROUND_PATH { get; set; }
@@ -81,6 +83,7 @@ namespace API_AMNOTE_WEB.Models
         /// <summary>FTP sample file name under EinvoiceXSL. Required when creating.</summary>
         public string? XSL_FILE_NAME { get; set; }
         /// <summary>Optional raw XSL body. Used when XSL_FILE_NAME is empty.</summary>
+        public string? XSL_FTP_PATH { get; set; }
         public string? XSL_CONTENT { get; set; }
     }
 
@@ -105,6 +108,7 @@ namespace API_AMNOTE_WEB.Models
     {
         public long XSL_ID { get; set; }
         public long CURRENT_DESIGN_ID { get; set; }
+        public string? XSL_FTP_PATH { get; set; }
         public string? XSL_CONTENT { get; set; }
         [API_AMNOTE_WEB.Helpers.BackendAudit]
         public string? UPDATE_BY { get; set; }
@@ -125,6 +129,7 @@ namespace API_AMNOTE_WEB.Models
         public string DESIGN_NM { get; set; } = string.Empty;
         public bool IS_EDITABLE { get; set; }
         public int TEMPLATE_IS_ACTIVE { get; set; }
+        public string? XSL_FTP_PATH { get; set; }
         public string? XSL_CONTENT { get; set; }
         public string? LOGO_PATH { get; set; }
         public string? INVOICE_BACKGROUND_PATH { get; set; }

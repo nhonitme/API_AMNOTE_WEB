@@ -4,6 +4,7 @@ namespace API_AMNOTE_WEB.Interfaces
 {
     public interface IEInvoiceErrorNoticeService
     {
+        Task<string> GetXmlAsync(string companyCd, long tbaoId);
         Task<IReadOnlyList<EInvoiceErrorNoticeDto>> SearchAsync(string companyCd, EInvoiceErrorNoticeSearchRequest request);
 
         Task<EInvoiceErrorNoticeDto?> GetByIdAsync(string companyCd, long tbaoId);

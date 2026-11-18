@@ -8,14 +8,11 @@ namespace API_AMNOTE_WEB.Reporting
     public class CustomReportProvider : IReportProviderAsync
     {
         private readonly IConfiguredReportService _configuredReportService;
-        private readonly IEInvoicePrintService _einvoicePrintService;
 
         public CustomReportProvider(
-            IConfiguredReportService configuredReportService,
-            IEInvoicePrintService einvoicePrintService)
+            IConfiguredReportService configuredReportService)
         {
             _configuredReportService = configuredReportService ?? throw new ArgumentNullException(nameof(configuredReportService));
-            _einvoicePrintService = einvoicePrintService ?? throw new ArgumentNullException(nameof(einvoicePrintService));
         }
 
         public async Task<XtraReport> GetReportAsync(string id, ReportProviderContext context)
@@ -24,17 +21,8 @@ namespace API_AMNOTE_WEB.Reporting
             var companyCd = Common.GetCompanyCode();
             var reportCode = ResolveReportCode(request.ReportName, request.Query);
             var menuCode = GetOptionalQueryValue(request.Query, "menuCode");
-
             if (reportCode.Equals("einvoice", StringComparison.OrdinalIgnoreCase))
-            {
-                var invoiceId = ParsePositiveLong(GetOptionalQueryValue(request.Query, "invoiceId"));
-                if (invoiceId <= 0)
-                {
-                    throw new ArgumentException("invoiceId is required for e-invoice report.");
-                }
-
-                return await _einvoicePrintService.BuildReportAsync(companyCd, invoiceId, null, CancellationToken.None);
-            }
+                throw new InvalidOperationException("E-invoice reports use the document PDF endpoint.");
 
             return await _configuredReportService.BuildReportAsync(
                 companyCd,

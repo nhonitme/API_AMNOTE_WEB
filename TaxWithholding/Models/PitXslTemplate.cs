@@ -11,7 +11,8 @@ public sealed class PitXslTemplate
     public long? TO_DOC_NO { get; set; }
     public int IS_DEFAULT { get; set; }
     public int IS_ACTIVE { get; set; }
-    public string? XSL_CONTENT { get; set; }
+    public string? XSL_FTP_PATH { get; set; }
+        public string? XSL_CONTENT { get; set; }
     public string? LOGO_PATH { get; set; }
     public string? BACKGROUND_PATH { get; set; }
     public string? NEN_PATH { get; set; }
@@ -35,7 +36,8 @@ public sealed class PitXslTemplateSaveRequest
     public long? TO_DOC_NO { get; set; }
     public int? IS_DEFAULT { get; set; }
     public int? IS_ACTIVE { get; set; }
-    public string? XSL_CONTENT { get; set; }
+    public string? XSL_FTP_PATH { get; set; }
+        public string? XSL_CONTENT { get; set; }
     public string? LOGO_PATH { get; set; }
     public string? BACKGROUND_PATH { get; set; }
     public string? NEN_PATH { get; set; }

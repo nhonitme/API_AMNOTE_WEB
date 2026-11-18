@@ -18,6 +18,10 @@ public interface IPitService
 
     Task<PitDocument> Get(string company, string kind, long id);
 
+    Task<PitSendMailResult> SendMail(string company, string user, string kind, long id, PitSendMailRequest request, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<EInvoiceEmailHistoryInfo>> MailHistory(string company, string kind, long id);
+
     Task<PitDocument> SaveCertificate(string company, string user, long id, PitCertificateDto data);
 
     Task<PitDocument> SaveDeclaration(string company, string user, long id, PitDeclarationDto data);
@@ -34,7 +38,6 @@ public interface IPitService
 
     Task<string> Xml(string company, string kind, long id);
 
-    Task<string> Print(string company, string kind, long id);
 
     Task<byte[]> PrintPdf(
         string company,

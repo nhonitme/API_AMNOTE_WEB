@@ -89,18 +89,9 @@ namespace API_AMNOTE_WEB.Controllers
             return Updated(data, "E-invoice declaration updated successfully");
         }
 
-        [HttpGet("{id:long}/preview/html")]
-        public async Task<IActionResult> GetPreviewHtml([FromRoute] long id)
-        {
-            if (id <= 0)
-                return ValidationError(await FieldRequiredAsync("TKHAI_ID"));
-
-            return await FromPreviewAsync(async () =>
-            {
-                var html = await _previewService.GetHtmlAsync(Common.GetCompanyCode(), id, HttpContext.RequestAborted);
-                return Content(html, "text/html; charset=utf-8");
-            });
-        }
+        [HttpGet("{id:long}/xml")]
+        public async Task<IActionResult> GetXml(long id)
+            => Content(await _service.GetXmlAsync(Common.GetCompanyCode(), id), "application/xml; charset=utf-8");
 
         [HttpGet("{id:long}/preview/pdf")]
         public async Task<IActionResult> GetPreviewPdf([FromRoute] long id)
@@ -111,6 +102,7 @@ namespace API_AMNOTE_WEB.Controllers
             return await FromPreviewAsync(async () =>
             {
                 var pdf = await _previewService.ExportPdfAsync(Common.GetCompanyCode(), id, HttpContext.RequestAborted);
+                Response.Headers.CacheControl = "private, no-store";
                 return File(pdf, "application/pdf", $"EInvoiceDeclaration_{id}.pdf");
             });
         }

@@ -8,4 +8,6 @@ public interface IPitCertificateRepository
     Task<(IReadOnlyList<PitCertificate> First, IReadOnlyList<PitCountRow> Second)> SearchAsync(object parameters, string? dbName);
 
     Task<long> SaveAsync(DapperSession s, string company, string user, long id, int version, long? xslId, PitCertificateDto d);
+
+    Task<PitCertificate?> GetByLookupAsync(string company, string lookupCode, string? dbName);
 }

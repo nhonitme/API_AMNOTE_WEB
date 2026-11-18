@@ -497,6 +497,9 @@ namespace API_AMNOTE_WEB.Einvoice.Helpers
         public static byte[] DownloadBytes(string remotePath)
             => RemoteFileTransfer.DownloadBytes(ToTransfer(remotePath), remotePath);
 
+        public static byte[] DownloadExactBytes(string remotePath)
+            => RemoteFileTransfer.DownloadExactBytes(ToTransfer(remotePath), remotePath);
+
         public static void DownloadFile(string remotePath, string localFilePath)
             => RemoteFileTransfer.DownloadFile(ToTransfer(remotePath), remotePath, localFilePath);
 

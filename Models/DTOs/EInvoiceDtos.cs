@@ -188,7 +188,6 @@ namespace API_AMNOTE_WEB.Models
         public string? MCCQT { get; set; }
         public bool CAN_DOWNLOAD_PDF { get; set; } = true;
         public bool CAN_DOWNLOAD_XML { get; set; } = true;
-        public string? HTML { get; set; }
         public List<EInvoicePublicDetailDto> DETAILS { get; set; } = new();
     }
 
@@ -240,47 +239,6 @@ namespace API_AMNOTE_WEB.Models
         public string? CERTIFICATE_SERIAL_NUMBER { get; set; }
         [JsonConverter(typeof(NullableDateTimeJsonConverter))]
         public DateTime? SIGNED_AT { get; set; }
-    }
-
-    public class EInvoiceSaveSignedXmlRequest
-    {
-        [JsonPropertyName("rawXml")]
-        public string? RawXml { get; set; }
-
-        [JsonPropertyName("signedXml")]
-        public string? SignedXml { get; set; }
-
-        [JsonPropertyName("bkeRawXml")]
-        public string? BkeRawXml { get; set; }
-
-        [JsonPropertyName("bkeSignedXml")]
-        public string? BkeSignedXml { get; set; }
-
-        [JsonPropertyName("certificateSubject")]
-        public string? CertificateSubject { get; set; }
-
-        [JsonPropertyName("certificateThumbprint")]
-        public string? CertificateThumbprint { get; set; }
-
-        [JsonPropertyName("certificateSerialNumber")]
-        public string? CertificateSerialNumber { get; set; }
-
-        [JsonPropertyName("signedAt")]
-        [JsonConverter(typeof(NullableDateTimeJsonConverter))]
-        public DateTime? SignedAt { get; set; }
-
-        public EInvoiceSignRequest ToSignRequest()
-        {
-            return new EInvoiceSignRequest
-            {
-                XML = SignedXml ?? RawXml,
-                BKE_XML = BkeSignedXml ?? BkeRawXml,
-                CERTIFICATE_SUBJECT = CertificateSubject,
-                CERTIFICATE_THUMBPRINT = CertificateThumbprint,
-                CERTIFICATE_SERIAL_NUMBER = CertificateSerialNumber,
-                SIGNED_AT = SignedAt,
-            };
-        }
     }
 
     public class EInvoiceDeleteManyRequest

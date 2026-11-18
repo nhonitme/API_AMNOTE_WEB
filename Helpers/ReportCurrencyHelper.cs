@@ -9,7 +9,7 @@ namespace API_AMNOTE_WEB.Helpers
     /// </summary>
     public static class ReportCurrencyHelper
     {
-        private static readonly CultureInfo VietnameseCulture = CultureInfo.GetCultureInfo("vi-VN");
+        private static readonly CultureInfo VietnameseCulture = CultureHelper.Vietnamese;
 
         private static readonly string[] DigitWords =
         {

@@ -8,10 +8,12 @@ namespace API_AMNOTE_WEB.Repositories
     public class EInvoiceSellerXslTemplateRepository : IEInvoiceSellerXslTemplateRepository
     {
         private readonly DapperExecutor _db;
+        private readonly API_AMNOTE_WEB.Services.ElectronicDocumentStorage _files;
 
-        public EInvoiceSellerXslTemplateRepository(DapperExecutor db)
+        public EInvoiceSellerXslTemplateRepository(DapperExecutor db, API_AMNOTE_WEB.Services.ElectronicDocumentStorage files)
         {
             _db = db;
+            _files = files;
         }
 
         public async Task<IReadOnlyList<EInvoiceTemplateDesignerDesign>> GetDesignsAsync(string companyCd, long xslId)
@@ -27,14 +29,9 @@ namespace API_AMNOTE_WEB.Repositories
 
         public async Task<EInvoiceTemplateDesignerDesign?> GetDesignAsync(string companyCd, long xslId, long designId)
         {
-            const string sql = "CALL getEInvoiceSellerXslTemplateDesign(@p_COMPANY_CD, @p_XSL_ID, @p_DESIGN_ID);";
-            var rows = await _db.QueryAsync<EInvoiceTemplateDesignerDesign>(Net_DB.Net_DB_Company, sql, new
-            {
-                p_COMPANY_CD = companyCd,
-                p_XSL_ID = xslId,
-                p_DESIGN_ID = designId
-            });
-            return rows.FirstOrDefault();
+            var row = (await GetDesignsAsync(companyCd, xslId)).FirstOrDefault(x => x.DESIGN_ID == designId);
+            if (row != null) row.XSL_CONTENT = _files.ReadXsl(row.XSL_FTP_PATH);
+            return row;
         }
 
         public Task<EInvoiceTemplateDesignerDesign> CloneDesignAsync(string companyCd, string userId, long xslId, long sourceDesignId)
@@ -49,7 +46,7 @@ namespace API_AMNOTE_WEB.Repositories
             });
         }
 
-        public Task<EInvoiceTemplateDesignerDraft> SaveDraftAsync(
+        public async Task<EInvoiceTemplateDesignerDraft> SaveDraftAsync(
             string companyCd,
             string userId,
             long xslId,
@@ -60,19 +57,22 @@ namespace API_AMNOTE_WEB.Repositories
             string? invoiceBorderPath,
             string? backgroundPath)
         {
-            const string sql = "CALL setEInvoiceSellerXslTemplateDraft(@p_CONTENT_ID, @p_DESIGN_ID, @p_COMPANY_CD, @p_XSL_CONTENT, @p_LOGO_PATH, @p_INVOICE_BACKGROUND_PATH, @p_INVOICE_BORDER_PATH, @p_BACKGROUND_PATH, @p_USERID);";
-            return _db.QueryFirstAsync<EInvoiceTemplateDesignerDraft>(Net_DB.Net_DB_Company, sql, new
+            var path = await _files.WriteXslAsync(companyCd, xslContent);
+            const string sql = "CALL setEInvoiceSellerXslTemplateDraft(@p_CONTENT_ID, @p_DESIGN_ID, @p_COMPANY_CD, @p_XSL_FTP_PATH, @p_LOGO_PATH, @p_INVOICE_BACKGROUND_PATH, @p_INVOICE_BORDER_PATH, @p_BACKGROUND_PATH, @p_USERID);";
+            var row = await _db.QueryFirstAsync<EInvoiceTemplateDesignerDraft>(Net_DB.Net_DB_Company, sql, new
             {
                 p_CONTENT_ID = xslId,
                 p_DESIGN_ID = designId,
                 p_COMPANY_CD = companyCd,
-                p_XSL_CONTENT = xslContent,
+                p_XSL_FTP_PATH = path,
                 p_LOGO_PATH = logoPath,
                 p_INVOICE_BACKGROUND_PATH = invoiceBackgroundPath,
                 p_INVOICE_BORDER_PATH = invoiceBorderPath,
                 p_BACKGROUND_PATH = backgroundPath,
                 p_USERID = userId
             });
+            row.XSL_CONTENT = xslContent;
+            return row;
         }
 
         public Task<EInvoiceSellerXslTemplateContentResult> PublishDesignAsync(string companyCd, string userId, long xslId, long designId)
@@ -101,7 +101,7 @@ namespace API_AMNOTE_WEB.Repositories
             });
         }
 
-        public Task<EInvoiceSellerXslTemplateMetaResult> SaveMetaAsync(
+        public async Task<EInvoiceSellerXslTemplateMetaResult> SaveMetaAsync(
             string companyCd,
             string userId,
             EInvoiceSellerXslTemplateMetaSaveRequest request,
@@ -111,13 +111,14 @@ namespace API_AMNOTE_WEB.Repositories
             string khhdon,
             string? xslContent)
         {
+            var path = string.IsNullOrWhiteSpace(xslContent) ? null : await _files.WriteXslAsync(companyCd, xslContent);
             const string sql = """
                 CALL setEInvoiceSellerXslTemplateMeta(
                   @p_XSL_ID, @p_COMPANY_CD, @p_TEMPLATE_NM, @p_THDON,
                   @p_KHMSHDON, @p_KHHDON, @p_FROM_SHDON, @p_TO_SHDON,
-                  @p_USE_MULTI_TAX_RATE, @p_XSL_CONTENT, @p_USERID);
+                  @p_USE_MULTI_TAX_RATE, @p_XSL_FTP_PATH, @p_USERID);
                 """;
-            return _db.QueryFirstAsync<EInvoiceSellerXslTemplateMetaResult>(Net_DB.Net_DB_Company, sql, new
+            return await _db.QueryFirstAsync<EInvoiceSellerXslTemplateMetaResult>(Net_DB.Net_DB_Company, sql, new
             {
                 p_XSL_ID = request.XSL_ID,
                 p_COMPANY_CD = companyCd,
@@ -128,7 +129,7 @@ namespace API_AMNOTE_WEB.Repositories
                 p_FROM_SHDON = Common.NormalizeNullableText(request.FROM_SHDON) ?? "1",
                 p_TO_SHDON = Common.NormalizeNullableText(request.TO_SHDON),
                 p_USE_MULTI_TAX_RATE = request.USE_MULTI_TAX_RATE == 1 ? 1 : 0,
-                p_XSL_CONTENT = xslContent,
+                p_XSL_FTP_PATH = path,
                 p_USERID = userId,
             });
         }

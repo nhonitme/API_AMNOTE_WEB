@@ -51,7 +51,6 @@ namespace API_AMNOTE_WEB.Controllers
                 FromDate = Common.ParseNullableYmdDate(fromYmd, nameof(fromYmd)),
                 ToDate = Common.ParseNullableYmdDate(toYmd, nameof(toYmd)),
                 Keyword = keyword,
-                Khhdon = khhdon,
                 KhhdonOp = khhdonOp,
                 ShdonFrom = shdonFrom,
                 ShdonTo = shdonTo,
@@ -61,7 +60,6 @@ namespace API_AMNOTE_WEB.Controllers
                 NmuaMstOp = nmuaMstOp,
                 InvoiceStatus = invoiceStatus,
                 CqtStatus = cqtStatus,
-                IsSigned = isSigned,
                 Tchdon = tchdon,
                 MailStatus = mailStatus,
                 IncludeDetails = includeDetails,
@@ -94,8 +92,6 @@ namespace API_AMNOTE_WEB.Controllers
         {
             var data = await _service.GetSellersAsync(Common.GetCompanyCode(), new EInvoiceSellerSearchRequest
             {
-                Khhdon = khhdon,
-                SellerId = sellerId,
                 Keyword = keyword,
                 IncludeInactive = includeInactive,
                 IncludeAllTemplates = includeAllTemplates
@@ -223,10 +219,6 @@ namespace API_AMNOTE_WEB.Controllers
         public Task<IActionResult> SaveSignature([FromRoute] long id, [FromBody] EInvoiceSignRequest? request)
             => ExecuteSaveSignatureAsync(id, request);
 
-        [HttpPost("{id:long}/save-signed-xml")]
-        public Task<IActionResult> SaveSignedXml([FromRoute] long id, [FromBody] EInvoiceSaveSignedXmlRequest? request)
-            => ExecuteSaveSignatureAsync(id, request?.ToSignRequest());
-
         private async Task<IActionResult> ExecuteSaveSignatureAsync(long id, EInvoiceSignRequest? request)
         {
             if (id <= 0)
@@ -252,45 +244,11 @@ namespace API_AMNOTE_WEB.Controllers
             }, notFoundMessage: "E-invoice not found", includeArgumentException: true);
         }
 
-        [HttpGet("{id:long}/print/html")]
-        public async Task<IActionResult> ExportPrintHtml(
-            [FromRoute] long id,
-            [FromQuery] string? convertedPrint = null,
-            [FromQuery] string? convertedByNm = null,
-            [FromQuery] string? xmlFtpPath = null,
-            [FromQuery] long? sellerId = null,
-            [FromQuery] long? xslId = null,
-            [FromQuery] string? khhdon = null,
-            [FromQuery] string? shdon = null,
-            [FromQuery] string? mtracuu = null,
-            [FromQuery] int? isSigned = null)
-        {
-            if (id <= 0)
-                return ValidationError(await FieldRequiredAsync("INVOICE_ID"));
-
-            return await FromPreviewAsync(async () =>
-            {
-                var html = await _printService.GetHtmlAsync(
-                    Common.GetCompanyCode(),
-                    id,
-                    BuildPrintOptions(convertedPrint, convertedByNm, xmlFtpPath, sellerId, xslId, khhdon, shdon, mtracuu, isSigned),
-                    HttpContext.RequestAborted);
-                return Content(html, "text/html; charset=utf-8");
-            }, notFoundMessage: "E-invoice not found");
-        }
-
         [HttpGet("{id:long}/print/pdf")]
         public async Task<IActionResult> ExportPrintPdf(
             [FromRoute] long id,
             [FromQuery] string? convertedPrint = null,
-            [FromQuery] string? convertedByNm = null,
-            [FromQuery] string? xmlFtpPath = null,
-            [FromQuery] long? sellerId = null,
-            [FromQuery] long? xslId = null,
-            [FromQuery] string? khhdon = null,
-            [FromQuery] string? shdon = null,
-            [FromQuery] string? mtracuu = null,
-            [FromQuery] int? isSigned = null)
+            [FromQuery] string? convertedByNm = null)
         {
             if (id <= 0)
                 return ValidationError(await FieldRequiredAsync("INVOICE_ID"));
@@ -300,9 +258,10 @@ namespace API_AMNOTE_WEB.Controllers
                 var pdf = await _printService.ExportPdfAsync(
                     Common.GetCompanyCode(),
                     id,
-                    BuildPrintOptions(convertedPrint, convertedByNm, xmlFtpPath, sellerId, xslId, khhdon, shdon, mtracuu, isSigned),
+                    BuildPrintOptions(convertedPrint, convertedByNm),
                     HttpContext.RequestAborted);
                 var fileName = $"EInvoice_{id}.pdf";
+                Response.Headers.CacheControl = "private, no-store";
                 return File(pdf, "application/pdf", fileName);
             }, notFoundMessage: "E-invoice not found");
         }
@@ -339,26 +298,12 @@ namespace API_AMNOTE_WEB.Controllers
 
         private static EInvoicePrintOptions BuildPrintOptions(
             string? convertedPrint,
-            string? convertedByNm,
-            string? xmlFtpPath = null,
-            long? sellerId = null,
-            long? xslId = null,
-            string? khhdon = null,
-            string? shdon = null,
-            string? mtracuu = null,
-            int? isSigned = null)
+            string? convertedByNm)
         {
             return new EInvoicePrintOptions
             {
                 IsConvertedPrint = IsConvertedPrintQuery(convertedPrint),
                 ConvertedByNm = Common.NormalizeNullableText(convertedByNm),
-                XmlFtpPath = Common.NormalizeNullableText(xmlFtpPath),
-                SellerId = sellerId is > 0 ? sellerId : null,
-                XslId = xslId is > 0 ? xslId : null,
-                Khhdon = Common.NormalizeNullableText(khhdon),
-                Shdon = Common.NormalizeNullableText(shdon),
-                Mtracuu = Common.NormalizeNullableText(mtracuu),
-                IsSigned = isSigned is 0 or 1 ? isSigned : null,
             };
         }
 

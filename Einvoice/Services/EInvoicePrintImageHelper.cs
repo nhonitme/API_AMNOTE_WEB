@@ -25,7 +25,7 @@ namespace API_AMNOTE_WEB.Services
                     "E-invoice image {Param} from DB path is not browser-loadable. path={Path}",
                     xslParamName,
                     dbPath);
-                return string.Empty;
+                throw new InvalidOperationException($"Image '{xslParamName}' cannot be loaded from its configured path.");
             }
 
             if (!string.IsNullOrWhiteSpace(xslContent))
@@ -42,6 +42,7 @@ namespace API_AMNOTE_WEB.Services
                     logger?.LogWarning(
                         "E-invoice image {Param} from XSL param is not browser-loadable.",
                         xslParamName);
+                    throw new InvalidOperationException($"Image '{xslParamName}' cannot be loaded from its XSL reference.");
                 }
             }
 
