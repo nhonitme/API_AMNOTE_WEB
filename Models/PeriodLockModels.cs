@@ -172,6 +172,12 @@
         /// <summary>User đã khóa hoàn tất tháng.</summary>
         public string? LockedBy { get; set; }
 
+        /// <summary>Thời điểm cập nhật trạng thái gần nhất (khóa, mở, đang xử lý hoặc lỗi), từ UPDATE_AT.</summary>
+        public string? ProcessedAt { get; set; }
+
+        /// <summary>Người cập nhật trạng thái gần nhất, từ UPDATE_BY.</summary>
+        public string? ProcessedBy { get; set; }
+
         /// <summary>Ghi chú hoặc thông báo lỗi cấp tháng.</summary>
         public string? Message { get; set; }
 
