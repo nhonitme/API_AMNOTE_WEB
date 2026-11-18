@@ -1,21 +1,15 @@
 DELIMITER $$
 
-DROP PROCEDURE IF EXISTS `sp_period_lock_fa_prepaid_unlock`$$
-CREATE PROCEDURE `sp_period_lock_fa_prepaid_unlock`(
+-- Transaction-free core: can be called by G-K inside its C# DapperSession.
+-- The public wrapper below preserves the existing B-I atomic unlock behavior.
+DROP PROCEDURE IF EXISTS `sp_period_lock_fa_prepaid_unlock_core`$$
+CREATE PROCEDURE `sp_period_lock_fa_prepaid_unlock_core`(
     IN p_COMPANY_CD VARCHAR(20),
     IN p_PERIOD_YM CHAR(6),
     IN p_REASON VARCHAR(500),
     IN p_USER_ID VARCHAR(50)
 )
 BEGIN
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        RESIGNAL;
-    END;
-
-    START TRANSACTION;
-
     DELETE dd
     FROM chitdetaildescriptioninfo dd
     INNER JOIN chitdetailinfo d
@@ -110,7 +104,24 @@ BEGIN
         'Đã mở',
         p_USER_ID
     );
+END$$
 
+DROP PROCEDURE IF EXISTS `sp_period_lock_fa_prepaid_unlock`$$
+CREATE PROCEDURE `sp_period_lock_fa_prepaid_unlock`(
+    IN p_COMPANY_CD VARCHAR(20),
+    IN p_PERIOD_YM CHAR(6),
+    IN p_REASON VARCHAR(500),
+    IN p_USER_ID VARCHAR(50)
+)
+BEGIN
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+    CALL sp_period_lock_fa_prepaid_unlock_core(p_COMPANY_CD, p_PERIOD_YM, p_REASON, p_USER_ID);
     COMMIT;
 END$$
 
