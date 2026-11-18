@@ -544,7 +544,34 @@ SELECT CHIT_ID FROM production_cost_voucher_ref
 WHERE COMPANY_CD=@CompanyCd AND STABLE_KEY=@StableKey AND ISDEL='0' LIMIT 1 FOR UPDATE",
             new { CompanyCd = companyCd.Trim(), StableKey = stableKey });
         if (chitId is not > 0)
+        {
+            // B3 may have claimed GK without writing a voucher (zero amount).
+            // Never silently keep COST_ENGINE=GK / B-I DONE after REOPEN.
+            // But first reject an untracked active voucher: it cannot be safely reversed.
+            var orphanCount = await session.QueryFirstOrDefaultAsync<int>(@"
+SELECT COUNT(1) FROM chitinfo
+WHERE COMPANY_CD=@CompanyCd
+  AND INPUT_TYPE='LOCK' AND LOCK_STEP_CODE='COGS_SUMMARY' AND ISDEL='0'
+  AND CHIT_YMD BETWEEN CONCAT(@PeriodYm, '01')
+                   AND DATE_FORMAT(LAST_DAY(STR_TO_DATE(CONCAT(@PeriodYm, '01'), '%Y%m%d')), '%Y%m%d')",
+                new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim() });
+            if (orphanCount > 0)
+                throw new InvalidOperationException(
+                    "B3 có chứng từ COGS_SUMMARY chưa liên kết production_cost_voucher_ref; cần đối chiếu trước khi REOPEN.");
+
+            // The B-I COGS unlock routine already supports EXPECTED_ENGINE='GK'
+            // and has no START/COMMIT. This also releases an empty GK claim.
+            await session.ExecuteAsync(@"
+CALL sp_period_lock_cogs_unlock(@CompanyCd, @PeriodYm, @Reason, @UserId, 'GK')",
+                new
+                {
+                    CompanyCd = companyCd.Trim(),
+                    PeriodYm = periodYm.Trim(),
+                    Reason = "G-K REOPEN (no active EXP_TO_154 voucher)",
+                    UserId = userId ?? string.Empty
+                });
             return;
+        }
 
         var affected = await session.ExecuteAsync(@"
 UPDATE chitinfo SET ISDEL='1', UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
