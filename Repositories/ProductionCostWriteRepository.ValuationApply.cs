@@ -591,17 +591,26 @@ WHERE COMPANY_CD=@CompanyCd AND CHIT_ID=@ChitId AND ISDEL='0'",
 UPDATE production_cost_voucher_ref SET ISDEL='1', UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
 WHERE COMPANY_CD=@CompanyCd AND STABLE_KEY=@StableKey AND ISDEL='0'",
             new { CompanyCd = companyCd.Trim(), StableKey = stableKey, UserId = userId ?? string.Empty });
-        await session.ExecuteAsync(@"
+        // The same GK engine ownership check used by B-I ensures a mismatched
+        // or already-released period cannot be silently reported as REOPENED.
+        var periodReleased = await session.ExecuteAsync(@"
 UPDATE production_cost_period
 SET COST_ENGINE='NONE', COGS_RULE=NULL, STATUS='OPEN', UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
 WHERE COMPANY_CD=@CompanyCd AND PERIOD_YM=@PeriodYm AND ISDEL='0'
   AND COST_ENGINE='GK' AND COGS_RULE='EXP_TO_154_ONLY'",
             new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim(), UserId = userId ?? string.Empty });
-        await session.ExecuteAsync(@"
+        if (periodReleased != 1)
+            throw new InvalidOperationException(
+                "Không giải phóng được COST_ENGINE=GK của B3. Đã rollback thao tác REOPEN.");
+
+        var stepOpened = await session.ExecuteAsync(@"
 UPDATE acc_period_lock_step
 SET STATUS='OPEN', FINISHED_AT=NULL, MESSAGE='G-K REOPEN EXP_TO_154_ONLY', UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
-WHERE COMPANY_CD=@CompanyCd AND PERIOD_YM=@PeriodYm AND STEP_CODE='COGS_SUMMARY'",
+WHERE COMPANY_CD=@CompanyCd AND PERIOD_YM=@PeriodYm AND STEP_CODE='COGS_SUMMARY' AND STATUS='DONE'",
             new { CompanyCd = companyCd.Trim(), PeriodYm = periodYm.Trim(), UserId = userId ?? string.Empty });
+        if (stepOpened != 1)
+            throw new InvalidOperationException(
+                "Không đồng bộ được COGS_SUMMARY=DONE -> OPEN. Đã rollback thao tác REOPEN.");
     }
 
     /// <summary>
