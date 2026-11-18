@@ -643,6 +643,15 @@ LIMIT 1 FOR UPDATE";
             ? "sp_period_lock_fa_prepaid_unlock_core"
             : "sp_period_lock_pl_unlock_core";
         // Names come exclusively from the known two-item whitelist above.
+        var procedureExists = await session.QueryFirstOrDefaultAsync<int>(@"
+SELECT COUNT(1) FROM information_schema.ROUTINES
+WHERE ROUTINE_SCHEMA = DATABASE() AND ROUTINE_TYPE='PROCEDURE'
+  AND ROUTINE_NAME=@ProcedureName",
+            new { ProcedureName = coreProcedure });
+        if (procedureExists != 1)
+            throw new InvalidOperationException(
+                $"Thiếu {coreProcedure} tại DB công ty. Cần cài thủ tục PeriodLock bản mới trước khi mở G-K.");
+
         await session.ExecuteAsync(
             $"CALL {coreProcedure}(@CompanyCd, @PeriodYm, @Reason, @UserId)",
             new
