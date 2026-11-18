@@ -77,6 +77,30 @@ namespace API_AMNOTE_WEB.Repositories
                 }
             )).ToList();
 
+            // Ngay xu ly / nguoi xu ly phan anh lan cap nhat trang thai gan nhat,
+            // bao gom ca mo so (OPEN). Khong dung LOCKED_AT vi gia tri do duoc
+            // giu lai sau khi mo so va chi thay doi khi thang dat LOCKED.
+            const string processedQuery = @"
+                SELECT
+                    PERIOD_YM AS PeriodYm,
+                    DATE_FORMAT(UPDATE_AT, '%Y-%m-%d %H:%i:%s') AS ProcessedAt,
+                    UPDATE_BY AS ProcessedBy
+                FROM acc_period_lock_month
+                WHERE COMPANY_CD = @p_COMPANY_CD
+                  AND PERIOD_YM BETWEEN @p_FROM_PERIOD_YM AND @p_TO_PERIOD_YM
+                  AND IFNULL(ISDEL, '0') = '0'";
+
+            var processedRows = (await _db.QueryAsync<PeriodLockRowDto>(
+                Net_DB.Net_DB_Company,
+                processedQuery,
+                new
+                {
+                    p_COMPANY_CD = companyCd,
+                    p_FROM_PERIOD_YM = $"{year:D4}01",
+                    p_TO_PERIOD_YM = $"{year:D4}12"
+                }
+            )).ToDictionary(x => x.PeriodYm);
+
             var steps = (await _db.QueryAsync<PeriodLockStepFlatDto>(
                 Net_DB.Net_DB_Company,
                 stepQuery,
@@ -105,6 +129,12 @@ namespace API_AMNOTE_WEB.Repositories
 
             foreach (var month in months)
             {
+                if (processedRows.TryGetValue(month.PeriodYm, out var processed))
+                {
+                    month.ProcessedAt = processed.ProcessedAt;
+                    month.ProcessedBy = processed.ProcessedBy;
+                }
+
                 if (stepMap.TryGetValue(month.PeriodYm, out var monthSteps))
                 {
                     month.Steps = monthSteps;
