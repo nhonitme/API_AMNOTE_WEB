@@ -171,6 +171,8 @@ public sealed class ProductionCostObjectsResponse
     public string PeriodYm { get; set; } = string.Empty;
     public long? RunId { get; set; }
     public IReadOnlyList<ProductionCostObjectDto> Items { get; set; } = Array.Empty<ProductionCostObjectDto>();
+    /// <summary>Số phiếu nhập thành phẩm N155/C154 nguồn trong kỳ (không phụ thuộc bước B4/B5).</summary>
+    public int SourceReceiptCount { get; set; }
     public string? Message { get; set; }
 }
 
@@ -181,9 +183,25 @@ public sealed class ProductionCostObjectDto
     public long DepartmentId { get; set; }
     public long ProductId { get; set; }
     public string? DepartmentCd { get; set; }
+    public string? DepartmentName { get; set; }
     public string? ProductCd { get; set; }
+    public string? ProductName { get; set; }
+    /// <summary>SL nhập thành phẩm N155/C154 đối chiếu từ INPUT_ID trong kỳ.</summary>
+    public decimal FinishedQty { get; set; }
+    /// <summary>Số INVENTORY_ID phân biệt cho dòng đối tượng/thành phẩm.</summary>
+    public int ReceiptCount { get; set; }
     public string IsSelected { get; set; } = "1";
     public string? WarningText { get; set; }
+}
+
+/// <summary>Dòng nhập kho nguồn cho thống kê bước 0; chỉ SELECT, không thay đổi giá/số lượng.</summary>
+public sealed class ProductionCostSourceReceiptLineDto
+{
+    public long InputId { get; set; }
+    public long? InventoryId { get; set; }
+    public long ProductId { get; set; }
+    public long DepartmentId { get; set; }
+    public decimal Quantity { get; set; }
 }
 
 public sealed class ProductionCostAllocPoolResponse

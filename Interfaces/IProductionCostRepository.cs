@@ -32,6 +32,8 @@ public interface IProductionCostRepository
     Task<string?> GetPreviousConfirmedSummaryAsync(string companyCd, long runId, int stepIndex, string? databaseName = null);
 
     Task<IReadOnlyList<ProductionCostObjectDto>> GetObjectsAsync(string companyCd, long runId, string? databaseName = null);
+    /// <summary>Chứng từ nguồn N155/C154 theo kỳ, dùng để kiểm tra đầu vào G-K bước 0.</summary>
+    Task<IReadOnlyList<ProductionCostSourceReceiptLineDto>> GetSourceReceiptLinesAsync(string companyCd, long runId, string? databaseName = null);
 
     Task<IReadOnlyList<ProductionCostAllocPoolDto>> GetAllocPoolAsync(string companyCd, long runId, int runVersion, string? databaseName = null);
 
