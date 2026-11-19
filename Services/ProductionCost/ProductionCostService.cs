@@ -216,6 +216,8 @@ public sealed class ProductionCostService : IProductionCostService
             // never duplicate the full product total across departments.
             var matching = receiptsByProduct[item.ProductId]
                 .Where(x => count == 1 || x.DepartmentId == item.DepartmentId)
+                .GroupBy(x => x.InputId) // one receipt line may have duplicate extension records
+                .Select(g => g.First())
                 .ToList();
 
             item.FinishedQty = matching.Sum(x => x.Quantity);
