@@ -219,12 +219,21 @@ WHERE COMPANY_CD=@Company AND PERIOD_YM=@Ym AND ISDEL='0' LIMIT 1",
         if (bounds == null)
             throw new InvalidOperationException("Thiếu cận ngày của kỳ.");
 
-        var inserted = await session.ExecuteAsync(@"
-INSERT INTO production_cost_object (
-  RUN_ID, COMPANY_CD, DEPARTMENT_ID, PRODUCT_ID, DEPARTMENT_CD, PRODUCT_CD, IS_SELECTED, ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
-)
-SELECT @RunId, i.COMPANY_CD, IFNULL(ext.DEPARTMENT_ID, 0), i.PRODUCT_ID,
-       MAX(ext.DEPARTMENT_CD), MAX(i.PRODUCT_CD), '1', '0', @User, UTC_TIMESTAMP(), @User, UTC_TIMESTAMP()
+        // The RUN may already have objects preselected from product_info.
+        // The accounting receipt extension can hold a different DEPARTMENT_ID
+        // for the same logical DEPARTMENT_CD. Blind INSERT GROUP BY ext ID
+        // creates a second (PRODUCT_ID, DEPARTMENT_CD) row with Qty=0.
+        //
+        // Resolve a source row to an existing exact ID first, then to an existing
+        // logical department code, and only then create a new object. Keep
+        // genuine distinct department codes as independent cost objects.
+        const string sourceSql = @"
+SELECT i.PRODUCT_ID AS ProductId,
+       MAX(i.PRODUCT_CD) AS ProductCd,
+       IFNULL(ext.DEPARTMENT_ID, 0) AS DepartmentId,
+       MAX(ext.DEPARTMENT_CD) AS DepartmentCd,
+       MAX(IFNULL(p.DEPARTMENT_ID, 0)) AS ProductDepartmentId,
+       MAX(pd.DEPARTMENT_CD) AS ProductDepartmentCd
 FROM chit_inventory_input i
 INNER JOIN chitdetailinfo d
   ON d.COMPANY_CD=i.COMPANY_CD AND d.CHITDETAIL_ID=i.CHITDETAIL_ID AND d.ISDEL='0'
@@ -232,29 +241,97 @@ INNER JOIN chitinfo c
   ON c.COMPANY_CD=d.COMPANY_CD AND c.CHIT_ID=d.CHIT_ID AND c.ISDEL='0'
 LEFT JOIN chitdetailinfo_ext ext
   ON ext.COMPANY_CD=d.COMPANY_CD AND ext.CHITDETAIL_ID=d.CHITDETAIL_ID AND ext.ISDEL='0'
-WHERE i.COMPANY_CD=@Company AND i.ISDEL='0' AND i.PRODUCT_ID > 0
-  AND c.CHIT_YMD >= @FromYmd AND c.CHIT_YMD <= @ToYmd
+LEFT JOIN product_info p
+  ON p.COMPANY_CD=i.COMPANY_CD AND p.PRODUCT_ID=i.PRODUCT_ID AND IFNULL(p.ISDEL,'0')='0'
+LEFT JOIN department_info pd
+  ON pd.COMPANY_CD=p.COMPANY_CD AND pd.DEPARTMENT_ID=p.DEPARTMENT_ID AND IFNULL(pd.ISDEL,'0')='0'
+WHERE i.COMPANY_CD=@Company AND i.ISDEL='0' AND i.PRODUCT_ID>0
+  AND c.CHIT_YMD BETWEEN @FromYmd AND @ToYmd
   AND IFNULL(c.INPUT_TYPE,'') <> 'LOCK'
   AND TRIM(d.DEBIT) LIKE '155%' AND TRIM(d.CREDIT) LIKE '154%'
-GROUP BY i.COMPANY_CD, IFNULL(ext.DEPARTMENT_ID, 0), i.PRODUCT_ID
-ON DUPLICATE KEY UPDATE
-  IS_SELECTED='1', ISDEL='0', PRODUCT_CD=VALUES(PRODUCT_CD), DEPARTMENT_CD=VALUES(DEPARTMENT_CD),
-  UPDATE_BY=VALUES(UPDATE_BY), UPDATE_AT=UTC_TIMESTAMP()",
-            new
-            {
-                RunId = runId,
-                User = userId ?? string.Empty,
-                Company = companyCd.Trim(),
-                bounds.FromYmd,
-                bounds.ToYmd
-            });
-        if (inserted == 0)
-        {
+GROUP BY i.PRODUCT_ID, IFNULL(ext.DEPARTMENT_ID, 0)";
+        var args = new { Company = companyCd.Trim(), bounds.FromYmd, bounds.ToYmd };
+        var sources = (await session.QueryAsync<ObjectSyncSourceRow>(sourceSql, args)).ToList();
+        if (sources.Count == 0)
             throw new InvalidOperationException(
                 "Không có phiếu nhập Nợ 155 / Có 154 trong kỳ để tạo đối tượng. Không tạo dữ liệu mẫu.");
+
+        var existing = (await session.QueryAsync<ObjectSyncExistingRow>(@"
+SELECT OBJECT_SEL_ID AS ObjectSelId, PRODUCT_ID AS ProductId,
+       DEPARTMENT_ID AS DepartmentId, DEPARTMENT_CD AS DepartmentCd
+FROM production_cost_object
+WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0'
+ORDER BY OBJECT_SEL_ID",
+            new { Company = companyCd.Trim(), RunId = runId })).ToList();
+
+        var resolved = new List<ObjectSyncResolvedRow>();
+        foreach (var source in sources)
+        {
+            var sourceCode = (source.DepartmentCd ?? string.Empty).Trim();
+            var mappedCode = (source.ProductDepartmentCd ?? string.Empty).Trim();
+            var logicalCode = sourceCode.Length > 0 ? sourceCode : mappedCode;
+            var candidates = existing.Where(x => x.ProductId == source.ProductId).ToList();
+
+            // A true accounting extension match wins. If the extension ID differs
+            // from the preselected object's ID but the logical code matches,
+            // reuse that object rather than silently inserting a duplicate.
+            var matched = source.DepartmentId > 0
+                ? candidates.FirstOrDefault(x => x.DepartmentId == source.DepartmentId)
+                : null;
+            if (matched == null && logicalCode.Length > 0)
+                matched = candidates.FirstOrDefault(x =>
+                    string.Equals((x.DepartmentCd ?? string.Empty).Trim(),
+                        logicalCode, StringComparison.OrdinalIgnoreCase));
+            if (matched == null && source.ProductDepartmentId > 0
+                && (source.DepartmentId <= 0
+                    || sourceCode.Length == 0
+                    || string.Equals(sourceCode, mappedCode, StringComparison.OrdinalIgnoreCase)))
+                matched = candidates.FirstOrDefault(x => x.DepartmentId == source.ProductDepartmentId);
+
+            var departmentId = matched?.DepartmentId
+                ?? (source.DepartmentId > 0 ? source.DepartmentId : source.ProductDepartmentId);
+            var departmentCode = matched?.DepartmentCd;
+            if (string.IsNullOrWhiteSpace(departmentCode))
+                departmentCode = logicalCode;
+
+            resolved.Add(new ObjectSyncResolvedRow(
+                source.ProductId, departmentId, departmentCode ?? string.Empty,
+                source.ProductCd ?? string.Empty));
         }
 
-        return inserted;
+        const string upsertSql = @"
+INSERT INTO production_cost_object (
+  RUN_ID, COMPANY_CD, DEPARTMENT_ID, PRODUCT_ID, DEPARTMENT_CD, PRODUCT_CD,
+  IS_SELECTED, ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+) VALUES (
+  @RunId, @Company, @DepartmentId, @ProductId, @DepartmentCd, @ProductCd,
+  '1', '0', @User, UTC_TIMESTAMP(), @User, UTC_TIMESTAMP()
+)
+ON DUPLICATE KEY UPDATE
+  ISDEL='0',
+  DEPARTMENT_CD=CASE WHEN TRIM(VALUES(DEPARTMENT_CD))<>'' THEN VALUES(DEPARTMENT_CD) ELSE DEPARTMENT_CD END,
+  PRODUCT_CD=VALUES(PRODUCT_CD),
+  UPDATE_BY=VALUES(UPDATE_BY), UPDATE_AT=UTC_TIMESTAMP()";
+        var affected = 0;
+        foreach (var row in resolved
+            .GroupBy(x => new { x.ProductId, x.DepartmentId })
+            .Select(g => g.First()))
+        {
+            affected += await session.ExecuteAsync(upsertSql, new
+            {
+                RunId = runId,
+                Company = companyCd.Trim(),
+                row.DepartmentId,
+                row.ProductId,
+                row.DepartmentCd,
+                row.ProductCd,
+                User = userId ?? string.Empty
+            });
+        }
+        // Preserve the user's IS_SELECTED state on existing objects.
+        // Do not auto-delete pre-existing duplicates: some may already be used
+        // by accounting or valuation history and require an explicit audit.
+        return affected;
     }
 
     public async Task UpdatePoolReductionAsync(
@@ -330,6 +407,27 @@ ON DUPLICATE KEY UPDATE
         if (affected == 0)
             throw new InvalidOperationException("Không lưu được điều chỉnh dở dang.");
     }
+
+    private sealed class ObjectSyncSourceRow
+    {
+        public long ProductId { get; set; }
+        public string? ProductCd { get; set; }
+        public long DepartmentId { get; set; }
+        public string? DepartmentCd { get; set; }
+        public long ProductDepartmentId { get; set; }
+        public string? ProductDepartmentCd { get; set; }
+    }
+
+    private sealed class ObjectSyncExistingRow
+    {
+        public long ObjectSelId { get; set; }
+        public long ProductId { get; set; }
+        public long DepartmentId { get; set; }
+        public string? DepartmentCd { get; set; }
+    }
+
+    private sealed record ObjectSyncResolvedRow(
+        long ProductId, long DepartmentId, string DepartmentCd, string ProductCd);
 
     private sealed class EnsureRow
     {
