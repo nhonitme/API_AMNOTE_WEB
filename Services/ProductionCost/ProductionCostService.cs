@@ -188,7 +188,45 @@ public sealed class ProductionCostService : IProductionCostService
         if (ctx.Run == null)
             return response;
 
-        response.Items = await _repo.GetObjectsAsync(companyCd, ctx.Run.RunId, databaseName);
+        var objects = (await _repo.GetObjectsAsync(companyCd, ctx.Run.RunId, databaseName)).ToList();
+        var receipts = await _repo.GetSourceReceiptLinesAsync(companyCd, ctx.Run.RunId, databaseName);
+
+        // A single inventory voucher may contain multiple products. Count distinct
+        // INVENTORY_ID globally; never sum the per-product / per-object counts.
+        response.SourceReceiptCount = receipts
+            .Where(x => x.InventoryId.GetValueOrDefault() > 0)
+            .Select(x => x.InventoryId!.Value)
+            .Distinct()
+            .Count();
+
+        var objectsByProduct = objects
+            .Where(x => x.ProductId > 0)
+            .GroupBy(x => x.ProductId)
+            .ToDictionary(g => g.Key, g => g.Count());
+        var receiptsByProduct = receipts.ToLookup(x => x.ProductId);
+
+        foreach (var item in objects)
+        {
+            if (!objectsByProduct.TryGetValue(item.ProductId, out var count))
+                continue;
+
+            // A receipt with no DEPARTMENT_ID can be attributed only when this
+            // product has exactly one G-K object. If multiple objects exist,
+            // do not silently copy the same quantity into every department.
+            var matching = receiptsByProduct[item.ProductId]
+                .Where(x => x.DepartmentId == item.DepartmentId
+                    || (x.DepartmentId == 0 && item.DepartmentId > 0 && count == 1))
+                .ToList();
+
+            item.FinishedQty = matching.Sum(x => x.Quantity);
+            item.ReceiptCount = matching
+                .Where(x => x.InventoryId.GetValueOrDefault() > 0)
+                .Select(x => x.InventoryId!.Value)
+                .Distinct()
+                .Count();
+        }
+
+        response.Items = objects;
         return response;
     }
 
