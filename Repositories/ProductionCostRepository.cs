@@ -310,6 +310,9 @@ LIMIT 1";
 
     public async Task<IReadOnlyList<ProductionCostObjectDto>> GetObjectsAsync(string companyCd, long runId, string? databaseName = null)
     {
+        EnsureDatabase(databaseName);
+        // Names are presentation data; never join by *_CD or use product/department names
+        // as business identifiers. LEFT JOIN preserves orphan objects for warnings.
         const string sql = @"
 SELECT
     o.OBJECT_SEL_ID AS ObjectSelId,
@@ -317,16 +320,81 @@ SELECT
     o.DEPARTMENT_ID AS DepartmentId,
     o.PRODUCT_ID AS ProductId,
     o.DEPARTMENT_CD AS DepartmentCd,
+    COALESCE(NULLIF(d.DEP_NAME_VIET, ''), o.DEPARTMENT_CD) AS DepartmentName,
     o.PRODUCT_CD AS ProductCd,
+    COALESCE(NULLIF(p.PRODUCT_NM_VIET, ''), o.PRODUCT_CD) AS ProductName,
     o.IS_SELECTED AS IsSelected,
     o.WARNING_TEXT AS WarningText
 FROM production_cost_object o
+LEFT JOIN department_info d
+  ON d.COMPANY_CD = o.COMPANY_CD
+ AND d.DEPARTMENT_ID = o.DEPARTMENT_ID
+ AND IFNULL(d.ISDEL, '0') = '0'
+LEFT JOIN product_info p
+  ON p.COMPANY_CD = o.COMPANY_CD
+ AND p.PRODUCT_ID = o.PRODUCT_ID
+ AND IFNULL(p.ISDEL, '0') = '0'
 WHERE o.COMPANY_CD = @CompanyCd
   AND o.RUN_ID = @RunId
   AND o.ISDEL = '0'
 ORDER BY o.DEPARTMENT_ID, o.PRODUCT_ID";
 
         var rows = await _db.QueryAsync<ProductionCostObjectDto>(
+            Net_DB.Net_DB_Company,
+            sql,
+            new { CompanyCd = companyCd, RunId = runId },
+            databaseName);
+        return rows.ToList();
+    }
+
+    public async Task<IReadOnlyList<ProductionCostSourceReceiptLineDto>> GetSourceReceiptLinesAsync(
+        string companyCd, long runId, string? databaseName = null)
+    {
+        EnsureDatabase(databaseName);
+        // Same authoritative N155/C154 accounting filter as SyncObjectsFromReceiptsAsync
+        // and ReadFinishedQtyAsync. Unlike production_cost_receipt (B4/B5 output),
+        // this is source data available before cost calculation begins.
+        // GROUP BY INPUT_ID and DEPARTMENT_ID protects against duplicated extension
+        // rows without creating artificial voucher/quantity entries.
+        const string sql = @"
+SELECT
+    i.INPUT_ID AS InputId,
+    i.INVENTORY_ID AS InventoryId,
+    i.PRODUCT_ID AS ProductId,
+    IFNULL(ext.DEPARTMENT_ID, 0) AS DepartmentId,
+    MAX(i.QUANTITY) AS Quantity
+FROM chit_inventory_input i
+INNER JOIN chitdetailinfo d
+  ON d.COMPANY_CD = i.COMPANY_CD
+ AND d.CHITDETAIL_ID = i.CHITDETAIL_ID
+ AND d.ISDEL = '0'
+INNER JOIN chitinfo c
+  ON c.COMPANY_CD = d.COMPANY_CD
+ AND c.CHIT_ID = d.CHIT_ID
+ AND c.ISDEL = '0'
+INNER JOIN production_cost_run r
+  ON r.COMPANY_CD = i.COMPANY_CD
+ AND r.RUN_ID = @RunId
+ AND r.ISDEL = '0'
+INNER JOIN production_cost_period per
+  ON per.COMPANY_CD = r.COMPANY_CD
+ AND per.PERIOD_COST_ID = r.PERIOD_COST_ID
+ AND per.ISDEL = '0'
+LEFT JOIN chitdetailinfo_ext ext
+  ON ext.COMPANY_CD = d.COMPANY_CD
+ AND ext.CHITDETAIL_ID = d.CHITDETAIL_ID
+ AND ext.ISDEL = '0'
+WHERE i.COMPANY_CD = @CompanyCd
+  AND i.ISDEL = '0'
+  AND i.PRODUCT_ID > 0
+  AND c.CHIT_YMD BETWEEN per.FROM_YMD AND per.TO_YMD
+  AND IFNULL(c.INPUT_TYPE, '') <> 'LOCK'
+  AND TRIM(d.DEBIT) LIKE '155%'
+  AND TRIM(d.CREDIT) LIKE '154%'
+GROUP BY i.INPUT_ID, i.INVENTORY_ID, i.PRODUCT_ID, IFNULL(ext.DEPARTMENT_ID, 0)
+ORDER BY i.PRODUCT_ID, i.INPUT_ID";
+
+        var rows = await _db.QueryAsync<ProductionCostSourceReceiptLineDto>(
             Net_DB.Net_DB_Company,
             sql,
             new { CompanyCd = companyCd, RunId = runId },
