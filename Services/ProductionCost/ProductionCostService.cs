@@ -210,12 +210,12 @@ public sealed class ProductionCostService : IProductionCostService
             if (!objectsByProduct.TryGetValue(item.ProductId, out var count))
                 continue;
 
-            // A receipt with no DEPARTMENT_ID can be attributed only when this
-            // product has exactly one G-K object. If multiple objects exist,
-            // do not silently copy the same quantity into every department.
+            // When a product belongs to one G-K object, show its entire source
+            // receipt quantity (the same PRODUCT_ID basis as ReadFinishedQtyAsync).
+            // If a product has multiple G-K objects, use exact DEPARTMENT_ID only;
+            // never duplicate the full product total across departments.
             var matching = receiptsByProduct[item.ProductId]
-                .Where(x => x.DepartmentId == item.DepartmentId
-                    || (x.DepartmentId == 0 && item.DepartmentId > 0 && count == 1))
+                .Where(x => count == 1 || x.DepartmentId == item.DepartmentId)
                 .ToList();
 
             item.FinishedQty = matching.Sum(x => x.Quantity);
