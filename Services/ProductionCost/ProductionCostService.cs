@@ -189,6 +189,30 @@ public sealed class ProductionCostService : IProductionCostService
             return response;
 
         var objects = (await _repo.GetObjectsAsync(companyCd, ctx.Run.RunId, databaseName)).ToList();
+
+        // The physical unique key is (RUN_ID, DEPARTMENT_ID, PRODUCT_ID). A
+        // source accounting line can reference a different DEPARTMENT_ID for the
+        // same displayed department code. Expose the inconsistency as a step-0
+        // warning instead of letting users calculate costs twice for one
+        // product + logical cost object.
+        var duplicateLogicalObjects = objects
+            .Where(x => x.ProductId > 0 && !string.IsNullOrWhiteSpace(x.DepartmentCd))
+            .GroupBy(x => (x.ProductId, DepartmentCd: x.DepartmentCd!.Trim().ToUpperInvariant()))
+            .Where(g => g.Select(x => x.DepartmentId).Distinct().Count() > 1);
+        foreach (var group in duplicateLogicalObjects)
+        {
+            var ids = string.Join(", ", group.Select(x => x.DepartmentId).Distinct().OrderBy(x => x));
+            foreach (var row in group)
+            {
+                var reason = $"Trùng đối tượng tính giá thành: PRODUCT_ID={row.ProductId}, " +
+                             $"DEPARTMENT_CD={group.Key.DepartmentCd}, DEPARTMENT_ID={ids}. " +
+                             "Cần đối chiếu dữ liệu trước khi khóa giá thành.";
+                row.WarningText = string.IsNullOrWhiteSpace(row.WarningText)
+                    ? reason
+                    : row.WarningText + "; " + reason;
+            }
+        }
+
         var receipts = await _repo.GetSourceReceiptLinesAsync(companyCd, ctx.Run.RunId, databaseName);
 
         // A single inventory voucher may contain multiple products. Count distinct

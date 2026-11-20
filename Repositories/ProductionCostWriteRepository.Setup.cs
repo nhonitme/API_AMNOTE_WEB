@@ -208,9 +208,51 @@ WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0'
         int runVersion,
         string? userId)
     {
-        _ = runVersion;
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+
         var locked = await LockRunForUpdateAsync(session, companyCd, runId)
             ?? throw new InvalidOperationException("RUN không tồn tại.");
+        if (runVersion <= 0 || locked.RunVersion != runVersion)
+            throw new InvalidOperationException("RUN_VERSION đã thay đổi. Tải lại kỳ G-K rồi đồng bộ.");
+
+        // Đồng bộ ở bước chuẩn bị là REPLACE ALL, không phải UPSERT.
+        // Không xóa/ghi đè đối tượng của RUN đã vào các bước tính/khóa.
+        if (!string.Equals(locked.Status, GkRunStatus.Draft, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(locked.Status, GkRunStatus.Previewed, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                "Chỉ khởi tạo lại đối tượng khi RUN còn DRAFT/PREVIEWED, trước khi xác nhận giá thành.");
+
+        var statuses = await GetStepStatusesForUpdateAsync(session, companyCd, runId);
+        if (statuses.Any(x =>
+            !string.Equals(x.Value, "NOT_STARTED", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(x.Value, "OPEN", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException(
+                "RUN đã có bước xử lý hoặc khóa. Không được xóa lại danh sách đối tượng; kiểm tra/mở khóa trước.");
+
+        // Không làm mất dữ liệu đã tính, kể cả khi trạng thái RUN chưa cập nhật kịp.
+        var hasDerivedRows = await session.QueryFirstOrDefaultAsync<int>(@"
+SELECT (
+    EXISTS(SELECT 1 FROM production_cost_alloc_pool
+      WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0')
+    OR EXISTS(SELECT 1 FROM production_cost_alloc_detail
+      WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0')
+    OR EXISTS(SELECT 1 FROM production_cost_source
+      WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0')
+    OR EXISTS(SELECT 1 FROM production_cost_wip
+      WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0')
+    OR EXISTS(SELECT 1 FROM production_cost_receipt
+      WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0')
+    OR EXISTS(SELECT 1 FROM production_cost_nvl_basis
+      WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0')
+    OR EXISTS(SELECT 1 FROM production_cost_voucher_ref
+      WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0')
+) AS HasDerivedRows",
+            new { Company = companyCd.Trim(), RunId = runId });
+        if (hasDerivedRows != 0)
+            throw new InvalidOperationException(
+                "RUN đã có dữ liệu tính giá thành. Không được khởi tạo lại danh sách đối tượng.");
+
         var bounds = await session.QueryFirstOrDefaultAsync<BoundRow>(@"
 SELECT FROM_YMD AS FromYmd, TO_YMD AS ToYmd
 FROM production_cost_period
@@ -219,12 +261,17 @@ WHERE COMPANY_CD=@Company AND PERIOD_YM=@Ym AND ISDEL='0' LIMIT 1",
         if (bounds == null)
             throw new InvalidOperationException("Thiếu cận ngày của kỳ.");
 
-        var inserted = await session.ExecuteAsync(@"
-INSERT INTO production_cost_object (
-  RUN_ID, COMPANY_CD, DEPARTMENT_ID, PRODUCT_ID, DEPARTMENT_CD, PRODUCT_CD, IS_SELECTED, ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
-)
-SELECT @RunId, i.COMPANY_CD, IFNULL(ext.DEPARTMENT_ID, 0), i.PRODUCT_ID,
-       MAX(ext.DEPARTMENT_CD), MAX(i.PRODUCT_CD), '1', '0', @User, UTC_TIMESTAMP(), @User, UTC_TIMESTAMP()
+        // N155/C154 from the source receipts. Resolve canonical department using
+        // product_info.DEPARTMENT_ID when the accounting extension has the same
+        // logical department code. A different department code remains a distinct
+        // cost object. The old production_cost_object rows are NOT inputs here.
+        const string sourceSql = @"
+SELECT i.PRODUCT_ID AS ProductId,
+       MAX(i.PRODUCT_CD) AS ProductCd,
+       IFNULL(ext.DEPARTMENT_ID, 0) AS DepartmentId,
+       MAX(ext.DEPARTMENT_CD) AS DepartmentCd,
+       MAX(IFNULL(p.DEPARTMENT_ID, 0)) AS ProductDepartmentId,
+       MAX(pd.DEPARTMENT_CD) AS ProductDepartmentCd
 FROM chit_inventory_input i
 INNER JOIN chitdetailinfo d
   ON d.COMPANY_CD=i.COMPANY_CD AND d.CHITDETAIL_ID=i.CHITDETAIL_ID AND d.ISDEL='0'
@@ -232,29 +279,97 @@ INNER JOIN chitinfo c
   ON c.COMPANY_CD=d.COMPANY_CD AND c.CHIT_ID=d.CHIT_ID AND c.ISDEL='0'
 LEFT JOIN chitdetailinfo_ext ext
   ON ext.COMPANY_CD=d.COMPANY_CD AND ext.CHITDETAIL_ID=d.CHITDETAIL_ID AND ext.ISDEL='0'
-WHERE i.COMPANY_CD=@Company AND i.ISDEL='0' AND i.PRODUCT_ID > 0
-  AND c.CHIT_YMD >= @FromYmd AND c.CHIT_YMD <= @ToYmd
+LEFT JOIN product_info p
+  ON p.COMPANY_CD=i.COMPANY_CD AND p.PRODUCT_ID=i.PRODUCT_ID AND IFNULL(p.ISDEL,'0')='0'
+LEFT JOIN department_info pd
+  ON pd.COMPANY_CD=p.COMPANY_CD AND pd.DEPARTMENT_ID=p.DEPARTMENT_ID AND IFNULL(pd.ISDEL,'0')='0'
+WHERE i.COMPANY_CD=@Company AND i.ISDEL='0' AND i.PRODUCT_ID>0
+  AND c.CHIT_YMD BETWEEN @FromYmd AND @ToYmd
   AND IFNULL(c.INPUT_TYPE,'') <> 'LOCK'
   AND TRIM(d.DEBIT) LIKE '155%' AND TRIM(d.CREDIT) LIKE '154%'
-GROUP BY i.COMPANY_CD, IFNULL(ext.DEPARTMENT_ID, 0), i.PRODUCT_ID
-ON DUPLICATE KEY UPDATE
-  IS_SELECTED='1', ISDEL='0', PRODUCT_CD=VALUES(PRODUCT_CD), DEPARTMENT_CD=VALUES(DEPARTMENT_CD),
-  UPDATE_BY=VALUES(UPDATE_BY), UPDATE_AT=UTC_TIMESTAMP()",
-            new
-            {
-                RunId = runId,
-                User = userId ?? string.Empty,
-                Company = companyCd.Trim(),
-                bounds.FromYmd,
-                bounds.ToYmd
-            });
-        if (inserted == 0)
+GROUP BY i.PRODUCT_ID, IFNULL(ext.DEPARTMENT_ID, 0)";
+        var company = companyCd.Trim();
+        var sources = (await session.QueryAsync<ObjectSyncSourceRow>(
+            sourceSql, new { Company = company, bounds.FromYmd, bounds.ToYmd })).ToList();
+
+        // An empty source is a valid snapshot: reinitializing a draft RUN
+        // then clears all stale cost objects instead of retaining old entries.
+        var resolved = new List<ObjectSyncResolvedRow>();
+        foreach (var source in sources)
         {
-            throw new InvalidOperationException(
-                "Không có phiếu nhập Nợ 155 / Có 154 trong kỳ để tạo đối tượng. Không tạo dữ liệu mẫu.");
+            var sourceCode = (source.DepartmentCd ?? "").Trim();
+            var masterCode = (source.ProductDepartmentCd ?? "").Trim();
+            var sameLogicalCode = sourceCode.Length > 0 && masterCode.Length > 0
+                && string.Equals(sourceCode, masterCode, StringComparison.OrdinalIgnoreCase);
+            var useProductDepartment = source.ProductDepartmentId > 0
+                && (source.DepartmentId <= 0 || sourceCode.Length == 0 || sameLogicalCode);
+
+            var departmentId = useProductDepartment
+                ? source.ProductDepartmentId
+                : source.DepartmentId;
+            var departmentCd = useProductDepartment ? masterCode : sourceCode;
+            if (departmentCd.Length == 0 && masterCode.Length > 0)
+                departmentCd = masterCode;
+
+            // Keep orphan products visible as unselected rows with a warning.
+            // The prerequisite panel can then guide the user to fix mappings.
+            var valid = departmentId > 0 && departmentCd.Length > 0;
+            resolved.Add(new ObjectSyncResolvedRow(
+                source.ProductId, departmentId, departmentCd, source.ProductCd ?? "",
+                valid,
+                valid ? null : "Thành phẩm chưa có DEPARTMENT_ID/DEPARTMENT_CD hợp lệ."));
         }
 
-        return inserted;
+        var newObjects = resolved
+            .GroupBy(x => (x.ProductId, x.DepartmentId))
+            .Select(g => g.First())
+            .ToList();
+
+        // Same PRODUCT + same logical code cannot be two separate cost objects.
+        // When product master cannot resolve the ID ambiguity, fail explicitly,
+        // rather than creating an extra quantity-zero line.
+        var ambiguous = newObjects
+            .GroupBy(x => (x.ProductId, Code: x.DepartmentCd.ToUpperInvariant()))
+            .FirstOrDefault(g => g.Select(x => x.DepartmentId).Distinct().Count() > 1);
+        if (ambiguous != null)
+            throw new InvalidOperationException(
+                $"Mã đối tượng {ambiguous.Key.Code} của PRODUCT_ID={ambiguous.Key.ProductId} " +
+                "đang liên kết nhiều DEPARTMENT_ID khác nhau. Cần chuẩn hóa danh mục trước khi đồng bộ.");
+
+        // This operation runs inside ProductionCostWriteSession.ExecuteAsync:
+        // DELETE and INSERT belong to the SAME transaction (rollback on error).
+        // Limit deletion strictly to the current company + RUN, including old
+        // soft-deleted rows that would collide with its unique key.
+        await session.ExecuteAsync(@"
+DELETE FROM production_cost_object
+WHERE COMPANY_CD=@Company AND RUN_ID=@RunId",
+            new { Company = company, RunId = runId });
+
+        const string insertSql = @"
+INSERT INTO production_cost_object (
+  RUN_ID, COMPANY_CD, DEPARTMENT_ID, PRODUCT_ID, DEPARTMENT_CD, PRODUCT_CD,
+  IS_SELECTED, WARNING_TEXT, ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+) VALUES (
+  @RunId, @Company, @DepartmentId, @ProductId, @DepartmentCd, @ProductCd,
+  @Selected, @WarningText, '0', @User, UTC_TIMESTAMP(), @User, UTC_TIMESTAMP()
+)";
+        foreach (var row in newObjects)
+        {
+            await session.ExecuteAsync(insertSql, new
+            {
+                RunId = runId,
+                Company = company,
+                row.DepartmentId,
+                row.ProductId,
+                row.DepartmentCd,
+                row.ProductCd,
+                Selected = row.IsValid ? "1" : "0",
+                row.WarningText,
+                User = userId ?? string.Empty
+            });
+        }
+
+        return newObjects.Count;
     }
 
     public async Task UpdatePoolReductionAsync(
@@ -330,6 +445,20 @@ ON DUPLICATE KEY UPDATE
         if (affected == 0)
             throw new InvalidOperationException("Không lưu được điều chỉnh dở dang.");
     }
+
+    private sealed class ObjectSyncSourceRow
+    {
+        public long ProductId { get; set; }
+        public string? ProductCd { get; set; }
+        public long DepartmentId { get; set; }
+        public string? DepartmentCd { get; set; }
+        public long ProductDepartmentId { get; set; }
+        public string? ProductDepartmentCd { get; set; }
+    }
+
+    private sealed record ObjectSyncResolvedRow(
+        long ProductId, long DepartmentId, string DepartmentCd, string ProductCd,
+        bool IsValid, string? WarningText);
 
     private sealed class EnsureRow
     {
