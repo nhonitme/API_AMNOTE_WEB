@@ -292,11 +292,8 @@ GROUP BY i.PRODUCT_ID, IFNULL(ext.DEPARTMENT_ID, 0)";
         var sources = (await session.QueryAsync<ObjectSyncSourceRow>(
             sourceSql, new { Company = company, bounds.FromYmd, bounds.ToYmd })).ToList();
 
-        // Validate the new snapshot completely BEFORE deleting the old one.
-        if (sources.Count == 0)
-            throw new InvalidOperationException(
-                "Không có phiếu nhập Nợ 155 / Có 154 trong kỳ. Giữ nguyên danh sách đối tượng cũ.");
-
+        // An empty source is a valid snapshot: reinitializing a draft RUN
+        // then clears all stale cost objects instead of retaining old entries.
         var resolved = new List<ObjectSyncResolvedRow>();
         foreach (var source in sources)
         {
@@ -314,13 +311,13 @@ GROUP BY i.PRODUCT_ID, IFNULL(ext.DEPARTMENT_ID, 0)";
             if (departmentCd.Length == 0 && masterCode.Length > 0)
                 departmentCd = masterCode;
 
-            if (departmentId <= 0 || departmentCd.Length == 0)
-                throw new InvalidOperationException(
-                    $"Thành phẩm {source.ProductCd} (PRODUCT_ID={source.ProductId}) " +
-                    "chưa liên kết được đối tượng hợp lệ. Không xóa dữ liệu cũ.");
-
+            // Keep orphan products visible as unselected rows with a warning.
+            // The prerequisite panel can then guide the user to fix mappings.
+            var valid = departmentId > 0 && departmentCd.Length > 0;
             resolved.Add(new ObjectSyncResolvedRow(
-                source.ProductId, departmentId, departmentCd, source.ProductCd ?? ""));
+                source.ProductId, departmentId, departmentCd, source.ProductCd ?? "",
+                valid,
+                valid ? null : "Thành phẩm chưa có DEPARTMENT_ID/DEPARTMENT_CD hợp lệ."));
         }
 
         var newObjects = resolved
@@ -351,10 +348,10 @@ WHERE COMPANY_CD=@Company AND RUN_ID=@RunId",
         const string insertSql = @"
 INSERT INTO production_cost_object (
   RUN_ID, COMPANY_CD, DEPARTMENT_ID, PRODUCT_ID, DEPARTMENT_CD, PRODUCT_CD,
-  IS_SELECTED, ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
+  IS_SELECTED, WARNING_TEXT, ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
 ) VALUES (
   @RunId, @Company, @DepartmentId, @ProductId, @DepartmentCd, @ProductCd,
-  '1', '0', @User, UTC_TIMESTAMP(), @User, UTC_TIMESTAMP()
+  @Selected, @WarningText, '0', @User, UTC_TIMESTAMP(), @User, UTC_TIMESTAMP()
 )";
         foreach (var row in newObjects)
         {
@@ -366,6 +363,8 @@ INSERT INTO production_cost_object (
                 row.ProductId,
                 row.DepartmentCd,
                 row.ProductCd,
+                Selected = row.IsValid ? "1" : "0",
+                row.WarningText,
                 User = userId ?? string.Empty
             });
         }
@@ -458,7 +457,8 @@ ON DUPLICATE KEY UPDATE
     }
 
     private sealed record ObjectSyncResolvedRow(
-        long ProductId, long DepartmentId, string DepartmentCd, string ProductCd);
+        long ProductId, long DepartmentId, string DepartmentCd, string ProductCd,
+        bool IsValid, string? WarningText);
 
     private sealed class EnsureRow
     {
