@@ -1,0 +1,1 @@
+function c(i,e){const n=i(e.hintKey??"PREVIEW_HINT",e.hintFallback??"View HTML preview");return{key:e.key??"view-preview",icon:"print",hint:n,stylingMode:"text",disabled:e.loading,onClick:t=>{e.onClick(t)}}}export{c};
