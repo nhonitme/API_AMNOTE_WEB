@@ -343,24 +343,117 @@ WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND RUN_VERSION=@RunVersion AND ISDE
         ProductionCostObjectSelectionUpdate update,
         string? userId)
     {
+        ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(update);
-        var affected = await session.ExecuteAsync(@"
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+
+        var items = ResolveSelectionItems(update);
+        if (items.Count == 0)
+            throw new ArgumentException("Cần ít nhất một dòng DEPARTMENT_ID + PRODUCT_ID để cập nhật lựa chọn.");
+
+        var locked = await LockRunForUpdateAsync(session, companyCd, update.RunId)
+            ?? throw new InvalidOperationException("RUN không tồn tại.");
+        if (update.RunVersion <= 0 || locked.RunVersion != update.RunVersion)
+            throw new InvalidOperationException("RUN_VERSION đã thay đổi. Tải lại kỳ G-K rồi chọn lại.");
+        if (!string.IsNullOrWhiteSpace(update.PeriodYm)
+            && !string.Equals(locked.PeriodYm?.Trim(), update.PeriodYm.Trim(), StringComparison.Ordinal))
+            throw new InvalidOperationException("PERIOD_YM không khớp RUN hiện hành.");
+        if (!GkRunStatus.AllowsPoolRecalc(locked.Status))
+            throw new InvalidOperationException(
+                "RUN đã khóa phân bổ hoặc đã CONFIRMED. Không được đổi lựa chọn đối tượng; mở lại (REOPEN) trước.");
+
+        var statuses = await GetStepStatusesForUpdateAsync(session, companyCd, update.RunId);
+        if (statuses.Any(x =>
+            !string.Equals(x.Value, "NOT_STARTED", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(x.Value, "OPEN", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(x.Value, "REOPENED", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException(
+                "RUN đã có bước tính/khóa giá thành. Không được đổi lựa chọn đối tượng trước khi mở lại các bước liên quan.");
+
+        var company = companyCd.Trim();
+        var user = userId ?? string.Empty;
+        const string updateSql = @"
 UPDATE production_cost_object
 SET IS_SELECTED=@Selected, UPDATE_BY=@UserId, UPDATE_AT=UTC_TIMESTAMP()
 WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0'
   AND DEPARTMENT_ID=@DepartmentId
-  AND (@ProductId = 0 OR PRODUCT_ID=@ProductId)",
-            new
+  AND PRODUCT_ID=@ProductId
+  AND (@AllowInvalid = 1 OR IFNULL(WARNING_TEXT,'') = '')";
+
+        foreach (var item in items)
+        {
+            // Chỉ cập nhật đúng cặp DEPARTMENT_ID + PRODUCT_ID — không wildcard ProductId=0.
+            if (item.DepartmentId <= 0 || item.ProductId <= 0)
+                throw new InvalidOperationException(
+                    "Không chọn được dòng thiếu DEPARTMENT_ID hoặc PRODUCT_ID.");
+
+            var affected = await session.ExecuteAsync(
+                updateSql,
+                new
+                {
+                    Selected = item.Selected ? "1" : "0",
+                    UserId = user,
+                    Company = company,
+                    update.RunId,
+                    item.DepartmentId,
+                    item.ProductId,
+                    // Khi bỏ chọn vẫn cho phép dòng có WARNING_TEXT; khi chọn thì chặn mapping lỗi.
+                    AllowInvalid = item.Selected ? 0 : 1
+                });
+
+            if (affected == 0)
             {
-                Selected = update.Selected ? "1" : "0",
-                UserId = userId ?? string.Empty,
-                Company = companyCd.Trim(),
-                update.RunId,
-                update.DepartmentId,
-                update.ProductId
-            });
-        if (affected == 0)
-            throw new InvalidOperationException("Không có đối tượng khớp DEPARTMENT_ID/PRODUCT_ID để cập nhật lựa chọn.");
+                var exists = await session.QueryFirstOrDefaultAsync<int>(@"
+SELECT COUNT(1) FROM production_cost_object
+WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0'
+  AND DEPARTMENT_ID=@DepartmentId AND PRODUCT_ID=@ProductId",
+                    new { Company = company, update.RunId, item.DepartmentId, item.ProductId });
+                if (exists == 0)
+                    throw new InvalidOperationException(
+                        $"Không có đối tượng khớp DEPARTMENT_ID={item.DepartmentId}/PRODUCT_ID={item.ProductId} trên RUN hiện hành.");
+                throw new InvalidOperationException(
+                    $"Không được chọn thành phẩm có mapping không hợp lệ (DEPARTMENT_ID={item.DepartmentId}, PRODUCT_ID={item.ProductId}).");
+            }
+
+            if (affected != 1)
+                throw new InvalidOperationException(
+                    $"Cập nhật lựa chọn không đúng 1 dòng (DEPARTMENT_ID={item.DepartmentId}, PRODUCT_ID={item.ProductId}, affected={affected}).");
+        }
+    }
+
+    private static List<ProductionCostObjectSelectionItem> ResolveSelectionItems(
+        ProductionCostObjectSelectionUpdate update)
+    {
+        if (update.Items is { Count: > 0 })
+        {
+            // Gộp trùng khóa theo cặp cuối cùng trong payload (tránh cập nhật 2 lần cùng dòng).
+            var map = new Dictionary<(long DepartmentId, long ProductId), ProductionCostObjectSelectionItem>();
+            foreach (var item in update.Items)
+            {
+                map[(item.DepartmentId, item.ProductId)] = new ProductionCostObjectSelectionItem
+                {
+                    DepartmentId = item.DepartmentId,
+                    ProductId = item.ProductId,
+                    Selected = item.Selected
+                };
+            }
+            return map.Values.ToList();
+        }
+
+        if (update.DepartmentId > 0 && update.ProductId > 0)
+        {
+            return
+            [
+                new ProductionCostObjectSelectionItem
+                {
+                    DepartmentId = update.DepartmentId,
+                    ProductId = update.ProductId,
+                    Selected = update.Selected
+                }
+            ];
+        }
+
+        return [];
     }
 
     /// <summary>
