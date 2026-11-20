@@ -811,6 +811,79 @@ LIMIT 1";
             p);
     }
 
+    public async Task<BiPeriodLockStepEvidence?> GetBiPeriodLockStepForUpdateAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        string biStepCode)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        if (string.IsNullOrWhiteSpace(periodYm) || periodYm.Trim().Length != 6)
+            throw new ArgumentException("PERIOD_YM phải 6 ký tự.");
+        if (string.IsNullOrWhiteSpace(biStepCode))
+            throw new ArgumentException("BI STEP_CODE bắt buộc.");
+
+        const string sql = @"
+SELECT
+    STEP_CODE AS StepCode,
+    STATUS AS Status,
+    FINISHED_AT AS FinishedAt,
+    UPDATE_BY AS UpdateBy,
+    MESSAGE AS Message
+FROM acc_period_lock_step
+WHERE COMPANY_CD = @CompanyCd
+  AND PERIOD_YM = @PeriodYm
+  AND STEP_CODE = @StepCode
+FOR UPDATE";
+
+        return await session.QueryFirstOrDefaultAsync<BiPeriodLockStepEvidence>(
+            sql,
+            new
+            {
+                CompanyCd = companyCd.Trim(),
+                PeriodYm = periodYm.Trim(),
+                StepCode = biStepCode.Trim()
+            });
+    }
+
+    public async Task<bool> HasStepExecuteHistoryAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        string stepCode)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ProductionCostWriteContext.EnsureCompany(companyCd);
+        ProductionCostWriteContext.EnsureRunIdentity(runId, runVersion);
+        if (string.IsNullOrWhiteSpace(stepCode))
+            throw new ArgumentException("STEP_CODE bắt buộc.");
+
+        const string sql = @"
+SELECT 1
+FROM production_cost_history
+WHERE COMPANY_CD = @CompanyCd
+  AND RUN_ID = @RunId
+  AND RUN_VERSION = @RunVersion
+  AND STEP_CODE = @StepCode
+  AND ACTION_CODE = @ActionCode
+  AND ISDEL = '0'
+LIMIT 1";
+
+        var row = await session.QueryFirstOrDefaultAsync<int?>(
+            sql,
+            new
+            {
+                CompanyCd = companyCd.Trim(),
+                RunId = runId,
+                RunVersion = runVersion,
+                StepCode = stepCode.Trim(),
+                ActionCode = HistoryActionCode.Execute
+            });
+        return row is > 0;
+    }
+
     public async Task UpsertGkStepStatusAsync(
         DapperSession session,
         string companyCd,
@@ -829,17 +902,22 @@ LIMIT 1";
         if (string.IsNullOrWhiteSpace(status))
             throw new ArgumentException("STATUS bắt buộc.");
 
+        var isDone = string.Equals(status.Trim(), ProductionCostStepStatus.Done, StringComparison.OrdinalIgnoreCase);
         const string sql = @"
 INSERT INTO production_cost_step (
     RUN_ID, COMPANY_CD, STEP_INDEX, STEP_CODE, STATUS,
+    COMPLETED_BY, COMPLETED_AT,
     ISDEL, CREATE_BY, CREATE_AT, UPDATE_BY, UPDATE_AT
 ) VALUES (
     @RunId, @CompanyCd, @StepIndex, @StepCode, @Status,
+    @CompletedBy, @CompletedAt,
     '0', @UserId, UTC_TIMESTAMP(), @UserId, UTC_TIMESTAMP()
 )
 ON DUPLICATE KEY UPDATE
     STEP_CODE = VALUES(STEP_CODE),
     STATUS = VALUES(STATUS),
+    COMPLETED_BY = CASE WHEN @IsDone = 1 THEN VALUES(COMPLETED_BY) ELSE COMPLETED_BY END,
+    COMPLETED_AT = CASE WHEN @IsDone = 1 THEN VALUES(COMPLETED_AT) ELSE COMPLETED_AT END,
     ISDEL = '0',
     UPDATE_BY = VALUES(UPDATE_BY),
     UPDATE_AT = UTC_TIMESTAMP()";
@@ -847,6 +925,9 @@ ON DUPLICATE KEY UPDATE
         await session.ExecuteAsync(sql, new
         {
             RunId = runId,
+            IsDone = isDone ? 1 : 0,
+            CompletedBy = isDone ? userId : null,
+            CompletedAt = isDone ? DateTime.UtcNow : (DateTime?)null,
             CompanyCd = companyCd.Trim(),
             StepIndex = stepIndex,
             StepCode = stepCode.Trim(),

@@ -1087,6 +1087,141 @@ public sealed partial class ProductionCostWriteService : IProductionCostWriteSer
         };
     }
 
+    public Task<ProductionCostLifecycleWriteResponse> ConfirmFaPrepaidLockAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null) =>
+        ConfirmBiPeriodLockHistoryAsync(
+            companyCd, userId, request, ProductionCostStepCode.FaPrepaidLock, databaseName);
+
+    public Task<ProductionCostLifecycleWriteResponse> ConfirmProfitLossLockAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null) =>
+        ConfirmBiPeriodLockHistoryAsync(
+            companyCd, userId, request, ProductionCostStepCode.ProfitLossReport, databaseName);
+
+    /// <summary>
+    /// Xác nhận B-I DONE rồi ghi <c>production_cost_history</c> ACTION=EXECUTE (idempotent).
+    /// Không gọi lại PeriodLock / SP tính khấu hao.
+    /// </summary>
+    private async Task<ProductionCostLifecycleWriteResponse> ConfirmBiPeriodLockHistoryAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string stepCode,
+        string? databaseName)
+    {
+        EnsureAuth(companyCd);
+        ValidatePeriod(request);
+        _gate.EnsureWritable();
+        ProductionCostWriteContext.EnsureDatabase(databaseName);
+
+        ProductionCostWriteContext.EnsureRunIdentity(request.RunId, request.RunVersion);
+        var operationId = ProductionCostWriteContext.RequireOperationId(request.OperationId);
+        var runId = request.RunId!.Value;
+        var runVersion = request.RunVersion!.Value;
+        var requestPeriodYm = request.PeriodYm.Trim();
+        var (_, normalizedStep, biStepCode) = BiPeriodLockHistoryPlanner.ResolveStep(stepCode);
+
+        return await ProductionCostWriteSession.ExecuteAsync(
+            _writeRepo,
+            databaseName!,
+            async (session, _) =>
+            {
+                var locked = await _writeRepo.LockRunForUpdateAsync(session, companyCd, runId)
+                    ?? throw new InvalidOperationException("RUN không tồn tại hoặc không thuộc COMPANY_CD.");
+                ProductionCostWriteContext.AssertLockedRunMatches(locked, companyCd, runId, runVersion);
+                AllocationRunConfig.AssertPeriodYmMatches(locked, requestPeriodYm);
+                var periodYm = locked.PeriodYm.Trim();
+
+                var bi = await _writeRepo.GetBiPeriodLockStepForUpdateAsync(
+                    session, companyCd, periodYm, biStepCode);
+                if (bi == null || string.IsNullOrWhiteSpace(bi.Status))
+                {
+                    throw new InvalidOperationException(
+                        $"Không đọc được acc_period_lock_step.{biStepCode} cho kỳ {periodYm}.");
+                }
+
+                var persisted = await _writeRepo.GetPersistedHistoryByOperationIdAsync(
+                    session, companyCd, operationId);
+                var alreadyHasExecute = await _writeRepo.HasStepExecuteHistoryAsync(
+                    session, companyCd, runId, runVersion, normalizedStep);
+
+                var plan = BiPeriodLockHistoryPlanner.Build(
+                    companyCd,
+                    periodYm,
+                    runId,
+                    runVersion,
+                    normalizedStep,
+                    operationId,
+                    bi.Status,
+                    bi.FinishedAt,
+                    bi.UpdateBy,
+                    alreadyHasExecute,
+                    persisted,
+                    userId);
+
+                if (plan.IsNoop || !plan.WouldWriteHistory || plan.History == null)
+                {
+                    return new ProductionCostLifecycleWriteResponse
+                    {
+                        WriteEnabled = true,
+                        Persisted = false,
+                        PeriodYm = periodYm,
+                        RunId = runId,
+                        RunVersion = runVersion,
+                        Action = HistoryActionCode.Execute,
+                        StepStatusesAreClientSimulated = false,
+                        IdempotencyAction = plan.IdempotencyAction
+                            ?? HistoryPlan.WriteAction.NoopAlreadyWritten.ToString(),
+                        Message = plan.Message
+                    };
+                }
+
+                await _writeRepo.UpsertGkStepStatusAsync(
+                    session,
+                    companyCd,
+                    runId,
+                    plan.StepIndex,
+                    plan.StepCode,
+                    ProductionCostStepStatus.Done,
+                    userId);
+
+                var historyInsert = ProductionCostWriteContext.FromHistoryPlan(plan.History, companyCd, periodYm);
+                historyInsert.ContentFingerprint = plan.ContentFingerprint;
+                historyInsert.RequireContentFingerprint = true;
+                historyInsert.ResultAfter =
+                    $"{plan.StepCode}=DONE; fp={plan.ContentFingerprint}; bi=DONE";
+                historyInsert.Reason = null;
+
+                var hist = await _writeRepo.TryInsertHistoryAsync(session, historyInsert, databaseName!);
+                if (!hist.Inserted
+                    && !string.Equals(hist.IdempotencyAction, "NoopAlreadyWritten", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        hist.Message ?? $"History EXECUTE {plan.StepCode} thất bại.");
+                }
+
+                return new ProductionCostLifecycleWriteResponse
+                {
+                    WriteEnabled = true,
+                    Persisted = hist.Inserted,
+                    PeriodYm = periodYm,
+                    RunId = runId,
+                    RunVersion = runVersion,
+                    Action = HistoryActionCode.Execute,
+                    StepStatusesAreClientSimulated = false,
+                    IdempotencyAction = hist.IdempotencyAction,
+                    Message = hist.Inserted
+                        ? $"EXECUTE {plan.StepCode} đã ghi history — B-I DONE xác nhận từ DB."
+                        : plan.Message
+                };
+            });
+    }
+
     public Task<ProductionCostLifecycleWriteResponse> PreviewReopenAsync(
         string companyCd,
         string? userId,

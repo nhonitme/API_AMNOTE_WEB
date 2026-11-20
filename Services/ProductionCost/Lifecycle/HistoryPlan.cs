@@ -6,6 +6,7 @@ namespace API_AMNOTE_WEB.Services.ProductionCost.Lifecycle;
 
 public static class HistoryActionCode
 {
+    public const string Execute = "EXECUTE";
     public const string Reopen = "REOPEN";
     public const string Preview = "PREVIEW";
     public const string Recalculate = "RECALCULATE";

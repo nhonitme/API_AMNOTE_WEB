@@ -221,6 +221,25 @@ public interface IProductionCostWriteRepository
         string status,
         string? userId);
 
+    /// <summary>
+    /// Đọc bằng chứng B-I <c>acc_period_lock_step</c> FOR UPDATE trong TX hiện tại.
+    /// </summary>
+    Task<BiPeriodLockStepEvidence?> GetBiPeriodLockStepForUpdateAsync(
+        DapperSession session,
+        string companyCd,
+        string periodYm,
+        string biStepCode);
+
+    /// <summary>
+    /// true nếu đã có history EXECUTE (ISDEL=0) cho RUN + VERSION + STEP_CODE.
+    /// </summary>
+    Task<bool> HasStepExecuteHistoryAsync(
+        DapperSession session,
+        string companyCd,
+        long runId,
+        int runVersion,
+        string stepCode);
+
     /// <summary>UPSERT production_cost_voucher_ref theo STABLE_KEY. Không Commit.</summary>
     Task UpsertVoucherRefAsync(
         DapperSession session,

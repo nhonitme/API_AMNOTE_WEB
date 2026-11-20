@@ -53,6 +53,26 @@ public interface IProductionCostWriteService
         ProductionCostWriteRequest request,
         string? databaseName = null);
 
+    /// <summary>
+    /// Ghi history EXECUTE B1 sau khi PeriodLock FA_PREPAID_LOCK = DONE (idempotent).
+    /// Không chạy lại nghiệp vụ khóa sổ.
+    /// </summary>
+    Task<ProductionCostLifecycleWriteResponse> ConfirmFaPrepaidLockAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null);
+
+    /// <summary>
+    /// Ghi history EXECUTE B6 sau khi PeriodLock PROFIT_LOSS_REPORT = DONE (idempotent).
+    /// Không chạy lại nghiệp vụ khóa sổ.
+    /// </summary>
+    Task<ProductionCostLifecycleWriteResponse> ConfirmProfitLossLockAsync(
+        string companyCd,
+        string? userId,
+        ProductionCostWriteRequest request,
+        string? databaseName = null);
+
     Task<ProductionCostLifecycleWriteResponse> PreviewReopenAsync(
         string companyCd,
         string? userId,

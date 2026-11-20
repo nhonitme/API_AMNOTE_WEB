@@ -46,6 +46,16 @@ public sealed class PersistedHistoryRef
     public string? StatusAfter { get; set; }
 }
 
+/// <summary>Bằng chứng trạng thái bước PeriodLock B-I trong TX ghi history G-K.</summary>
+public sealed class BiPeriodLockStepEvidence
+{
+    public string StepCode { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime? FinishedAt { get; set; }
+    public string? UpdateBy { get; set; }
+    public string? Message { get; set; }
+}
+
 public sealed class HistoryEntryPlan
 {
     public string StableKey { get; set; } = string.Empty;

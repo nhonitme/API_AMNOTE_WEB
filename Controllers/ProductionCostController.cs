@@ -269,6 +269,28 @@ public sealed class ProductionCostController : BaseApiController
             CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
     }
 
+    /// <summary>
+    /// POST /api/production-cost/fa-prepaid/confirm
+    /// Ghi history EXECUTE B1 sau PeriodLock FA_PREPAID_LOCK = DONE (idempotent).
+    /// </summary>
+    [HttpPost("fa-prepaid/confirm")]
+    public async Task<IActionResult> ConfirmFaPrepaidLock([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.ConfirmFaPrepaidLockAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
+    /// <summary>
+    /// POST /api/production-cost/profit-loss/confirm
+    /// Ghi history EXECUTE B6 sau PeriodLock PROFIT_LOSS_REPORT = DONE (idempotent).
+    /// </summary>
+    [HttpPost("profit-loss/confirm")]
+    public async Task<IActionResult> ConfirmProfitLossLock([FromBody] ProductionCostWriteRequest? request)
+    {
+        return await WriteAsync(() => _writeService.ConfirmProfitLossLockAsync(
+            CompanyCd(), UserIdOrNull(), request ?? new ProductionCostWriteRequest(), DbName()));
+    }
+
     // ---- 2C-05 REOPEN / RECALCULATE / COMPARE (WriteGate OFF trên Confirm) ----
 
     /// <summary>POST /api/production-cost/reopen/preview</summary>
