@@ -27,6 +27,8 @@ public sealed partial class ProductionCostWriteRepository
 
         try
         {
+            await AssertMonthNotLockedForEnsureAsync(session, company, ym);
+
             var existing = await session.QueryFirstOrDefaultAsync<EnsureRow>(@"
 SELECT PERIOD_COST_ID AS PeriodCostId, CURRENT_RUN_ID AS CurrentRunId
 FROM production_cost_period
@@ -34,23 +36,7 @@ WHERE COMPANY_CD=@Company AND PERIOD_YM=@Ym AND ISDEL='0'
 LIMIT 1
 FOR UPDATE", new { Company = company, Ym = ym });
 
-            if (existing?.CurrentRunId is > 0)
-            {
-                var ver = await session.QueryFirstOrDefaultAsync<int>(@"
-SELECT RUN_VERSION FROM production_cost_run
-WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0' LIMIT 1",
-                    new { Company = company, RunId = existing.CurrentRunId });
-                return new ProductionCostEnsureResult
-                {
-                    Created = false,
-                    PeriodCostId = existing.PeriodCostId,
-                    RunId = existing.CurrentRunId,
-                    RunVersion = ver,
-                    PeriodYm = ym,
-                    Message = "Kỳ đã có RUN hiện hành."
-                };
-            }
-
+            var resetExisting = false;
             long periodId;
             if (existing == null)
             {
@@ -65,6 +51,23 @@ INSERT INTO production_cost_period (
             else
             {
                 periodId = existing.PeriodCostId;
+                if (existing.CurrentRunId is > 0)
+                {
+                    // Cùng TX: chặn trước mọi DELETE nếu RUN đã có tác động KT/kho không hoàn nguyên an toàn.
+                    await AssertCurrentRunSafeToResetAsync(session, company, ym, existing.CurrentRunId.Value);
+                    await DeleteGkWorkingDataForRunAsync(session, company, existing.CurrentRunId.Value);
+                    await session.ExecuteAsync(@"
+UPDATE production_cost_period
+SET CURRENT_RUN_ID=NULL,
+    STATUS='OPEN',
+    COST_ENGINE='NONE',
+    COGS_RULE=NULL,
+    UPDATE_BY=@User,
+    UPDATE_AT=UTC_TIMESTAMP()
+WHERE PERIOD_COST_ID=@PeriodId AND COMPANY_CD=@Company AND ISDEL='0'",
+                        new { User = user, PeriodId = periodId, Company = company });
+                    resetExisting = true;
+                }
             }
 
             await session.ExecuteAsync(@"
@@ -80,7 +83,8 @@ INSERT INTO production_cost_run (
 
             var linked = await session.ExecuteAsync(@"
 UPDATE production_cost_period
-SET CURRENT_RUN_ID=@RunId, UPDATE_BY=@User, UPDATE_AT=UTC_TIMESTAMP()
+SET CURRENT_RUN_ID=@RunId, STATUS='OPEN', COST_ENGINE='NONE', COGS_RULE=NULL,
+    UPDATE_BY=@User, UPDATE_AT=UTC_TIMESTAMP()
 WHERE PERIOD_COST_ID=@PeriodId AND COMPANY_CD=@Company AND ISDEL='0' AND CURRENT_RUN_ID IS NULL",
                 new { RunId = runId, User = user, PeriodId = periodId, Company = company });
             if (linked != 1)
@@ -112,13 +116,154 @@ INSERT INTO production_cost_step (
                 RunId = runId,
                 RunVersion = 1,
                 PeriodYm = ym,
-                Message = "Đã khởi tạo kỳ DRAFT. Chưa ghi chứng từ."
+                Message = resetExisting
+                    ? "Đã khởi tạo lại kỳ DRAFT (0/6). Đã xóa dữ liệu G-K cũ; không đụng chứng từ kế toán / phiếu kho nguồn."
+                    : "Đã khởi tạo kỳ DRAFT. Chưa ghi chứng từ."
             };
         }
         catch (MySqlException ex)
         {
             throw new InvalidOperationException($"Khởi tạo kỳ G-K: {ex.Message}", ex);
         }
+    }
+
+    private static async Task AssertMonthNotLockedForEnsureAsync(
+        DapperSession session, string company, string ym)
+    {
+        var status = await session.QueryFirstOrDefaultAsync<string>(@"
+SELECT STATUS FROM acc_period_lock_month
+WHERE COMPANY_CD=@Company AND PERIOD_YM=@Ym AND ISDEL='0' LIMIT 1",
+            new { Company = company, Ym = ym });
+        if (string.Equals(status, "LOCKED", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "PROCESSING", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Kỳ {ym} đang {status}. Không khởi tạo lại G-K khi kỳ đã khóa.");
+        }
+    }
+
+    private static async Task AssertCurrentRunSafeToResetAsync(
+        DapperSession session, string company, string ym, long runId)
+    {
+        var locked = await session.QueryFirstOrDefaultAsync<EnsureRunSafetyRow>(@"
+SELECT RUN_ID AS RunId, STATUS AS Status, RUN_VERSION AS RunVersion
+FROM production_cost_run
+WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0'
+LIMIT 1
+FOR UPDATE", new { Company = company, RunId = runId });
+        if (locked == null)
+            throw new InvalidOperationException("RUN hiện hành của kỳ không tồn tại hoặc đã xóa.");
+
+        if (string.Equals(locked.Status, GkRunStatus.Confirmed, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "RUN đã CONFIRMED toàn kỳ. Không khởi tạo lại — mở lại (REOPEN) các bước có tác động trước.");
+        }
+
+        var unsafeFlags = await session.QueryFirstOrDefaultAsync<EnsureUnsafeFlags>(@"
+SELECT
+  EXISTS(
+    SELECT 1 FROM production_cost_voucher_ref
+    WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0'
+      AND CHIT_ID IS NOT NULL AND CHIT_ID > 0
+  ) AS HasPostedVoucher,
+  EXISTS(
+    SELECT 1 FROM production_cost_receipt
+    WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0' AND IS_APPLIED='1'
+  ) AS HasAppliedInventory,
+  EXISTS(
+    SELECT 1 FROM acc_period_lock_step
+    WHERE COMPANY_CD=@Company AND PERIOD_YM=@Ym
+      AND STEP_CODE IN ('FA_PREPAID_LOCK', 'COGS_SUMMARY', 'PROFIT_LOSS_REPORT')
+      AND UPPER(IFNULL(STATUS,'')) = 'DONE'
+  ) AS HasBiStepDone
+", new { Company = company, RunId = runId, Ym = ym });
+
+        if ((unsafeFlags?.HasPostedVoucher ?? 0) != 0)
+        {
+            throw new InvalidOperationException(
+                "RUN đã sinh chứng từ kế toán (voucher_ref). Không xóa một phần — hãy REOPEN/hoàn nguyên trước khi khởi tạo lại kỳ.");
+        }
+
+        if ((unsafeFlags?.HasAppliedInventory ?? 0) != 0)
+        {
+            throw new InvalidOperationException(
+                "RUN đã cập nhật giá kho (IS_APPLIED=1). Không khởi tạo lại khi chưa hoàn nguyên an toàn.");
+        }
+
+        if ((unsafeFlags?.HasBiStepDone ?? 0) != 0)
+        {
+            throw new InvalidOperationException(
+                "Kỳ đã có bước B-I khóa (FA_PREPAID_LOCK / COGS_SUMMARY / PROFIT_LOSS) = DONE. Không khởi tạo lại G-K.");
+        }
+
+        var priceAuditTable = await session.QueryFirstOrDefaultAsync<int>(@"
+SELECT COUNT(*) FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'production_cost_price_audit'");
+        if (priceAuditTable > 0)
+        {
+            var openAudit = await session.QueryFirstOrDefaultAsync<int>(@"
+SELECT EXISTS(
+  SELECT 1 FROM production_cost_price_audit
+  WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0' AND IFNULL(IS_REVERSED,'0')='0'
+)", new { Company = company, RunId = runId });
+            if (openAudit != 0)
+            {
+                throw new InvalidOperationException(
+                    "RUN còn snapshot giá kho chưa hoàn (price_audit). Không khởi tạo lại khi chưa hoàn nguyên an toàn.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Xóa dữ liệu làm việc G-K của RUN trong TX hiện tại.
+    /// Không đụng chitinfo / phiếu nhập-xuất kho nguồn.
+    /// Chỉ gọi sau <see cref="AssertCurrentRunSafeToResetAsync"/>.
+    /// </summary>
+    private static async Task DeleteGkWorkingDataForRunAsync(
+        DapperSession session, string company, long runId)
+    {
+        var args = new { Company = company, RunId = runId };
+
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_nvl_basis_line WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_nvl_basis WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_nvl_orphan WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_alloc_detail WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_alloc_pool WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_source WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_wip WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_receipt WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_voucher_ref WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_object WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_history WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        await session.ExecuteAsync(
+            "DELETE FROM production_cost_step WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+
+        var priceAuditTable = await session.QueryFirstOrDefaultAsync<int>(@"
+SELECT COUNT(*) FROM information_schema.TABLES
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'production_cost_price_audit'");
+        if (priceAuditTable > 0)
+        {
+            await session.ExecuteAsync(
+                "DELETE FROM production_cost_price_audit WHERE COMPANY_CD=@Company AND RUN_ID=@RunId", args);
+        }
+
+        await session.ExecuteAsync(@"
+UPDATE production_cost_run
+SET ISDEL='1', STATUS=@Superseded, UPDATE_AT=UTC_TIMESTAMP()
+WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0'",
+            new { Company = company, RunId = runId, Superseded = GkRunStatus.Superseded });
     }
 
     public async Task UpdateRunConfigAsync(
@@ -464,6 +609,20 @@ ON DUPLICATE KEY UPDATE
     {
         public long PeriodCostId { get; set; }
         public long? CurrentRunId { get; set; }
+    }
+
+    private sealed class EnsureRunSafetyRow
+    {
+        public long RunId { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public int RunVersion { get; set; }
+    }
+
+    private sealed class EnsureUnsafeFlags
+    {
+        public int HasPostedVoucher { get; set; }
+        public int HasAppliedInventory { get; set; }
+        public int HasBiStepDone { get; set; }
     }
 
     private sealed class BoundRow
