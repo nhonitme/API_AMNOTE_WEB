@@ -2,6 +2,7 @@ using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 using API_AMNOTE_WEB.Data;
 using API_AMNOTE_WEB.Helpers;
 using API_AMNOTE_WEB.Interfaces;
+using API_AMNOTE_WEB.Services;
 using System.Globalization;
 
 namespace API_AMNOTE_WEB.TaxWithholding;
@@ -12,7 +13,8 @@ public sealed class PitCertificateService(
     IPitRepository documents,
     IPitXslService templates,
     ISystemRepository systemRepository,
-    ILogger<PitCertificateService> logger) : IPitCertificateService
+    ILogger<PitCertificateService> logger,
+    ElectronicDocumentPdfService pdf) : IPitCertificateService
 {
     private const string PublicLookupCompanyTargetsQuery = "CALL getEInvoicePublicLookupCompanyTargets(@p_TAX_CODE)";
 
@@ -35,6 +37,7 @@ public sealed class PitCertificateService(
         await using var session = await db.CreateSessionAsync();
         var savedId = await repository.SaveAsync(session, company, user, id, version, xslId, data);
         session.Commit();
+        pdf.NotifyPendingWork();
         return savedId;
     }
 
@@ -43,7 +46,6 @@ public sealed class PitCertificateService(
         var document = await documents.Get(company, PitKinds.Certificate, id);
         if (document.XSL_ID is not > 0) throw new ArgumentException("Chọn mẫu số / ký hiệu chứng từ từ danh mục.");
         await templates.RequireActiveCatalogAsync(company, document.XSL_ID.Value);
-        // Preserve idempotent acknowledgement of an already signed document.
         if (!acceptingSignature || document.IS_SIGNED != 1)
             await RequireActiveIncomeTypeAsync(((PitCertificateDto)document).KTNHAP);
     }

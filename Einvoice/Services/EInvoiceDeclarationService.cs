@@ -274,6 +274,7 @@ namespace API_AMNOTE_WEB.Services
                 }
 
                 session.Commit();
+                _pdf.NotifyPendingWork();
                 return tkhaiId;
             }
             catch
@@ -294,6 +295,7 @@ namespace API_AMNOTE_WEB.Services
                 await _repository.SetSignatureAsync(session, companyCd, userId, tkhaiId, signedXml, 1, null);
                 await _pdf.PinSharedTemplateAsync(session, companyCd, "declaration", tkhaiId);
                 session.Commit();
+                _pdf.NotifyPendingWork();
             }
             catch
             {

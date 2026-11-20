@@ -173,7 +173,29 @@ public sealed class ProductionCostObjectsResponse
     public IReadOnlyList<ProductionCostObjectDto> Items { get; set; } = Array.Empty<ProductionCostObjectDto>();
     /// <summary>Số phiếu nhập thành phẩm N155/C154 nguồn trong kỳ (không phụ thuộc bước B4/B5).</summary>
     public int SourceReceiptCount { get; set; }
+    /// <summary>Kết quả kiểm tra Bước 00 — trạng thái nghiệp vụ, không dựa vào số toast FE.</summary>
+    public ProductionCostPrerequisiteValidationDto PrerequisiteValidation { get; set; } = new();
     public string? Message { get; set; }
+}
+
+/// <summary>Kết quả tiền kiểm Bước 00 (NOT_CHECKED / SUCCESS / WARNING / ERROR).</summary>
+public sealed class ProductionCostPrerequisiteValidationDto
+{
+    public string Status { get; set; } = "NOT_CHECKED";
+    public int ErrorCount { get; set; }
+    public int WarningCount { get; set; }
+    public IReadOnlyList<ProductionCostPrerequisiteIssueDto> Issues { get; set; } =
+        Array.Empty<ProductionCostPrerequisiteIssueDto>();
+}
+
+public sealed class ProductionCostPrerequisiteIssueDto
+{
+    /// <summary>ERROR hoặc WARNING.</summary>
+    public string Level { get; set; } = "ERROR";
+    public string Code { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public long? ProductId { get; set; }
+    public long? DepartmentId { get; set; }
 }
 
 public sealed class ProductionCostObjectDto

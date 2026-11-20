@@ -394,6 +394,10 @@ public interface IProductionCostWriteRepository
         IReadOnlyList<string> cascadeReverse,
         string? userId);
 
+    /// <summary>
+    /// Khởi tạo / khởi tạo lại kỳ: reset G-K an toàn (nếu có RUN cũ) → RUN DRAFT mới → 6 bước NOT_STARTED
+    /// → đồng bộ đối tượng từ phiếu nhập (cùng TX với SyncObjectsFromReceipts).
+    /// </summary>
     Task<ProductionCostEnsureResult> EnsureDraftRunAsync(
         DapperSession session,
         string companyCd,
@@ -412,12 +416,25 @@ public interface IProductionCostWriteRepository
         ProductionCostObjectSelectionUpdate update,
         string? userId);
 
+    /// <summary>
+    /// Chỉ làm mới production_cost_object của RUN đang chuẩn bị (DELETE ALL + INSERT NEW).
+    /// Không đổi RUN_ID, cấu hình, 6 bước, phân bổ, chứng từ.
+    /// </summary>
     Task<int> SyncObjectsFromReceiptsAsync(
         DapperSession session,
         string companyCd,
         long runId,
         int runVersion,
         string? userId);
+
+    /// <summary>
+    /// Bước 00 — kiểm tra lại dữ liệu đầu vào trong TX trước Confirm B2–B5.
+    /// Throw khi STATUS = ERROR hoặc NOT_CHECKED. WARNING vẫn cho phép tiếp tục.
+    /// </summary>
+    Task AssertPrerequisiteReadyAsync(
+        DapperSession session,
+        string companyCd,
+        long runId);
 
     Task UpdatePoolReductionAsync(
         DapperSession session,

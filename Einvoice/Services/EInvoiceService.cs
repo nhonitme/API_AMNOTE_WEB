@@ -33,6 +33,7 @@ namespace API_AMNOTE_WEB.Services
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IConfiguration _configuration;
         private readonly ILogger<EInvoiceService> _logger;
+        private readonly IEElectronicDocumentPdfWorkSignal _pdfWorkSignal;
 
         private const string EInvoiceMailCode = "EINV";
         private const int EInvoiceMailStatusSent = 1;
@@ -54,7 +55,8 @@ namespace API_AMNOTE_WEB.Services
             DapperExecutor db,
             IHttpContextAccessor httpContextAccessor,
             IConfiguration configuration,
-            ILogger<EInvoiceService> logger)
+            ILogger<EInvoiceService> logger,
+            IEElectronicDocumentPdfWorkSignal pdfWorkSignal)
         {
             _repository = repository;
             _messageRepository = messageRepository;
@@ -72,6 +74,7 @@ namespace API_AMNOTE_WEB.Services
             _httpContextAccessor = httpContextAccessor;
             _configuration = configuration;
             _logger = logger;
+            _pdfWorkSignal = pdfWorkSignal;
         }
 
         public async Task<IReadOnlyList<EInvoiceDto>> SearchAsync(string companyCd, EInvoiceSearchRequest request)
@@ -1258,6 +1261,7 @@ namespace API_AMNOTE_WEB.Services
                     await _repository.SetBkeSignatureAsync(session, companyCd, userId, invoiceId, signedBkeXml!, 1);
                 }
                 session.Commit();
+                _pdfWorkSignal.NotifyWorkAvailable();
             }
             catch
             {
@@ -1379,6 +1383,7 @@ namespace API_AMNOTE_WEB.Services
                 }
 
                 session.Commit();
+                _pdfWorkSignal.NotifyWorkAvailable();
                 return invoiceId;
             }
             catch

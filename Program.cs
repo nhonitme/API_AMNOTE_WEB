@@ -361,6 +361,7 @@ builder.Services.AddScoped<IEInvoiceService, EInvoiceService>();
 builder.Services.AddSingleton<IEInvoiceHtmlToPdfService, EInvoiceHtmlToPdfService>();
 builder.Services.AddScoped<ElectronicDocumentStorage>();
 builder.Services.AddScoped<ElectronicDocumentRenderContext>();
+builder.Services.AddSingleton<IEElectronicDocumentPdfWorkSignal, ElectronicDocumentPdfWorkSignal>();
 builder.Services.AddScoped<ElectronicDocumentPdfService>();
 builder.Services.AddHostedService<ElectronicDocumentPdfWorker>();
 builder.Services.AddScoped<IEInvoicePrintService, EInvoicePrintService>();

@@ -83,8 +83,6 @@ namespace API_AMNOTE_WEB.Reporting
             Landscape = _layout.Landscape;
             Margins = new Margins(_layout.MarginLeft, _layout.MarginRight, _layout.MarginTop, _layout.MarginBottom);
             RequestParameters = false;
-            // Export formatted Text as-is so PDF and Excel share the same thousand-separator display
-            // (Value mode + locale parse can turn large amounts into scientific notation).
             ExportOptions.Xlsx.TextExportMode = TextExportMode.Text;
             ExportOptions.Xls.TextExportMode = TextExportMode.Text;
             BuildElementConfiguredReport(configuration, companyContext, sourceTable);
@@ -106,6 +104,7 @@ namespace API_AMNOTE_WEB.Reporting
                 && tableGroupField != null
                 && (reportHeaderElements.Count > 0 || pageHeaderElements.Count > 0 || reportFooterElements.Count > 0 || HasSignatures(companyContext));
             var useDocumentDetailPages = !_showDetailTable && detailElements.Count > 0;
+
 
             if (useGroupedChitPages)
             {
@@ -796,13 +795,13 @@ namespace API_AMNOTE_WEB.Reporting
 
         private static bool IsStaticFixedText(CompanyReportElementInfo element)
         {
-            if (IsAccountNumberElement(element))
+            var source = Common.NormalizeToken(element.VALUE_SOURCE);
+            if (source is not ("fixedtext" or "fixed"))
             {
                 return false;
             }
 
-            var source = Common.NormalizeToken(element.VALUE_SOURCE);
-            return source is "fixedtext" or "fixed";
+            return string.IsNullOrWhiteSpace(element.VALUE_FIELD);
         }
 
         private string? ResolveElementValueText(
@@ -811,18 +810,6 @@ namespace API_AMNOTE_WEB.Reporting
             DataTable table,
             DataRow? row)
         {
-            // CASH_BOOK header "Số tài khoản" was seeded as FIXED_TEXT without VALUE_FIELD.
-            // Always bind account filter / data account when this item is rendered.
-            if (IsAccountNumberElement(element))
-            {
-                return ResolveParamElementValue(
-                        Common.NormalizeNullableText(element.VALUE_FIELD) ?? "accountCd",
-                        element)
-                    ?? ResolveParamElementValue("accountCd", element)
-                    ?? ResolveParamElementValue("ACCOUNT_CD", element)
-                    ?? ResolveDataElementValue(table, row, "ACCOUNT_CD", element);
-            }
-
             var source = Common.NormalizeToken(element.VALUE_SOURCE);
             var field = Common.NormalizeNullableText(element.VALUE_FIELD);
             return source switch
@@ -832,16 +819,9 @@ namespace API_AMNOTE_WEB.Reporting
                     ?? ResolveDataElementValue(table, row, field, element),
                 "data" => ResolveDataElementValue(table, row, field, element),
                 "system" => ResolveSystemElementValue(companyContext, field),
+                "fixedtext" or "fixed" when field != null => ResolveDataElementValue(table, row, field, element),
                 _ => ResolveElementStaticText(element.CAPTION) ?? ResolveElementLabelText(element)
             };
-        }
-
-        private static bool IsAccountNumberElement(CompanyReportElementInfo element)
-        {
-            var itemKey = Common.NormalizeToken(element.ITEM_KEY);
-            var labelKey = Common.NormalizeToken(element.LABEL_TEXT);
-            return itemKey is "accountnumber" or "accountno" or "accountcd"
-                || labelKey is "accountnumber" or "accountno";
         }
 
         private string? ResolveParamElementValue(string? field, CompanyReportElementInfo element)
@@ -1548,8 +1528,6 @@ namespace API_AMNOTE_WEB.Reporting
                 }
             }
 
-            // Numeric FORMAT_TYPE must also format string payloads (Dapper/DataTable may keep amounts as text).
-            // Otherwise PDF/Excel show raw digits or Excel General → scientific notation.
             if (format != null && LooksLikeNumericFormat(format))
             {
                 var numeric = TryCoerceToDecimal(value);
@@ -1564,8 +1542,6 @@ namespace API_AMNOTE_WEB.Reporting
                 }
             }
 
-            // string implements IFormattable in some runtimes but date masks do not apply to raw YMD text —
-            // skip IFormattable path for string so we do not silently ignore FORMAT_TYPE=date.
             if (format != null && value is IFormattable && value is not string)
             {
                 return string.Format(CultureInfo.InvariantCulture, format, value);
@@ -2352,7 +2328,6 @@ namespace API_AMNOTE_WEB.Reporting
         private static ReportTableLayout? ResolveTableLayout(DataTable table, string reportLanguage)
         {
             if (!HasDetailTable(table) ||
-                !table.ExtendedProperties.Contains(ReportDataTableProperties.TableLayoutMetadata) ||
                 table.ExtendedProperties[ReportDataTableProperties.TableLayoutMetadata] is not DataTable metadataTable)
             {
                 return null;
@@ -2377,6 +2352,7 @@ namespace API_AMNOTE_WEB.Reporting
             {
                 return null;
             }
+
 
             ReportFieldCoalesceHelper.MaterializeFromLayout(table, metadataTable);
 

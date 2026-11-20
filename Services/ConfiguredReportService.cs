@@ -108,7 +108,6 @@ namespace API_AMNOTE_WEB.Services
         private readonly IWebHostEnvironment _environment;
         private readonly ILogger<ConfiguredReportService> _logger;
 
-        /// <summary>DataTable column → sys_code.CODE_TYPE for master-grid PDF (replace in place).</summary>
         private static readonly IReadOnlyDictionary<string, string> MasterGridSysCodeColumns =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -116,20 +115,12 @@ namespace API_AMNOTE_WEB.Services
                 ["CUSTOMER_TYPE"] = "CUSTOMER_TYPE",
             };
 
-        /// <summary>
-        /// Display column ← (code column, CODE_TYPE).
-        /// SP may seed empty STATUS_TEXT; API fills localized FA_STATUS text from STATUS.
-        /// </summary>
         private static readonly IReadOnlyDictionary<string, (string CodeField, string CodeType)> MasterGridSysCodeDisplayColumns =
             new Dictionary<string, (string CodeField, string CodeType)>(StringComparer.OrdinalIgnoreCase)
             {
                 ["STATUS_TEXT"] = ("STATUS", "FA_STATUS"),
             };
 
-        /// <summary>
-        /// These reports return STATUS + empty STATUS_TEXT. Preview must localize STATUS_TEXT
-        /// even when printLayout is omitted (on-screen grid and Excel).
-        /// </summary>
         private static readonly HashSet<string> FaStatusTextReports = new(StringComparer.OrdinalIgnoreCase)
         {
             "FA_ASSET_BOOK_REPORT",
@@ -186,6 +177,8 @@ namespace API_AMNOTE_WEB.Services
             if (printLayoutMode != PrintLayoutMode.Grid)
             {
                 EnrichReportDataTable(table, context);
+          
+                MaterializeBookCoalesceFields(table);
                 RefreshConfiguredTableAvailability(table);
             }
 
@@ -200,10 +193,6 @@ namespace API_AMNOTE_WEB.Services
             if (printLayoutMode == PrintLayoutMode.Grid)
             {
                 await ApplyPreviewGridPrintLayoutAsync(context, table);
-            }
-            else
-            {
-                MaterializeBookCoalesceFields(table, context);
             }
 
             var signatures = await ResolveReportSignaturesAsync(context.CompanyCd, context.Config.SIGNATURES, query);
@@ -406,7 +395,7 @@ namespace API_AMNOTE_WEB.Services
             };
         }
 
-        private static void MaterializeBookCoalesceFields(DataTable table, ExecutionContext context)
+        private static void MaterializeBookCoalesceFields(DataTable table)
         {
             if (table == null)
             {
@@ -788,6 +777,22 @@ namespace API_AMNOTE_WEB.Services
             AddValue(namedValues, normalizedValues, "includeDetail", includeDetail);
             AddValue(namedValues, normalizedValues, "INCLUDE_DETAIL", includeDetail);
             AddValue(namedValues, normalizedValues, "p_INCLUDE_DETAIL", includeDetail);
+
+            // AR invoice book → rpt_book_ar_invoice.@p_INCLUDE_OPENING ('1' gồm đầu kỳ, '0' chỉ trong kỳ).
+            var includeOpeningRaw =
+                GetQueryValue(query, "includeOpening") ??
+                GetQueryValue(query, "INCLUDE_OPENING") ??
+                GetQueryValue(query, "includeOpeningInvoices") ??
+                GetQueryValue(query, "INCLUDE_OPENING_INVOICES");
+            var includeOpeningToken = Common.NormalizeToken(includeOpeningRaw);
+            var includeOpening =
+                string.IsNullOrEmpty(includeOpeningToken) ||
+                includeOpeningToken is "1" or "true" or "yes" or "y"
+                    ? "1"
+                    : "0";
+            AddValue(namedValues, normalizedValues, "includeOpening", includeOpening);
+            AddValue(namedValues, normalizedValues, "INCLUDE_OPENING", includeOpening);
+            AddValue(namedValues, normalizedValues, "p_INCLUDE_OPENING", includeOpening);
             AddValue(namedValues, normalizedValues, "menuCode", effectiveMenuCode);
             AddValue(namedValues, normalizedValues, "MENU_CODE", effectiveMenuCode);
             AddValue(namedValues, normalizedValues, "p_MENU_CODE", effectiveMenuCode);

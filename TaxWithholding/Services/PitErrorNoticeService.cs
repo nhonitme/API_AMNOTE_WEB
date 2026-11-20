@@ -1,10 +1,15 @@
 using API_AMNOTE_WEB.TaxWithholding.Interfaces;
 using API_AMNOTE_WEB.Data;
+using API_AMNOTE_WEB.Services;
 using System.Globalization;
 
 namespace API_AMNOTE_WEB.TaxWithholding;
 
-public sealed class PitErrorNoticeService(DapperExecutor db, IPitErrorNoticeRepository repository, IPitRepository documents) : IPitErrorNoticeService
+public sealed class PitErrorNoticeService(
+    DapperExecutor db,
+    IPitErrorNoticeRepository repository,
+    IPitRepository documents,
+    ElectronicDocumentPdfService pdf) : IPitErrorNoticeService
 {
     public async Task<long> SaveAsync(string company, string user, long id, int version, PitErrorNoticeDto data)
     {
@@ -20,6 +25,7 @@ public sealed class PitErrorNoticeService(DapperExecutor db, IPitErrorNoticeRepo
         await using var session = await db.CreateSessionAsync();
         var savedId = await repository.SaveAsync(session, company, user, id, version, data);
         session.Commit();
+        pdf.NotifyPendingWork();
         return savedId;
     }
 }

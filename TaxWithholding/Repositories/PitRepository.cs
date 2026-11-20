@@ -147,6 +147,7 @@ public sealed class PitRepository(DapperExecutor db,
         await session.ExecuteAsync("CALL setPitSignature(@company,@target,@id,@version,@xml,@user)", new { company, target, id, version = request.DOC_VERSION, xml = request.XML, user });
         if (kind != PitKinds.Certificate) await pdf.PinSharedTemplateAsync(session, company, "pit-" + kind, id);
         session.Commit();
+        pdf.NotifyPendingWork();
     }
 
     private static (List<PitDocument> Items, int TotalRecords) MapResult<T>(

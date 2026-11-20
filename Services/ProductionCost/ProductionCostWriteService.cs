@@ -111,6 +111,7 @@ public sealed partial class ProductionCostWriteService : IProductionCostWriteSer
                 AllocationDryRunPayload source;
                 if (useDatabaseSource)
                 {
+                    await _writeRepo.AssertPrerequisiteReadyAsync(session, companyCd, runId);
                     source = await _writeRepo.LoadAllocationDryRunFromDbAsync(
                         session, companyCd, runId, runVersion, locked, userId);
                     AllocationConfirmSourceGuard.EnsureAuthoritativeFinancialSource(
@@ -287,6 +288,8 @@ public sealed partial class ProductionCostWriteService : IProductionCostWriteSer
                 ProductionCostWriteContext.AssertLockedRunMatches(locked, companyCd, runId, runVersion);
                 AllocationRunConfig.AssertPeriodYmMatches(locked, requestPeriodYm);
                 var periodYm = locked.PeriodYm.Trim();
+
+                await _writeRepo.AssertPrerequisiteReadyAsync(session, companyCd, runId);
 
                 var period = await _writeRepo.LockPeriodEngineForUpdateAsync(session, companyCd, periodYm)
                     ?? throw new InvalidOperationException("production_cost_period không tồn tại cho PERIOD_YM.");
@@ -474,6 +477,7 @@ public sealed partial class ProductionCostWriteService : IProductionCostWriteSer
                 WipDryRunPayload dryRun;
                 if (useDatabaseSource)
                 {
+                    await _writeRepo.AssertPrerequisiteReadyAsync(session, companyCd, runId);
                     dryRun = await _writeRepo.LoadWipDryRunFromDbAsync(
                         session, companyCd, runId, runVersion, locked, userId);
                     CostCalcConfirmSourceGuard.EnsureAuthoritativeFinancialSource(
@@ -725,6 +729,7 @@ public sealed partial class ProductionCostWriteService : IProductionCostWriteSer
                 ValuationDryRunPayload dryRun;
                 if (useDatabaseSource)
                 {
+                    await _writeRepo.AssertPrerequisiteReadyAsync(session, companyCd, runId);
                     dryRun = await _writeRepo.LoadValuationDryRunFromDbAsync(
                         session, companyCd, runId, runVersion, locked, userId);
                     ValuationConfirmSourceGuard.EnsureAuthoritativeFinancialSource(

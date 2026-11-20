@@ -1,5 +1,6 @@
 using API_AMNOTE_WEB.Interfaces;
 using API_AMNOTE_WEB.Models;
+using API_AMNOTE_WEB.Services.ProductionCost.Prerequisite;
 
 namespace API_AMNOTE_WEB.Services.ProductionCost;
 
@@ -183,7 +184,13 @@ public sealed class ProductionCostService : IProductionCostService
             PeriodExists = ctx.PeriodExists,
             PeriodYm = query.PeriodYm,
             RunId = ctx.Run?.RunId,
-            Message = ctx.Message
+            Message = ctx.Message,
+            PrerequisiteValidation = PrerequisiteValidation.Evaluate(
+                periodExists: ctx.PeriodExists && ctx.Run != null,
+                runId: ctx.Run?.RunId,
+                objects: Array.Empty<ProductionCostObjectDto>(),
+                receipts: Array.Empty<ProductionCostSourceReceiptLineDto>(),
+                distinctSourceReceiptCount: 0)
         };
         if (ctx.Run == null)
             return response;
@@ -223,36 +230,14 @@ public sealed class ProductionCostService : IProductionCostService
             .Distinct()
             .Count();
 
-        var objectsByProduct = objects
-            .Where(x => x.ProductId > 0)
-            .GroupBy(x => x.ProductId)
-            .ToDictionary(g => g.Key, g => g.Count());
-        var receiptsByProduct = receipts.ToLookup(x => x.ProductId);
-
-        foreach (var item in objects)
-        {
-            if (!objectsByProduct.TryGetValue(item.ProductId, out var count))
-                continue;
-
-            // When a product belongs to one G-K object, show its entire source
-            // receipt quantity (the same PRODUCT_ID basis as ReadFinishedQtyAsync).
-            // If a product has multiple G-K objects, use exact DEPARTMENT_ID only;
-            // never duplicate the full product total across departments.
-            var matching = receiptsByProduct[item.ProductId]
-                .Where(x => count == 1 || x.DepartmentId == item.DepartmentId)
-                .GroupBy(x => x.InputId) // one receipt line may have duplicate extension records
-                .Select(g => g.First())
-                .ToList();
-
-            item.FinishedQty = matching.Sum(x => x.Quantity);
-            item.ReceiptCount = matching
-                .Where(x => x.InventoryId.GetValueOrDefault() > 0)
-                .Select(x => x.InventoryId!.Value)
-                .Distinct()
-                .Count();
-        }
-
-        response.Items = objects;
+        var enriched = PrerequisiteValidation.EnrichFinishedQty(objects, receipts);
+        response.Items = enriched;
+        response.PrerequisiteValidation = PrerequisiteValidation.Evaluate(
+            periodExists: true,
+            runId: ctx.Run.RunId,
+            objects: enriched,
+            receipts: receipts,
+            distinctSourceReceiptCount: response.SourceReceiptCount);
         return response;
     }
 

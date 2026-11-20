@@ -42,6 +42,8 @@ public sealed class ProductionCostEnsureResult
     public long? RunId { get; set; }
     public int? RunVersion { get; set; }
     public string PeriodYm { get; set; } = string.Empty;
+    /// <summary>Số đối tượng/thành phẩm đã đồng bộ từ phiếu nhập kho sau khi tạo RUN mới.</summary>
+    public int SyncedObjectCount { get; set; }
     public string Message { get; set; } = string.Empty;
 }
 
@@ -73,9 +75,12 @@ public sealed class ProductionCostObjectSelectionUpdate
     public string PeriodYm { get; set; } = string.Empty;
     public long RunId { get; set; }
     public int RunVersion { get; set; }
+    /// <summary>Chọn một dòng (tương thích payload cũ). Bỏ qua khi <see cref="Items"/> có phần tử.</summary>
     public long DepartmentId { get; set; }
     public long ProductId { get; set; }
     public bool Selected { get; set; }
+    /// <summary>Chọn hàng loạt trong một request (một transaction). Ưu tiên hơn cặp DepartmentId/ProductId đơn.</summary>
+    public List<ProductionCostObjectSelectionItem>? Items { get; set; }
 }
 
 public sealed class ProductionCostPoolReductionUpdate

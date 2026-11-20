@@ -121,6 +121,7 @@ public partial class EInvoiceService
                     userId
                 });
             session.Commit();
+            _pdfWorkSignal.NotifyWorkAvailable();
         }
         catch
         {
@@ -266,6 +267,7 @@ public partial class EInvoiceService
                 }
                 else batch.SIGNED_XML = current.SIGNED_XML;
                 session.Commit();
+                _pdfWorkSignal.NotifyWorkAvailable();
             }
             catch { session.Rollback(); throw; }
         }

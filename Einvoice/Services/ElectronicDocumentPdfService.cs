@@ -9,14 +9,13 @@ using Dapper;
 
 namespace API_AMNOTE_WEB.Services;
 
-/// <summary>
-/// All document PDF entry points share this persistent artifact store. A connection-scoped
-/// MySQL lock serializes producers across processes without holding a business transaction.
-/// </summary>
 public sealed class ElectronicDocumentPdfService(
     DapperExecutor db, ElectronicDocumentStorage files, ElectronicDocumentRenderContext renderContext,
-    IEInvoiceHtmlToPdfService converter, ICompanyDatabaseResolver databases)
+    IEInvoiceHtmlToPdfService converter, ICompanyDatabaseResolver databases,
+    IEElectronicDocumentPdfWorkSignal workSignal)
 {
+    public void NotifyPendingWork() => workSignal.NotifyWorkAvailable();
+
     public sealed record Source(string Table, string Id, string? TemplateCode = null);
     public static readonly IReadOnlyDictionary<string, Source> Sources = new Dictionary<string, Source>
     {
@@ -43,8 +42,6 @@ public sealed class ElectronicDocumentPdfService(
         public string? TEMPLATE_JSON { get; set; }
     }
 
-    // Called inside the signature transaction for documents whose XSL is in manager DB.
-    // This pins metadata only; FTP and Chromium never run while business locks are held.
     public async Task PinSharedTemplateAsync(DapperSession session, string company, string kind, long id)
     {
         var source = Sources[kind];
@@ -72,7 +69,6 @@ public sealed class ElectronicDocumentPdfService(
             $"SELECT PDF_REVISION, {signedExpression}, PDF_TEMPLATE FROM {source.Table} WHERE COMPANY_CD=@company AND {source.Id}=@id{activePredicate}",
             new { company, id }, sDBName: database) ?? throw new KeyNotFoundException("Document not found.");
 
-        // Only small metadata is fetched on a cache hit, never XML, XSL or detail rows.
         var revision = await ReadRevision();
         var template = revision.PDF_TEMPLATE;
         if (revision.IS_SIGNED == 1 && kind != "transmission" && string.IsNullOrWhiteSpace(template))
@@ -93,7 +89,6 @@ public sealed class ElectronicDocumentPdfService(
         var key = ElectronicDocumentStorage.Hash(JsonSerializer.Serialize(new
         {
             database, company, kind, id, revision = revision.PDF_REVISION,
-            // Signed documents retain their pinned template. Drafts follow explicit template changes.
             template, optionsJson, renderer = "chromium-v1"
         }));
         var parameters = new { key, company, kind, id, revision = revision.PDF_REVISION, template, optionsJson };
@@ -118,7 +113,6 @@ public sealed class ElectronicDocumentPdfService(
             if (!string.IsNullOrWhiteSpace(artifact.PDF_PATH))
             {
                 var cached = files.Read(artifact.PDF_PATH);
-                // Blank Chromium captures (~1.1KB) were cached after printing before JS pagination finished.
                 if (cached.Length >= 4096)
                     return cached;
 
@@ -132,7 +126,6 @@ public sealed class ElectronicDocumentPdfService(
             string html;
             if (!string.IsNullOrWhiteSpace(artifact.HTML_PATH))
             {
-                // Retry uses the exact immutable render snapshot, never a newer template/source.
                 html = Encoding.UTF8.GetString(files.Read(artifact.HTML_PATH));
             }
             else
@@ -159,7 +152,6 @@ public sealed class ElectronicDocumentPdfService(
             if ((await ReadRevision()).PDF_REVISION != revision.PDF_REVISION)
                 throw new InvalidOperationException("Document changed during PDF conversion. Open the latest revision.");
             var path = files.Write(await files.NamespaceAsync(company), "pdf", pdf, "pdf");
-            // No 'current PDF' pointer: consumers always resolve the current revision first.
             var published = await connection.ExecuteAsync("""
                 UPDATE electronic_document_pdf SET PDF_PATH=@path,PDF_SHA256=@hash,PDF_SIZE=@size,
                     STATE='READY',ERROR_CODE=NULL,UPDATE_AT=UTC_TIMESTAMP(6)

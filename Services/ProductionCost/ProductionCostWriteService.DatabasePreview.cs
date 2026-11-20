@@ -10,7 +10,8 @@ public sealed partial class ProductionCostWriteService
     /// <summary>
     /// Khởi tạo / khởi tạo lại kỳ G-K trong một TX:
     /// nếu đã có RUN thì chỉ reset khi không còn tác động KT/kho không hoàn nguyên;
-    /// sau đó tạo RUN DRAFT + 6 bước NOT_STARTED.
+    /// sau đó tạo RUN DRAFT + 6 bước NOT_STARTED và tự đồng bộ đối tượng từ phiếu nhập kho
+    /// (cùng nghiệp vụ SyncObjectsFromReceipts — DELETE ALL + INSERT NEW).
     /// </summary>
     public Task<ProductionCostEnsureResult> EnsureDraftRunAsync(
         string companyCd, string? userId, string periodYm, string? databaseName)

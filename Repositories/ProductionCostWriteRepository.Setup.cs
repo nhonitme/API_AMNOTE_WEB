@@ -109,6 +109,24 @@ INSERT INTO production_cost_step (
 )", new { RunId = runId, Company = company, step.Index, step.Code, step.Engine, User = user });
             }
 
+            // Cùng TX với reset/create: tái sử dụng SyncObjectsFromReceipts (DELETE ALL + INSERT).
+            // Không có phiếu nhập hợp lệ → danh sách đối tượng trống, kỳ vẫn khởi tạo thành công.
+            var syncedCount = await SyncObjectsFromReceiptsAsync(session, company, runId, 1, user);
+
+            string syncPart;
+            if (syncedCount <= 0)
+            {
+                syncPart = "Chưa có phiếu nhập thành phẩm Nợ 155/Có 154 trong kỳ — danh sách đối tượng trống.";
+            }
+            else
+            {
+                syncPart = $"Đã đồng bộ {syncedCount} đối tượng/thành phẩm từ phiếu nhập kho.";
+            }
+
+            var basePart = resetExisting
+                ? "Đã khởi tạo lại kỳ DRAFT (0/6). Đã xóa dữ liệu G-K cũ; không đụng chứng từ kế toán / phiếu kho nguồn."
+                : "Đã khởi tạo kỳ DRAFT (0/6). Chưa ghi chứng từ.";
+
             return new ProductionCostEnsureResult
             {
                 Created = true,
@@ -116,9 +134,8 @@ INSERT INTO production_cost_step (
                 RunId = runId,
                 RunVersion = 1,
                 PeriodYm = ym,
-                Message = resetExisting
-                    ? "Đã khởi tạo lại kỳ DRAFT (0/6). Đã xóa dữ liệu G-K cũ; không đụng chứng từ kế toán / phiếu kho nguồn."
-                    : "Đã khởi tạo kỳ DRAFT. Chưa ghi chứng từ."
+                SyncedObjectCount = syncedCount,
+                Message = $"{basePart} {syncPart}"
             };
         }
         catch (MySqlException ex)
@@ -346,6 +363,11 @@ WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0'
             throw new InvalidOperationException("Không có đối tượng khớp DEPARTMENT_ID/PRODUCT_ID để cập nhật lựa chọn.");
     }
 
+    /// <summary>
+    /// Làm mới danh sách đối tượng/thành phẩm của RUN hiện hành (không đổi RUN_ID / cấu hình / 6 bước).
+    /// DELETE ALL + INSERT NEW trong TX hiện tại, giới hạn COMPANY_CD + RUN_ID.
+    /// Không dùng ON DUPLICATE KEY UPDATE để giữ dòng cũ.
+    /// </summary>
     public async Task<int> SyncObjectsFromReceiptsAsync(
         DapperSession session,
         string companyCd,
@@ -366,7 +388,7 @@ WHERE COMPANY_CD=@Company AND RUN_ID=@RunId AND ISDEL='0'
         if (!string.Equals(locked.Status, GkRunStatus.Draft, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(locked.Status, GkRunStatus.Previewed, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException(
-                "Chỉ khởi tạo lại đối tượng khi RUN còn DRAFT/PREVIEWED, trước khi xác nhận giá thành.");
+                "Chỉ đồng bộ đối tượng khi RUN còn DRAFT/PREVIEWED, trước khi xác nhận giá thành.");
 
         var statuses = await GetStepStatusesForUpdateAsync(session, companyCd, runId);
         if (statuses.Any(x =>
