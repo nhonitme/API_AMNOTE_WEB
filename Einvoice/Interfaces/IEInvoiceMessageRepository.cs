@@ -31,6 +31,12 @@ namespace API_AMNOTE_WEB.Interfaces
 
         Task<IReadOnlyList<EInvoiceMessagePendingSendItem>> GetPendingSendWorkQueueAsync(int limit);
 
+        Task<IReadOnlyList<EInvoiceMessagePendingSendItem>> ClaimPendingSendWorkQueueAsync(int limit);
+
+        Task<IReadOnlyList<EInvoiceMessageWorkQueueItem>> ClaimPendingReceiveWorkQueueAsync(int limit);
+
+        Task ResetStuckWorkQueueAsync();
+
         Task UpdateWorkQueueStatusAsync(string companyCd, string sendMtdiep, string workStatus, string? errorMessage);
 
         Task ApplyReceiveXmlToInvoiceAsync(

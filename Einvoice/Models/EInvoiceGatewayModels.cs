@@ -38,6 +38,12 @@ namespace API_AMNOTE_WEB.Models
 
         public int PendingBatchSize { get; set; } = 50;
 
+        /// <summary>Max parallel Viettel send calls per drain batch.</summary>
+        public int SendConcurrency { get; set; } = 4;
+
+        /// <summary>Max parallel Viettel receive lookups per drain batch.</summary>
+        public int ReceiveConcurrency { get; set; } = 4;
+
         public string SystemUserId { get; set; } = "SYSTEM";
 
         public string InboundGatewayBaseUrl { get; set; } = "https://vinvoice.viettel.vn/api";

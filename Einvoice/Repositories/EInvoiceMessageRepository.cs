@@ -105,6 +105,12 @@ namespace API_AMNOTE_WEB.Repositories
 
         private const string GetPendingSendWorkQueueQuery = "CALL getEInvoiceMessageWorkQueuePendingSend(@p_LIMIT)";
 
+        private const string ClaimPendingSendWorkQueueQuery = "CALL claimEInvoiceMessageWorkQueuePendingSend(@p_LIMIT)";
+
+        private const string ClaimPendingReceiveWorkQueueQuery = "CALL claimEInvoiceMessageWorkQueuePendingReceive(@p_LIMIT)";
+
+        private const string ResetStuckWorkQueueQuery = "CALL resetEInvoiceMessageWorkQueueStuck()";
+
         private const string UpdateWorkQueueStatusQuery = @"CALL setEInvoiceMessageWorkQueueStatus(
             @p_COMPANY_CD,
             @p_SEND_MTDIEP,
@@ -324,6 +330,29 @@ namespace API_AMNOTE_WEB.Repositories
                 GetPendingSendWorkQueueQuery,
                 new { p_LIMIT = limit });
             return rows.ToList();
+        }
+
+        public async Task<IReadOnlyList<EInvoiceMessagePendingSendItem>> ClaimPendingSendWorkQueueAsync(int limit)
+        {
+            var rows = await _db.QueryAsync<EInvoiceMessagePendingSendItem>(
+                Net_DB.Net_DB_Manager,
+                ClaimPendingSendWorkQueueQuery,
+                new { p_LIMIT = limit });
+            return rows.ToList();
+        }
+
+        public async Task<IReadOnlyList<EInvoiceMessageWorkQueueItem>> ClaimPendingReceiveWorkQueueAsync(int limit)
+        {
+            var rows = await _db.QueryAsync<EInvoiceMessageWorkQueueItem>(
+                Net_DB.Net_DB_Manager,
+                ClaimPendingReceiveWorkQueueQuery,
+                new { p_LIMIT = limit });
+            return rows.ToList();
+        }
+
+        public Task ResetStuckWorkQueueAsync()
+        {
+            return _db.ExecuteAsync(Net_DB.Net_DB_Manager, ResetStuckWorkQueueQuery);
         }
 
         public Task UpdateWorkQueueStatusAsync(string companyCd, string sendMtdiep, string workStatus, string? errorMessage)

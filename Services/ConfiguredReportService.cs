@@ -1131,6 +1131,8 @@ namespace API_AMNOTE_WEB.Services
                 rows.Add(row);
             }
 
+            var viewType = context.Config.VIEW_TYPE;
+
             return new ConfiguredReportPreviewDto
             {
                 COMPANY_CD = context.CompanyCd,
@@ -1139,7 +1141,7 @@ namespace API_AMNOTE_WEB.Services
                     context.Config.LABEL_TEXT,
                     context.ReportLanguage),
                 PREVIEW_MODE = previewMode,
-                VIEW_TYPE = context.Config.VIEW_TYPE,
+                VIEW_TYPE = viewType,
                 COLUMNS = columns.ToList(),
                 ROWS = rows
             };

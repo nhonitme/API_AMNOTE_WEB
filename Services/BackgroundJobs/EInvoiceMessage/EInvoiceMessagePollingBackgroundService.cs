@@ -37,9 +37,14 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.EInvoiceMessage
             }
 
             _logger.LogInformation(
-                "E-invoice message worker started (wake-on-work). PollIntervalSeconds={PollIntervalSeconds}, TokenRefreshMinutes={TokenRefreshMinutes}",
+                "E-invoice message worker started (wake-on-work). PollIntervalSeconds={PollIntervalSeconds}, TokenRefreshMinutes={TokenRefreshMinutes}, SendConcurrency={SendConcurrency}, ReceiveConcurrency={ReceiveConcurrency}, PendingBatchSize={PendingBatchSize}",
                 _options.PollIntervalSeconds,
-                _options.TokenRefreshMinutes);
+                _options.TokenRefreshMinutes,
+                Math.Max(1, _options.SendConcurrency),
+                Math.Max(1, _options.ReceiveConcurrency),
+                Math.Max(1, _options.PendingBatchSize));
+
+            await ResetStuckWorkAsync(stoppingToken);
 
             // Drain leftover queue rows after process restart.
             _workSignal.NotifyWorkAvailable();
@@ -58,6 +63,24 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.EInvoiceMessage
                 }
 
                 await DrainWorkQueuesAsync(pollInterval, stoppingToken);
+            }
+        }
+
+        private async Task ResetStuckWorkAsync(CancellationToken stoppingToken)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var messageRepository = scope.ServiceProvider.GetRequiredService<IEInvoiceMessageRepository>();
+                await messageRepository.ResetStuckWorkQueueAsync();
+                stoppingToken.ThrowIfCancellationRequested();
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "E-invoice work queue stuck reset failed; continuing with wake-on-work.");
             }
         }
 
@@ -133,49 +156,87 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.EInvoiceMessage
 
         private async Task<bool> ProcessPendingSendAsync(CancellationToken stoppingToken)
         {
-            using var scope = _scopeFactory.CreateScope();
-            var messageRepository = scope.ServiceProvider.GetRequiredService<IEInvoiceMessageRepository>();
-            var gatewayClient = scope.ServiceProvider.GetRequiredService<IViettelEInvoiceGatewayClient>();
+            using var claimScope = _scopeFactory.CreateScope();
+            var claimRepository = claimScope.ServiceProvider.GetRequiredService<IEInvoiceMessageRepository>();
 
-            var pendingItems = await messageRepository.GetPendingSendWorkQueueAsync(_options.PendingBatchSize);
+            var pendingItems = await claimRepository.ClaimPendingSendWorkQueueAsync(_options.PendingBatchSize);
             if (pendingItems.Count == 0)
             {
                 return false;
             }
 
-            foreach (var item in pendingItems)
-            {
-                if (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
+            var concurrency = Math.Max(1, _options.SendConcurrency);
+            using var gate = new SemaphoreSlim(concurrency, concurrency);
 
-                await ProcessSendWorkQueueItemAsync(messageRepository, gatewayClient, item, stoppingToken);
-            }
+            var tasks = pendingItems.Select(item => ProcessSendItemWithScopeAsync(item, gate, stoppingToken));
+            await Task.WhenAll(tasks);
 
             return true;
         }
 
+        private async Task ProcessSendItemWithScopeAsync(
+            EInvoiceMessagePendingSendItem item,
+            SemaphoreSlim gate,
+            CancellationToken stoppingToken)
+        {
+            await gate.WaitAsync(stoppingToken);
+            try
+            {
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    await ReleaseClaimAsync(item.COMPANY_CD, item.SEND_MTDIEP, "WAIT_SEND", null);
+                    return;
+                }
+
+                using var scope = _scopeFactory.CreateScope();
+                var messageRepository = scope.ServiceProvider.GetRequiredService<IEInvoiceMessageRepository>();
+                var gatewayClient = scope.ServiceProvider.GetRequiredService<IViettelEInvoiceGatewayClient>();
+                await ProcessSendWorkQueueItemAsync(messageRepository, gatewayClient, item, stoppingToken);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
         private async Task<bool> ProcessPendingReceiveAsync(CancellationToken stoppingToken)
         {
-            using var scope = _scopeFactory.CreateScope();
-            var messageRepository = scope.ServiceProvider.GetRequiredService<IEInvoiceMessageRepository>();
-            var gatewayClient = scope.ServiceProvider.GetRequiredService<IViettelEInvoiceGatewayClient>();
-            var receiveApplyCoordinator = scope.ServiceProvider.GetRequiredService<MessageReceiveApplyCoordinator>();
+            using var claimScope = _scopeFactory.CreateScope();
+            var claimRepository = claimScope.ServiceProvider.GetRequiredService<IEInvoiceMessageRepository>();
 
-            var pendingItems = await messageRepository.GetPendingWorkQueueAsync(_options.PendingBatchSize);
+            var pendingItems = await claimRepository.ClaimPendingReceiveWorkQueueAsync(_options.PendingBatchSize);
             if (pendingItems.Count == 0)
             {
                 return false;
             }
 
-            foreach (var item in pendingItems)
+            var concurrency = Math.Max(1, _options.ReceiveConcurrency);
+            using var gate = new SemaphoreSlim(concurrency, concurrency);
+
+            var tasks = pendingItems.Select(item => ProcessReceiveItemWithScopeAsync(item, gate, stoppingToken));
+            await Task.WhenAll(tasks);
+
+            return true;
+        }
+
+        private async Task ProcessReceiveItemWithScopeAsync(
+            EInvoiceMessageWorkQueueItem item,
+            SemaphoreSlim gate,
+            CancellationToken stoppingToken)
+        {
+            await gate.WaitAsync(stoppingToken);
+            try
             {
                 if (stoppingToken.IsCancellationRequested)
                 {
-                    break;
+                    await ReleaseClaimAsync(item.COMPANY_CD, item.SEND_MTDIEP, "WAIT_RESPONSE", null);
+                    return;
                 }
 
+                using var scope = _scopeFactory.CreateScope();
+                var messageRepository = scope.ServiceProvider.GetRequiredService<IEInvoiceMessageRepository>();
+                var gatewayClient = scope.ServiceProvider.GetRequiredService<IViettelEInvoiceGatewayClient>();
+                var receiveApplyCoordinator = scope.ServiceProvider.GetRequiredService<MessageReceiveApplyCoordinator>();
                 await ProcessReceiveWorkQueueItemAsync(
                     messageRepository,
                     gatewayClient,
@@ -183,8 +244,33 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.EInvoiceMessage
                     item,
                     stoppingToken);
             }
+            finally
+            {
+                gate.Release();
+            }
+        }
 
-            return true;
+        private async Task ReleaseClaimAsync(
+            string companyCd,
+            string sendMtdiep,
+            string workStatus,
+            string? errorMessage)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var messageRepository = scope.ServiceProvider.GetRequiredService<IEInvoiceMessageRepository>();
+                await messageRepository.UpdateWorkQueueStatusAsync(companyCd, sendMtdiep, workStatus, errorMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "E-invoice claim release failed. Company={CompanyCd}, SendMtdiep={SendMtdiep}, Status={WorkStatus}",
+                    companyCd,
+                    sendMtdiep,
+                    workStatus);
+            }
         }
 
         private async Task ProcessSendWorkQueueItemAsync(
@@ -230,6 +316,15 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.EInvoiceMessage
                     item.COMPANY_CD,
                     item.SEND_MTDIEP);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                await messageRepository.UpdateWorkQueueStatusAsync(
+                    item.COMPANY_CD,
+                    item.SEND_MTDIEP,
+                    "WAIT_SEND",
+                    null);
+                throw;
+            }
             catch (Exception ex)
             {
                 await messageRepository.UpdateWorkQueueStatusAsync(
@@ -262,6 +357,11 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.EInvoiceMessage
                 var lookupMessages = await gatewayClient.LookupMessagesAsync(item.MST, item.SEND_MTDIEP, stoppingToken);
                 if (lookupMessages.Count == 0)
                 {
+                    await messageRepository.UpdateWorkQueueStatusAsync(
+                        item.COMPANY_CD,
+                        item.SEND_MTDIEP,
+                        "WAIT_RESPONSE",
+                        null);
                     return;
                 }
 
@@ -271,6 +371,11 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.EInvoiceMessage
 
                 if (validMessages.Count == 0)
                 {
+                    await messageRepository.UpdateWorkQueueStatusAsync(
+                        item.COMPANY_CD,
+                        item.SEND_MTDIEP,
+                        "WAIT_RESPONSE",
+                        null);
                     return;
                 }
 
@@ -360,6 +465,11 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.EInvoiceMessage
 
                 if (!terminalReceived)
                 {
+                    await messageRepository.UpdateWorkQueueStatusAsync(
+                        item.COMPANY_CD,
+                        item.SEND_MTDIEP,
+                        "WAIT_RESPONSE",
+                        null);
                     return;
                 }
 
@@ -375,8 +485,23 @@ namespace API_AMNOTE_WEB.Services.BackgroundJobs.EInvoiceMessage
                     item.SEND_MTDIEP,
                     savedCount);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                await messageRepository.UpdateWorkQueueStatusAsync(
+                    item.COMPANY_CD,
+                    item.SEND_MTDIEP,
+                    "WAIT_RESPONSE",
+                    null);
+                throw;
+            }
             catch (Exception ex)
             {
+                await messageRepository.UpdateWorkQueueStatusAsync(
+                    item.COMPANY_CD,
+                    item.SEND_MTDIEP,
+                    "WAIT_RESPONSE",
+                    TruncateError(ex.Message));
+
                 _logger.LogWarning(
                     ex,
                     "E-invoice response polling failed. Company={CompanyCd}, SendMtdiep={SendMtdiep}",
