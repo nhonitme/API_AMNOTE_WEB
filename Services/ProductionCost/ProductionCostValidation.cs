@@ -110,10 +110,14 @@ public static class ProductionCostValidation
 
         if (biMapped != null)
         {
+            // B-I DONE sau khóa lại: không giữ REOPENED trên Status API — FE/confirm cần thấy DONE
+            // để ghi history EXECUTE. REOPENED chỉ giữ khi B-I đã mở (OPEN) hoặc cũng REOPENED.
             if (IsReopened(gk))
             {
-                var mismatch = !StatusesEqual(biMapped, ProductionCostStepStatus.Done)
-                               && !StatusesEqual(biMapped, ProductionCostStepStatus.Reopened);
+                if (IsDone(biMapped))
+                    return (ProductionCostStepStatus.Done, true);
+
+                var mismatch = !StatusesEqual(biMapped, ProductionCostStepStatus.Reopened);
                 return (ProductionCostStepStatus.Reopened, mismatch || !StatusesEqual(biMapped, gk));
             }
 

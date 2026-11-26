@@ -860,15 +860,31 @@ FOR UPDATE";
         if (string.IsNullOrWhiteSpace(stepCode))
             throw new ArgumentException("STEP_CODE bắt buộc.");
 
+        // Chỉ coi là đã có EXECUTE «hiện hành» khi chưa bị REOPEN sau đó trên cùng RUN_VERSION.
+        // REOPEN giữ version (already REOPENED) vẫn cần ghi EXECUTE mới khi khóa lại.
         const string sql = @"
 SELECT 1
-FROM production_cost_history
-WHERE COMPANY_CD = @CompanyCd
-  AND RUN_ID = @RunId
-  AND RUN_VERSION = @RunVersion
-  AND STEP_CODE = @StepCode
-  AND ACTION_CODE = @ActionCode
-  AND ISDEL = '0'
+FROM production_cost_history e
+WHERE e.COMPANY_CD = @CompanyCd
+  AND e.RUN_ID = @RunId
+  AND e.RUN_VERSION = @RunVersion
+  AND e.STEP_CODE = @StepCode
+  AND e.ACTION_CODE = @ExecuteAction
+  AND e.ISDEL = '0'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM production_cost_history r
+    WHERE r.COMPANY_CD = e.COMPANY_CD
+      AND r.RUN_ID = e.RUN_ID
+      AND r.RUN_VERSION = e.RUN_VERSION
+      AND r.STEP_CODE = e.STEP_CODE
+      AND r.ACTION_CODE = @ReopenAction
+      AND r.ISDEL = '0'
+      AND (
+        r.ACTION_AT > e.ACTION_AT
+        OR (r.ACTION_AT = e.ACTION_AT AND r.HISTORY_ID > e.HISTORY_ID)
+      )
+  )
 LIMIT 1";
 
         var row = await session.QueryFirstOrDefaultAsync<int?>(
@@ -879,7 +895,8 @@ LIMIT 1";
                 RunId = runId,
                 RunVersion = runVersion,
                 StepCode = stepCode.Trim(),
-                ActionCode = HistoryActionCode.Execute
+                ExecuteAction = HistoryActionCode.Execute,
+                ReopenAction = HistoryActionCode.Reopen
             });
         return row is > 0;
     }

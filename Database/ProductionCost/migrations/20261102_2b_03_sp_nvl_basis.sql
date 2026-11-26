@@ -142,6 +142,27 @@ proc: BEGIN
     FROM tmp_pc_nvl_raw
     GROUP BY OUTPUT_ID;
 
+    -- Materialize det_share TRƯỚC khi join lại raw (MySQL không cho mở 2 lần cùng TEMP TABLE trong 1 câu)
+    DROP TEMPORARY TABLE IF EXISTS tmp_pc_nvl_det_share;
+    CREATE TEMPORARY TABLE tmp_pc_nvl_det_share (
+        CHITDETAIL_ID BIGINT NOT NULL PRIMARY KEY,
+        OUT_AMT_SUM DECIMAL(18,2) NOT NULL DEFAULT 0,
+        DETAIL_AMOUNT DECIMAL(18,2) NOT NULL DEFAULT 0
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+    INSERT INTO tmp_pc_nvl_det_share (CHITDETAIL_ID, OUT_AMT_SUM, DETAIL_AMOUNT)
+    SELECT
+        x.CHITDETAIL_ID,
+        SUM(x.OUTPUT_AMOUNT),
+        MAX(x.DETAIL_AMOUNT)
+    FROM (
+        SELECT CHITDETAIL_ID, OUTPUT_ID, MAX(OUTPUT_AMOUNT) AS OUTPUT_AMOUNT, MAX(DETAIL_AMOUNT) AS DETAIL_AMOUNT
+        FROM tmp_pc_nvl_raw
+        WHERE IFNULL(CHITDETAIL_ID, 0) > 0
+        GROUP BY CHITDETAIL_ID, OUTPUT_ID
+    ) x
+    GROUP BY x.CHITDETAIL_ID;
+
     -- ΣQ=0 và >1 TP dùng chung OUTPUT → orphan, không vào basis (không chia đều)
     INSERT INTO production_cost_nvl_orphan (
         RUN_ID, RUN_VERSION, COMPANY_CD, OUTPUT_ID, CHITDETAIL_ID, INVENTORY_ID,
@@ -161,18 +182,7 @@ proc: BEGIN
         '0', NOW()
     FROM tmp_pc_nvl_raw r
     INNER JOIN tmp_pc_nvl_out_share os ON os.OUTPUT_ID = r.OUTPUT_ID
-    LEFT JOIN (
-        SELECT
-            x.CHITDETAIL_ID,
-            SUM(x.OUTPUT_AMOUNT) AS OUT_AMT_SUM
-        FROM (
-            SELECT CHITDETAIL_ID, OUTPUT_ID, MAX(OUTPUT_AMOUNT) AS OUTPUT_AMOUNT
-            FROM tmp_pc_nvl_raw
-            WHERE IFNULL(CHITDETAIL_ID, 0) > 0
-            GROUP BY CHITDETAIL_ID, OUTPUT_ID
-        ) x
-        GROUP BY x.CHITDETAIL_ID
-    ) ds ON ds.CHITDETAIL_ID = r.CHITDETAIL_ID
+    LEFT JOIN tmp_pc_nvl_det_share ds ON ds.CHITDETAIL_ID = r.CHITDETAIL_ID
     WHERE IFNULL(os.ROW_CNT, 0) > 1
       AND IFNULL(os.QTY_SUM, 0) = 0;
 
@@ -182,13 +192,8 @@ proc: BEGIN
     WHERE IFNULL(os.ROW_CNT, 0) > 1
       AND IFNULL(os.QTY_SUM, 0) = 0;
 
-    DROP TEMPORARY TABLE IF EXISTS tmp_pc_nvl_det_share;
-    CREATE TEMPORARY TABLE tmp_pc_nvl_det_share (
-        CHITDETAIL_ID BIGINT NOT NULL PRIMARY KEY,
-        OUT_AMT_SUM DECIMAL(18,2) NOT NULL DEFAULT 0,
-        DETAIL_AMOUNT DECIMAL(18,2) NOT NULL DEFAULT 0
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
-
+    -- Rebuild det_share sau khi loại SPLIT_QTY_ZERO (OUT_AMT_SUM có thể đổi)
+    DELETE FROM tmp_pc_nvl_det_share;
     INSERT INTO tmp_pc_nvl_det_share (CHITDETAIL_ID, OUT_AMT_SUM, DETAIL_AMOUNT)
     SELECT
         x.CHITDETAIL_ID,

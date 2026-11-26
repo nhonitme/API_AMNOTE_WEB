@@ -130,8 +130,9 @@ public static class BiPeriodLockHistoryPlanner
             };
         }
 
-        // Kỳ/RUN đã có EXECUTE hợp lệ cho phiên làm việc hiện tại → không ghi sự kiện khóa giả
-        // khi PeriodLock trả DONE vì bước đã khóa từ trước (no-op).
+        // Đã có EXECUTE hiện hành (sau REOPEN gần nhất trên cùng RUN_VERSION) → không ghi trùng
+        // khi PeriodLock trả DONE vì bước đã khóa từ trước (no-op). Caller phải truyền cờ
+        // đã loại EXECUTE bị REOPEN «che» — xem HasStepExecuteHistoryAsync.
         if (alreadyHasExecuteHistory)
         {
             return new Plan

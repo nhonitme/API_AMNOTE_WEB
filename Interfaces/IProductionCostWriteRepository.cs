@@ -231,7 +231,8 @@ public interface IProductionCostWriteRepository
         string biStepCode);
 
     /// <summary>
-    /// true nếu đã có history EXECUTE (ISDEL=0) cho RUN + VERSION + STEP_CODE.
+    /// true nếu đã có history EXECUTE hiện hành (ISDEL=0) cho RUN + VERSION + STEP_CODE
+    /// và chưa bị REOPEN sau đó trên cùng version.
     /// </summary>
     Task<bool> HasStepExecuteHistoryAsync(
         DapperSession session,

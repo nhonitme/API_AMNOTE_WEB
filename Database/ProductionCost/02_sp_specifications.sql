@@ -48,6 +48,7 @@ B. DANH SÁCH SP (đặc tả)
       p_IS_6212, p_BY_DEPARTMENT, p_USER
    Hành vi:
    - Aggregate chitdetailinfo: DEBIT LIKE '622%'/'627%' (+6212 nếu bật).
+   - Giữ CT nghiệp vụ + FA_PREPAID_LOCK; loại CT LOCK khác (COGS_SUMMARY / PL).
    - Tính CREDIT_AMOUNT, DEBIT_AMOUNT_154, REDUCTION, ALLOCATION_COSTS.
    - Company đặc biệt reduction=CREDIT_AMOUNT → đọc từ OPTIONS/config, không hardcode
      trong SP body theo COMPANY_CD rải rác (truyền cờ p_REDUCTION_MODE).

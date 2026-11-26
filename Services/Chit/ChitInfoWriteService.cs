@@ -231,6 +231,10 @@ namespace API_AMNOTE_WEB.Services.Chit
                         VAT_INQUIRY_IN = NormalizeNullableText(detail.VAT_INQUIRY_IN),
                         VAT_INQUIRY_CODE = NormalizeNullableText(detail.VAT_INQUIRY_CODE),
                         IS_NEXTVAT = NormalizeFlagString(detail.IS_NEXTVAT, "0"),
+                        VAT_DIRECTION = NormalizeVatDirection(detail.VAT_DIRECTION),
+                        VAT_RATE_CD = NormalizeNullableText(detail.VAT_RATE_CD),
+                        VAT_RATE_PERCENT = detail.VAT_RATE_PERCENT,
+                        VAT_CUSTOMS_EXCHANGE_RATE = detail.VAT_CUSTOMS_EXCHANGE_RATE,
                         UNDEFINE = NormalizeNullableText(detail.UNDEFINE),
                         DETAIL_DESCRIPTION_VIET = NormalizeNullableText(detail.DETAIL_DESCRIPTION_VIET),
                         DETAIL_DESCRIPTION_ENG = NormalizeNullableText(detail.DETAIL_DESCRIPTION_ENG),
@@ -294,6 +298,15 @@ namespace API_AMNOTE_WEB.Services.Chit
             }
 
             return ExcelImportReferenceValidation.ResolveId(code, idsByCode);
+        }
+
+        /// <summary>
+        /// BUY / SELL only. Blank or unknown → null (do not invent a direction for legacy rows).
+        /// </summary>
+        private static string? NormalizeVatDirection(string? value)
+        {
+            var normalized = NormalizeNullableText(value)?.ToUpperInvariant();
+            return normalized is "BUY" or "SELL" ? normalized : null;
         }
     }
 }

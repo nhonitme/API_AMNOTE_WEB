@@ -97,6 +97,10 @@ namespace API_AMNOTE_WEB.Models.DTOs
         public string? VAT_INQUIRY_IN { get; set; }
         public string? VAT_INQUIRY_CODE { get; set; }
         public string? IS_NEXTVAT { get; set; }
+        public string? VAT_DIRECTION { get; set; }
+        public string? VAT_RATE_CD { get; set; }
+        public decimal? VAT_RATE_PERCENT { get; set; }
+        public decimal? VAT_CUSTOMS_EXCHANGE_RATE { get; set; }
         public string? UNDEFINE { get; set; }
         public string? DETAIL_DESCRIPTION_VIET { get; set; }
         public string? DETAIL_DESCRIPTION_ENG { get; set; }

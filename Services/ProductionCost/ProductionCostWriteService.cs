@@ -1164,6 +1164,17 @@ public sealed partial class ProductionCostWriteService : IProductionCostWriteSer
                     persisted,
                     userId);
 
+                // Luôn đồng bộ G-K STEP = DONE khi B-I đã DONE (kể cả Noop history) —
+                // sau REOPEN hàng G-K có thể còn REOPENED trong khi B-I đã khóa lại.
+                await _writeRepo.UpsertGkStepStatusAsync(
+                    session,
+                    companyCd,
+                    runId,
+                    plan.StepIndex,
+                    plan.StepCode,
+                    ProductionCostStepStatus.Done,
+                    userId);
+
                 if (plan.IsNoop || !plan.WouldWriteHistory || plan.History == null)
                 {
                     return new ProductionCostLifecycleWriteResponse
@@ -1180,15 +1191,6 @@ public sealed partial class ProductionCostWriteService : IProductionCostWriteSer
                         Message = plan.Message
                     };
                 }
-
-                await _writeRepo.UpsertGkStepStatusAsync(
-                    session,
-                    companyCd,
-                    runId,
-                    plan.StepIndex,
-                    plan.StepCode,
-                    ProductionCostStepStatus.Done,
-                    userId);
 
                 var historyInsert = ProductionCostWriteContext.FromHistoryPlan(plan.History, companyCd, periodYm);
                 historyInsert.ContentFingerprint = plan.ContentFingerprint;

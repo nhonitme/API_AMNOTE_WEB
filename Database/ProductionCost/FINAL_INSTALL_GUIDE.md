@@ -20,6 +20,7 @@ Chạy lần lượt, dừng nếu một script báo lỗi:
 10. `migrations/20261103_2c06a_ddl_history_operation.sql`
 11. `migrations/20261103_2c06b_sp_alloc_confirm_no_history.sql` — bản confirm B2 không tự ghi history (C# giữ history).
 12. `migrations/20261103_gk_final_price_audit.sql`
+13. `migrations/20261126_sp_alloc_pool_keep_fa_prepaid.sql` — pool B2 giữ CT `FA_PREPAID_LOCK`.
 
 Không SOURCE `20261103_2c06e_sp_valuation_input_id.sql` sau file final. File 2C-06E là skeleton SIGNAL. File final DROP hai procedure đó. Nếu lỡ chạy 2C-06E sau final, chạy lại `20261103_gk_final_price_audit.sql`.
 
@@ -30,6 +31,7 @@ Chỉ chạy phần còn thiếu:
 1. `migrations/20261103_2c06a_ddl_history_operation.sql` nếu chưa có `OPERATION_ID`, `STABLE_KEY`, `CONTENT_FINGERPRINT` và unique history.
 2. `migrations/20261103_2c06b_sp_alloc_confirm_no_history.sql` nếu `sp_pc_alloc_confirm` vẫn INSERT history.
 3. `migrations/20261103_gk_final_price_audit.sql` — có guard DEV/TEST của 2B ở đầu file. Sai môi trường thì dừng trước DROP/CREATE. Script chỉ DROP `sp_pc_valuation_apply_input_price` và `sp_pc_valuation_confirm`.
+4. `migrations/20261126_sp_alloc_pool_keep_fa_prepaid.sql` — nếu `sp_pc_alloc_load_pool` vẫn loại hết `INPUT_TYPE='LOCK'` (thiếu khấu hao TSCĐ trong pool).
 
 Không tạo lại bảng kỳ/RUN. Không xóa snapshot `RUN_VERSION` cũ.
 

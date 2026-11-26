@@ -93,7 +93,11 @@ proc: BEGIN
     WHERE d.COMPANY_CD = p_COMPANY_CD
       AND d.ISDEL = '0'
       AND c.CHIT_YMD >= p_FROM_YMD AND c.CHIT_YMD <= p_TO_YMD
-      AND IFNULL(c.INPUT_TYPE, '') <> 'LOCK'
+      -- Giữ PS nghiệp vụ + khấu hao TSCĐ (FA_PREPAID_LOCK); loại CT khóa kết chuyển B3/B6
+      AND (
+            IFNULL(c.INPUT_TYPE, '') <> 'LOCK'
+         OR IFNULL(c.LOCK_STEP_CODE, '') = 'FA_PREPAID_LOCK'
+      )
       AND (
             TRIM(d.DEBIT) LIKE '622%'
          OR TRIM(d.DEBIT) LIKE '627%'
@@ -125,7 +129,11 @@ proc: BEGIN
     WHERE d.COMPANY_CD = p_COMPANY_CD
       AND d.ISDEL = '0'
       AND c.CHIT_YMD >= p_FROM_YMD AND c.CHIT_YMD <= p_TO_YMD
-      AND IFNULL(c.INPUT_TYPE, '') <> 'LOCK'
+      -- Giữ PS nghiệp vụ + khấu hao TSCĐ (FA_PREPAID_LOCK); loại CT khóa kết chuyển B3/B6
+      AND (
+            IFNULL(c.INPUT_TYPE, '') <> 'LOCK'
+         OR IFNULL(c.LOCK_STEP_CODE, '') = 'FA_PREPAID_LOCK'
+      )
       AND (
             TRIM(d.CREDIT) LIKE '622%'
          OR TRIM(d.CREDIT) LIKE '627%'
