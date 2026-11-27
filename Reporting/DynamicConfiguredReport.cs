@@ -56,6 +56,12 @@ namespace API_AMNOTE_WEB.Reporting
         private readonly IReadOnlyDictionary<string, object?> _normalizedValues;
         internal Func<XlsxExportOptions, byte[]>? ExportAccountWorkbook { get; }
 
+        /// <summary>
+        /// Snapshot for TAX_VAT_INVOICE_LIST XLSX post-processing (SECTION/TITLE restore).
+        /// Null for other reports.
+        /// </summary>
+        internal VatInvoiceListXlsxExportMetadata? VatInvoiceListXlsxMetadata { get; }
+
         public DynamicConfiguredReport(
             ReportConfigurationInfo configuration,
             DataTable table,
@@ -102,6 +108,10 @@ namespace API_AMNOTE_WEB.Reporting
             DataSource = sourceTable;
             DataMember = sourceTable.TableName;
             DisplayName = ResolveReportTitle(configuration);
+            VatInvoiceListXlsxMetadata = VatInvoiceListXlsxExportMetadata.TryCreate(
+                sourceTable,
+                _reportCode,
+                _columns.Select(column => column.Name).ToList());
 
             Font = CreateFont(_layout.FontFamily, _layout.BaseFontSize);
             PaperKind = _layout.PaperKind;

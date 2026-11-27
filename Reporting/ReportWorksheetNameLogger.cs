@@ -16,6 +16,8 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
     private static readonly Regex InvalidSheetNameCharacters = new(@"[\\/:*?\[\]\p{Cc}]");
     private readonly ConcurrentDictionary<string, AccountWorkbook> _reports = new();
     private readonly ConcurrentDictionary<string, AccountWorkbook> _documents = new();
+    private readonly ConcurrentDictionary<string, VatInvoiceListXlsxExportMetadata> _vatInvoiceReports = new();
+    private readonly ConcurrentDictionary<string, VatInvoiceListXlsxExportMetadata> _vatInvoiceDocuments = new();
     private readonly ConditionalWeakTable<PrintingSystemBase, object> _pageNameHandlers = new();
 
     public override void ReportOpening(
@@ -32,6 +34,8 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
             }
         }
 
+        CaptureVatInvoiceMetadata(reportId, documentId, configuredReport);
+
         base.ReportOpening(reportId, reportUrl, documentId, report, cachedReportSource);
     }
 
@@ -40,6 +44,11 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
         if (report is DynamicConfiguredReport { ExportAccountWorkbook: { } exportAccountWorkbook })
         {
             _reports[reportId] = new AccountWorkbook(report.DisplayName, exportAccountWorkbook);
+        }
+
+        if (report is DynamicConfiguredReport configuredReport)
+        {
+            CaptureVatInvoiceMetadata(reportId, documentId: null, configuredReport);
         }
 
         return base.BuildStarting(reportId, reportUrl, report, buildProperties);
@@ -51,6 +60,11 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
         if (_reports.TryGetValue(reportId, out var workbook))
         {
             _documents[documentId] = workbook;
+        }
+
+        if (_vatInvoiceReports.TryGetValue(reportId, out var metadata))
+        {
+            _vatInvoiceDocuments[documentId] = metadata;
         }
 
         base.BuildStarted(reportId, reportUrl, documentId, buildProperties);
@@ -67,6 +81,21 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
                 workbook.Export(options.Xlsx),
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 workbook.DisplayName + ".xlsx");
+        }
+
+        if (string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase)
+            && _vatInvoiceDocuments.TryGetValue(documentId, out var vatMetadata))
+        {
+            var exported = doExportSynchronously();
+            var processed = VatInvoiceListXlsxPostProcessor.Apply(exported.Bytes ?? Array.Empty<byte>(), vatMetadata);
+            return new ExportedDocument(
+                processed,
+                string.IsNullOrWhiteSpace(exported.ContentType)
+                    ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    : exported.ContentType,
+                string.IsNullOrWhiteSpace(exported.FileName)
+                    ? "TAX_VAT_INVOICE_LIST.xlsx"
+                    : exported.FileName);
         }
 
         return base.ExportDocumentStarting(
@@ -94,12 +123,14 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
     public override void CachedDocumentReleased(string documentId)
     {
         _documents.TryRemove(documentId, out _);
+        _vatInvoiceDocuments.TryRemove(documentId, out _);
         base.CachedDocumentReleased(documentId);
     }
 
     public override void CachedReportReleased(string reportId)
     {
         _reports.TryRemove(reportId, out _);
+        _vatInvoiceReports.TryRemove(reportId, out _);
         base.CachedReportReleased(reportId);
     }
 
@@ -137,6 +168,24 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
         }
 
         return names;
+    }
+
+    private void CaptureVatInvoiceMetadata(
+        string reportId,
+        string? documentId,
+        DynamicConfiguredReport? configuredReport)
+    {
+        var metadata = configuredReport?.VatInvoiceListXlsxMetadata;
+        if (metadata == null)
+        {
+            return;
+        }
+
+        _vatInvoiceReports[reportId] = metadata;
+        if (!string.IsNullOrWhiteSpace(documentId))
+        {
+            _vatInvoiceDocuments[documentId] = metadata;
+        }
     }
 
     private static string CleanSheetName(string name) => InvalidSheetNameCharacters.Replace(name, "_").Trim(' ', '\'');
