@@ -1,1 +1,0 @@
-import{a0 as t,a1 as o}from"./index-4S4Qof8k.js";const i=`${o}/pit-withholding/income-payer`;function n(a){return a&&typeof a=="object"&&"Data"in a?a.Data:a}const r={get:async()=>n((await t.get(i)).data),save:async a=>n((await t.put(i,a)).data)};export{r as p};

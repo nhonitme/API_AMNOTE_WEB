@@ -1,0 +1,1 @@
+import{r as t}from"./index-CWBq2MWF.js";function c(e,a=!0){const[d,r]=t.useState(!e);t.useEffect(()=>{r(!e)},[e]);const n=t.useCallback(()=>{e&&r(!0)},[e]);return{lookupGridReady:!e||d&&a,holdToolbarUntilReady:e,onLookupContentReady:n}}export{c as u};
