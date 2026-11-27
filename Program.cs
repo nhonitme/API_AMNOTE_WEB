@@ -49,6 +49,7 @@ Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 var builder = WebApplication.CreateBuilder(args);
 
 
+
 builder.Services.Configure<MobileDeviceOptions>(builder.Configuration.GetSection("MobileDevicePolicy"));
 
 
@@ -293,6 +294,7 @@ builder.Services.AddScoped<IReportSignatureMappingRepository, ReportSignatureMap
 builder.Services.AddScoped<IConfiguredReportService, ConfiguredReportService>();
 builder.Services.AddScoped<IReportProviderAsync, CustomReportProvider>();
 builder.Services.AddSingleton<IWebDocumentViewerExceptionHandler, CustomWebDocumentViewerExceptionHandler>();
+builder.Services.AddSingleton<WebDocumentViewerOperationLogger, ReportWorksheetNameLogger>();
 
 builder.Services.AddScoped<IBankInfoRepository, BankInfoRepository>();
 builder.Services.AddScoped<IManagementInfoRepository, ManagementInfoRepository>();

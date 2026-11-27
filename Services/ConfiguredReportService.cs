@@ -161,10 +161,10 @@ namespace API_AMNOTE_WEB.Services
             CancellationToken cancellationToken = default)
         {
             var context = await BuildContextAsync(companyCd, reportCode, menuCode, query);
-            var printLayoutMode = ResolvePrintLayoutMode(query);
+            var isDefaultGridPrint = ResolvePrintLayoutMode(query) == PrintLayoutMode.Grid;
+
             ApplyPageSetupOverrides(context.Config, query);
-            var includeTableLayoutMetadata = printLayoutMode != PrintLayoutMode.Grid;
-            var dataSource = await ResolveDataSourceAsync(context, includeTableLayoutMetadata, cancellationToken);
+            var dataSource = await ResolveDataSourceAsync(context, includeTableLayoutMetadata: !isDefaultGridPrint, cancellationToken);
             var table = Common.ConvertToDataTable(
                 dataSource.Data,
                 Common.NormalizeNullableText(context.Config.DATA_SET_NAME) ?? context.Config.REPORT_CODE);
@@ -174,7 +174,7 @@ namespace API_AMNOTE_WEB.Services
                 table = TaxReductionAppendixCalculator.Process(table);
 
             // DEFAULT_GRID print mirrors sys grid only — do not inject REPORT_* / voucher enrichment columns.
-            if (printLayoutMode != PrintLayoutMode.Grid)
+            if (!isDefaultGridPrint)
             {
                 EnrichReportDataTable(table, context);
           
@@ -190,26 +190,39 @@ namespace API_AMNOTE_WEB.Services
                 BlankVoucherDataTable(table);
             }
 
-            if (printLayoutMode == PrintLayoutMode.Grid)
+            if (isDefaultGridPrint)
             {
                 await ApplyPreviewGridPrintLayoutAsync(context, table);
+            }
+
+            // PDF-only: inject VAT_INFO_TYPE section rows for /tax/vat/invoice-list (does not affect grid preview API).
+            if (VatInvoiceListPrintLayout.IsVatInvoiceListReport(context.ReportCode))
+            {
+                var vatDirection =
+                    GetQueryValue(query, "vatDirection") ??
+                    GetQueryValue(query, "VAT_DIRECTION") ??
+                    GetQueryValue(query, "type") ??
+                    GetQueryValue(query, "TYPE");
+                var categoryCodeType = VatInvoiceListPrintLayout.ResolveCategoryCodeType(vatDirection);
+                var catalogCodes = await _systemService.GetSysCodesAsync(context.CompanyCd, categoryCodeType);
+                VatInvoiceListPrintLayout.Apply(table, context.ReportLanguage, vatDirection, catalogCodes);
             }
 
             var signatures = await ResolveReportSignaturesAsync(context.CompanyCd, context.Config.SIGNATURES, query);
             var companyContext = ReportCompanyContextFactory.Create(context.CompanyInfo, signatures, context.CompanyCd, context.ReportLanguage);
             if (context.ReportCode.Equals("TAX_VAT_REDUCTION_APPENDIX", StringComparison.OrdinalIgnoreCase)
-                && printLayoutMode != PrintLayoutMode.Grid)
+                && !isDefaultGridPrint)
                 return new TaxReductionAppendixReport(context.Config, table, companyContext, query);
 
-            var report = new DynamicConfiguredReport(
+            return new DynamicConfiguredReport(
                 context.Config,
                 table,
                 companyContext,
                 context.ReportLanguage,
                 _environment,
                 context.NamedValues,
-                context.NormalizedValues);
-            return report;
+                context.NormalizedValues,
+                isDefaultGridPrint);
         }
 
         public async Task<ConfiguredReportPreviewDto> BuildPreviewAsync(
@@ -230,6 +243,12 @@ namespace API_AMNOTE_WEB.Services
             if (printLayoutMode == PrintLayoutMode.Grid)
             {
                 columns = await ResolvePreviewGridColumnsAsync(resolved.Context, resolved.Table);
+            }
+            else if (IsInventoryDetailReport(resolved.Context.ReportCode)
+                || string.Equals(resolved.Context.ReportCode, "INVENTORY_QUANTITY_REPORT", StringComparison.OrdinalIgnoreCase))
+            {
+                var settings = await ResolvePreviewColumnSettingsAsync(resolved.Context, resolved.Context.Config.REPORT_CODE);
+                columns = BuildPreviewColumns(resolved.Table, settings);
             }
 
             return BuildPreviewDto(resolved.Context, resolved.Table, columns);
@@ -820,6 +839,16 @@ namespace API_AMNOTE_WEB.Services
                 AddValue(namedValues, normalizedValues, Common.NormalizeSqlParameterName(item.Key), item.Value, false);
             }
 
+            if (IsInventoryDetailReport(effectiveReportCode))
+            {
+                AddValue(namedValues, normalizedValues, "p_PRODUCT_CD", GetQueryValue(query, "productCd") ?? "", false);
+                AddValue(namedValues, normalizedValues, "p_STORE_CD", GetQueryValue(query, "storeCd") ?? "", false);
+                AddValue(namedValues, normalizedValues, "p_DEPARTMENT_CD", GetQueryValue(query, "departmentCd") ?? "", false);
+                AddValue(namedValues, normalizedValues, "p_ACCOUNT_CD", GetQueryValue(query, "accountCd") ?? "", false);
+                AddValue(namedValues, normalizedValues, "p_FC_TYPE", GetQueryValue(query, "fcType") ?? "VND", false);
+                AddValue(namedValues, normalizedValues, "p_HIDE_NO_MOVEMENT", GetQueryValue(query, "hideNoMovement") ?? "0", false);
+            }
+
             AddReportPeriodValues(query, namedValues, normalizedValues);
 
             AddValue(namedValues, normalizedValues, "keyword", string.Empty, false);
@@ -1026,9 +1055,28 @@ namespace API_AMNOTE_WEB.Services
         {
             var format = Common.NormalizeNullableText(column.FORMAT)
                 ?? InferPreviewFormatTypeFromFieldName(column.FIELD_NAME);
+
+            // DEFAULT_GRID print metadata: string yyyyMMdd columns may arrive as FORMAT=text
+            // (preview downgrade). Restore date so DynamicConfiguredReport formats dd/MM/yyyy.
+            var normalizedFormat = Common.NormalizeToken(format);
+            if (normalizedFormat is "text" or "string" or "")
+            {
+                var inferred = InferPreviewFormatTypeFromFieldName(column.FIELD_NAME);
+                var inferredToken = Common.NormalizeToken(inferred);
+                if (inferredToken is "date" or "datetime")
+                {
+                    format = inferred;
+                    normalizedFormat = inferredToken;
+                }
+                else if (Common.NormalizeToken(column.DATA_TYPE) is "date" or "datetime")
+                {
+                    format = column.DATA_TYPE;
+                    normalizedFormat = Common.NormalizeToken(format);
+                }
+            }
+
             if (format != null)
             {
-                var normalizedFormat = Common.NormalizeToken(format);
                 return normalizedFormat switch
                 {
                     "0" or "n0" or "number0" or "integer" or "#,##0" => "number0",
@@ -1036,8 +1084,9 @@ namespace API_AMNOTE_WEB.Services
                     "000" or "n2" or "number2" or "amount" or "quantity" or "unitprice" or "#,##0.00" => "number2",
                     "0000" or "n3" or "number3" or "#,##0.000" => "number3",
                     "00000" or "n4" or "number4" or "#,##0.0000" => "number4",
-                    "date" or "dd/mm/yyyy" or "yyyy-mm-dd" => "date",
-                    "datetime" or "dd/mm/yyyy hh:mm" => "datetime",
+                    // NormalizeToken strips non-alphanumerics: "dd/MM/yyyy" → "ddmmyyyy".
+                    "date" or "ddmmyyyy" or "yyyymmdd" => "date",
+                    "datetime" or "ddmmyyyyhhmm" or "ddmmyyyyhhmmss" => "datetime",
                     "text" or "string" => "text",
                     _ => column.DATA_TYPE == "number"
                         ? "number2"
@@ -1252,8 +1301,7 @@ namespace API_AMNOTE_WEB.Services
                 previewColumn.ALIGN = align.ToLowerInvariant();
             }
 
-            var formatType = Common.NormalizeNullableText(setting.FORMAT_TYPE)
-                ?? InferPreviewFormatTypeFromFieldName(column.ColumnName);
+            var formatType = ResolvePreviewColumnFormat(column, setting.FORMAT_TYPE);
             if (formatType != null)
             {
                 previewColumn.FORMAT = formatType;
@@ -1271,7 +1319,7 @@ namespace API_AMNOTE_WEB.Services
         private static ConfiguredReportPreviewColumnDto CreatePreviewColumn(DataColumn column, int index)
         {
             var dataType = Nullable.GetUnderlyingType(column.DataType) ?? column.DataType;
-            var inferredFormatType = InferPreviewFormatTypeFromFieldName(column.ColumnName);
+            var inferredFormatType = ResolvePreviewColumnFormat(column);
             var dataTypeName = ResolvePreviewDataTypeFromFormatType(inferredFormatType)
                 ?? ResolvePreviewDataType(dataType);
             return new ConfiguredReportPreviewColumnDto
@@ -1288,13 +1336,23 @@ namespace API_AMNOTE_WEB.Services
             };
         }
 
+        private static string? ResolvePreviewColumnFormat(DataColumn column, string? configuredFormat = null)
+        {
+            // Keep date/datetime tokens for string yyyyMMdd columns so DEFAULT_GRID PDF
+            // metadata (and preview) can map to dd/MM/yyyy via ResolveFormatString.
+            return Common.NormalizeNullableText(configuredFormat)
+                ?? InferPreviewFormatTypeFromFieldName(column.ColumnName);
+        }
+
         private static string? ResolvePreviewDataTypeFromFormatType(string? formatType)
         {
             return Common.NormalizeToken(formatType) switch
             {
                 "number0" or "number1" or "number2" or "number3" or "number4"
                     or "integer" or "amount" or "quantity" or "unitprice" => "number",
-                "date" or "datetime" => "date",
+                // NormalizeToken strips masks: "dd/MM/yyyy" → "ddmmyyyy".
+                "date" or "datetime" or "ddmmyyyy" or "yyyymmdd"
+                    or "ddmmyyyyhhmm" or "ddmmyyyyhhmmss" => "date",
                 "boolean" or "bool" => "boolean",
                 "text" or "string" => "string",
                 _ => null
@@ -1500,6 +1558,9 @@ namespace API_AMNOTE_WEB.Services
             dataTable ??= new DataTable(tableName);
             cancellationToken.ThrowIfCancellationRequested();
 
+            if (IsInventoryDetailReport(context.ReportCode))
+                ApplyInventoryDetailCurrencyMode(dataTable, context.Query);
+
             var metadataTable = includeTableLayoutMetadata
                 ? await LoadReportColumnLayoutMetadataAsync(context, tableName ?? string.Empty)
                 : null;
@@ -1519,6 +1580,38 @@ namespace API_AMNOTE_WEB.Services
             {
                 Data = dataTable
             };
+        }
+
+        private static bool IsInventoryDetailReport(string? reportCode) =>
+            reportCode?.ToUpperInvariant() is "INVENTORY_DETAIL_PRODUCT" or "INVENTORY_DETAIL_DEPARTMENT"
+                or "INVENTORY_DETAIL_ACCOUNT" or "INVENTORY_DETAIL_STORE";
+
+        private static void ApplyInventoryDetailCurrencyMode(DataTable table, IReadOnlyDictionary<string, string> query)
+        {
+            var quantityOnly = GetQueryValue(query, "quantityOnly") == "1";
+            var currencyCode = GetQueryValue(query, "fcType") ?? "VND";
+            var isLocal = currencyCode.Equals("VND", StringComparison.OrdinalIgnoreCase);
+            var showLocal = !quantityOnly && isLocal;
+            var showForeign = !quantityOnly && !isLocal;
+
+            foreach (var localColumn in new[] { "UNIT_PRICE", "OPENING_AMOUNT", "INPUT_AMOUNT",
+                         "OUTPUT_AMOUNT", "BALANCE_AMOUNT", "AVERAGE_PRICE" })
+            {
+                if (!showLocal && table.Columns.Contains(localColumn))
+                    table.Columns.Remove(localColumn);
+                var foreignColumn = localColumn + "_FC";
+                if (!showForeign && table.Columns.Contains(foreignColumn))
+                    table.Columns.Remove(foreignColumn);
+            }
+
+            if (quantityOnly && table.Columns.Contains("__ROW_TYPE"))
+            {
+                for (var index = table.Rows.Count - 1; index >= 0; index--)
+                {
+                    if (table.Rows[index]["__ROW_TYPE"] is "PERIOD_AVERAGE" or "MONTH_AVERAGE")
+                        table.Rows.RemoveAt(index);
+                }
+            }
         }
 
         private static IReadOnlyList<long> ResolveSelectedChitIds(IReadOnlyDictionary<string, string> query)

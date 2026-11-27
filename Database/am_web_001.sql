@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS `acc_period_lock_job` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uk_acc_period_lock_job` (`COMPANY_CD`,`JOB_ID`),
   KEY `idx_acc_period_lock_job_01` (`COMPANY_CD`,`STATUS`)
-) ENGINE=InnoDB AUTO_INCREMENT=429 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Lưu job xử lý khóa sổ và tiến độ cho frontend polling';
+) ENGINE=InnoDB AUTO_INCREMENT=439 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Lưu job xử lý khóa sổ và tiến độ cho frontend polling';
 
 -- Data exporting was unselected.
 
@@ -222,7 +222,7 @@ CREATE TABLE IF NOT EXISTS `acc_period_lock_month` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uk_acc_period_lock_month` (`COMPANY_CD`,`PERIOD_YM`),
   KEY `idx_acc_period_lock_month_01` (`COMPANY_CD`,`STATUS`)
-) ENGINE=InnoDB AUTO_INCREMENT=949 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Lưu trạng thái khóa sổ theo từng tháng của từng công ty';
+) ENGINE=InnoDB AUTO_INCREMENT=976 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Lưu trạng thái khóa sổ theo từng tháng của từng công ty';
 
 -- Data exporting was unselected.
 
@@ -246,7 +246,7 @@ CREATE TABLE IF NOT EXISTS `acc_period_lock_step` (
   PRIMARY KEY (`ID`),
   UNIQUE KEY `uk_acc_period_lock_step` (`COMPANY_CD`,`PERIOD_YM`,`STEP_CODE`),
   KEY `idx_acc_period_lock_step_01` (`COMPANY_CD`,`PERIOD_YM`)
-) ENGINE=InnoDB AUTO_INCREMENT=2744 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Lưu trạng thái 3 bước khóa sổ chính của từng tháng';
+) ENGINE=InnoDB AUTO_INCREMENT=2772 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Lưu trạng thái 3 bước khóa sổ chính của từng tháng';
 
 -- Data exporting was unselected.
 
@@ -1684,7 +1684,7 @@ CREATE TABLE IF NOT EXISTS `chitdescriptioninfo` (
   KEY `IDX_CHITDESC_02` (`COMPANY_CD`,`CHIT_CD`,`LANG_TYPE`,`ISDEL`),
   KEY `FK_CHITDESC_01` (`CHIT_ID`),
   CONSTRAINT `FK_CHITDESC_01` FOREIGN KEY (`CHIT_ID`) REFERENCES `chitinfo` (`CHIT_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=16562 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=16639 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
@@ -1708,7 +1708,7 @@ CREATE TABLE IF NOT EXISTS `chitdetaildescriptioninfo` (
   KEY `IDX_CHITDETAILDESC_02` (`COMPANY_CD`,`CHITDETAIL_CD`,`LANG_TYPE`,`ISDEL`),
   KEY `FK_CHITDETAILDESC_01` (`CHITDETAIL_ID`),
   CONSTRAINT `FK_CHITDETAILDESC_01` FOREIGN KEY (`CHITDETAIL_ID`) REFERENCES `chitdetailinfo` (`CHITDETAIL_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=331 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=423 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
@@ -1740,7 +1740,7 @@ CREATE TABLE IF NOT EXISTS `chitdetailinfo` (
   KEY `IDX_CHITDETAIL_03` (`COMPANY_CD`,`DEBIT`,`CREDIT`,`ISDEL`),
   KEY `FK_CHITDETAIL_01` (`CHIT_ID`),
   CONSTRAINT `FK_CHITDETAIL_01` FOREIGN KEY (`CHIT_ID`) REFERENCES `chitinfo` (`CHIT_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=50875 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=50966 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
@@ -1787,7 +1787,7 @@ CREATE TABLE IF NOT EXISTS `chitdetailinfo_ext` (
   CONSTRAINT `FK_CHITDETAIL_EXT_01` FOREIGN KEY (`CHITDETAIL_ID`) REFERENCES `chitdetailinfo` (`CHITDETAIL_ID`),
   CONSTRAINT `FK_CHITDETAIL_EXT_BANK_01` FOREIGN KEY (`BANK_ID`) REFERENCES `bank_info` (`BANK_ID`),
   CONSTRAINT `FK_CHITDETAIL_EXT_DEPARTMENT_01` FOREIGN KEY (`DEPARTMENT_ID`) REFERENCES `department_info` (`DEPARTMENT_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=51018 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=51176 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
@@ -1834,7 +1834,7 @@ CREATE TABLE IF NOT EXISTS `chitdetailinfo_vat` (
   KEY `IDX_CHITDETAIL_VAT_02` (`COMPANY_CD`,`VAT_YMD`,`ISDEL`),
   KEY `FK_CHITDETAIL_VAT_01` (`CHITDETAIL_ID`),
   CONSTRAINT `FK_CHITDETAIL_VAT_01` FOREIGN KEY (`CHITDETAIL_ID`) REFERENCES `chitdetailinfo` (`CHITDETAIL_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=50782 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=50836 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
@@ -1864,7 +1864,7 @@ CREATE TABLE IF NOT EXISTS `chitinfo` (
   KEY `IDX_CHITINFO_02` (`COMPANY_CD`,`CHIT_NO`,`ISDEL`),
   KEY `IDX_CHITINFO_03` (`COMPANY_CD`,`CHIT_YMD`,`ISDEL`),
   KEY `IDX_CHITINFO_B01` (`COMPANY_CD`,`ISDEL`,`CHIT_YMD`,`CHIT_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=16539 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=16574 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
@@ -1893,7 +1893,7 @@ CREATE TABLE IF NOT EXISTS `chitinfo_ext` (
   KEY `IDX_CHITINFO_EXT_01` (`COMPANY_CD`,`CHIT_CD`,`ISDEL`),
   KEY `FK_CHITINFO_EXT_01` (`CHIT_ID`),
   CONSTRAINT `FK_CHITINFO_EXT_01` FOREIGN KEY (`CHIT_ID`) REFERENCES `chitinfo` (`CHIT_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=16655 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=16732 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 
@@ -4271,7 +4271,7 @@ CREATE TABLE IF NOT EXISTS `fa_asset_depre_alloc` (
   KEY `idx_fa_asset_depre_alloc_02` (`COMPANY_CD`,`ASSET_ID`,`ALLOC_SEQ`),
   KEY `idx_fa_asset_depre_alloc_03` (`COMPANY_CD`,`DEBIT_ACCT_CD`),
   KEY `idx_fa_asset_depre_alloc_04` (`COMPANY_CD`,`DEPARTMENT_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=114 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Bảng lưu cấu hình phân bổ chi phí khấu hao của từng tài sản theo phần trăm hoặc theo số tiền đầu/giữa/cuối';
+) ENGINE=InnoDB AUTO_INCREMENT=118 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Bảng lưu cấu hình phân bổ chi phí khấu hao của từng tài sản theo phần trăm hoặc theo số tiền đầu/giữa/cuối';
 
 -- Data exporting was unselected.
 
@@ -4297,7 +4297,7 @@ CREATE TABLE IF NOT EXISTS `fa_asset_depre_posted` (
   KEY `idx_fa_asset_depre_posted_01` (`COMPANY_CD`,`DEPRE_YM`),
   KEY `idx_fa_asset_depre_posted_02` (`COMPANY_CD`,`ASSET_ID`),
   KEY `idx_fa_asset_depre_posted_03` (`COMPANY_CD`,`CHITINFO_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=99 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Bảng lưu kết quả khấu hao đã chạy theo từng tài sản và từng tháng, liên kết với chứng từ khấu hao trong chitinfo';
+) ENGINE=InnoDB AUTO_INCREMENT=148 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Bảng lưu kết quả khấu hao đã chạy theo từng tài sản và từng tháng, liên kết với chứng từ khấu hao trong chitinfo';
 
 -- Data exporting was unselected.
 
@@ -4327,7 +4327,7 @@ CREATE TABLE IF NOT EXISTS `fa_asset_depre_posted_alloc` (
   KEY `idx_fa_asset_depre_posted_alloc_03` (`COMPANY_CD`,`DEBIT_ACCT_CD`),
   KEY `idx_fa_asset_depre_posted_alloc_04` (`COMPANY_CD`),
   KEY `idx_fa_asset_depre_posted_alloc_05` (`COMPANY_CD`,`CHITDETAIL_ID`)
-) ENGINE=InnoDB AUTO_INCREMENT=184 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Bảng lưu chi tiết phân bổ khấu hao đã chạy, mỗi dòng liên kết với một dòng chứng từ trong chitdetail';
+) ENGINE=InnoDB AUTO_INCREMENT=289 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Bảng lưu chi tiết phân bổ khấu hao đã chạy, mỗi dòng liên kết với một dòng chứng từ trong chitdetail';
 
 -- Data exporting was unselected.
 
@@ -6878,7 +6878,7 @@ BEGIN
         d.CREATE_BY,
         d.CREATE_AT,
         d.UPDATE_BY,
-        d.UPDATE_AT 
+        d.UPDATE_AT
     FROM chitdetailinfo d
     INNER JOIN chitinfo h
         ON h.COMPANY_CD = d.COMPANY_CD
@@ -13735,7 +13735,7 @@ CREATE TABLE IF NOT EXISTS `production_cost_alloc_pool` (
   UNIQUE KEY `uk_pc_pool` (`RUN_ID`,`RUN_VERSION`,`ACCOUNT_CD`,`DEPARTMENT_ID`),
   KEY `idx_pc_pool_acc` (`COMPANY_CD`,`ACCOUNT_CD`),
   KEY `idx_pc_pool_dept` (`COMPANY_CD`,`DEPARTMENT_ID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tổng hợp pool chi phí phân bổ 622/627 theo tài khoản';
+) ENGINE=InnoDB AUTO_INCREMENT=57 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tổng hợp pool chi phí phân bổ 622/627 theo tài khoản';
 
 -- Data exporting was unselected.
 
@@ -13766,7 +13766,7 @@ CREATE TABLE IF NOT EXISTS `production_cost_history` (
   UNIQUE KEY `uk_pc_hist_operation` (`COMPANY_CD`,`OPERATION_ID`),
   KEY `idx_pc_hist_run` (`RUN_ID`,`STEP_INDEX`),
   KEY `idx_pc_hist_company` (`COMPANY_CD`,`PERIOD_YM`,`ACTION_AT`)
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nhật ký mở lại / tính thử / ghi đè G-K';
+) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Nhật ký mở lại / tính thử / ghi đè G-K';
 
 -- Data exporting was unselected.
 
@@ -13788,7 +13788,7 @@ CREATE TABLE IF NOT EXISTS `production_cost_nvl_basis` (
   PRIMARY KEY (`NVL_BASIS_ID`),
   UNIQUE KEY `uk_pc_nvl_basis` (`RUN_ID`,`RUN_VERSION`,`PRODUCT_ID`),
   KEY `idx_pc_nvl_basis_prod` (`COMPANY_CD`,`PRODUCT_ID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tiêu thức phân bổ NVL theo thành phẩm (không dùng BOM lý thuyết)';
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Tiêu thức phân bổ NVL theo thành phẩm (không dùng BOM lý thuyết)';
 
 -- Data exporting was unselected.
 
@@ -13817,7 +13817,7 @@ CREATE TABLE IF NOT EXISTS `production_cost_nvl_basis_line` (
   KEY `idx_pc_nvl_line_run` (`RUN_ID`,`RUN_VERSION`,`PRODUCT_ID`),
   KEY `idx_pc_nvl_line_output` (`COMPANY_CD`,`OUTPUT_ID`),
   KEY `idx_pc_nvl_line_finished` (`COMPANY_CD`,`FINISHED_LINE_ID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Chi tiết gắn OUTPUT_ID → FINISHED_PRODUCT_ID cho tiêu thức NVL';
+) ENGINE=InnoDB AUTO_INCREMENT=13 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Chi tiết gắn OUTPUT_ID → FINISHED_PRODUCT_ID cho tiêu thức NVL';
 
 -- Data exporting was unselected.
 
@@ -14041,7 +14041,7 @@ CREATE TABLE IF NOT EXISTS `production_cost_step` (
   PRIMARY KEY (`STEP_ID`),
   UNIQUE KEY `uk_pc_step` (`RUN_ID`,`STEP_INDEX`),
   KEY `idx_pc_step_company` (`COMPANY_CD`,`STEP_CODE`,`STATUS`)
-) ENGINE=InnoDB AUTO_INCREMENT=55 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Trạng thái từng bước G-K trong phiên; B-I lock đọc từ acc_period_lock_step';
+) ENGINE=InnoDB AUTO_INCREMENT=63 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Trạng thái từng bước G-K trong phiên; B-I lock đọc từ acc_period_lock_step';
 
 -- Data exporting was unselected.
 
@@ -14601,6 +14601,7 @@ CREATE PROCEDURE `rpt_account_detail_s38dn`(
     IN p_FC_TYPE VARCHAR(255),
     IN p_LANGUAGE VARCHAR(20)
 )
+    COMMENT '[C-H] sổ chi tiết tài khoản'
 BEGIN
     DECLARE v_from_ymd VARCHAR(8);
     DECLARE v_to_ymd VARCHAR(8);
@@ -14648,6 +14649,8 @@ BEGIN
         AND UPPER(TRIM(jt.val)) NOT IN ('ALL', '*');
     END IF;
 
+-- SELECT * from tmp_filter_account_cd; -- -- 11111; 1112 
+
     IF v_fc_type = 'ALL' THEN
         SET v_fc_type = '';
     END IF;
@@ -14665,6 +14668,8 @@ BEGIN
       WHERE NULLIF(TRIM(jt.val), '') IS NOT NULL
         AND UPPER(TRIM(jt.val)) NOT IN ('ALL', '*');
     END IF;
+
+-- SELECT * from tmp_filter_fc_type;
 
     SET v_use_fc = CASE WHEN v_fc_type <> '' AND v_fc_type <> 'VND' AND LOCATE(',', v_fc_type) = 0 THEN 1 ELSE 0 END;
     SET v_currency_text = CASE WHEN v_fc_type = '' THEN 'VND' ELSE v_fc_type END;
@@ -14697,20 +14702,14 @@ BEGIN
             account.ACC_CD
         )
     FROM acclist_info account
-    INNER JOIN
-    (
-        SELECT ACC_CD, MAX(ACC_ID) AS ACC_ID
-        FROM acclist_info
-        WHERE COMPANY_CD = v_company_cd
-          AND IFNULL(ISDEL, '0')  = '0' 
-          AND TRIM(IFNULL(ACC_CD, '')) <> ''
-        GROUP BY ACC_CD
-    ) latest
-        ON latest.ACC_ID = account.ACC_ID
+    
     WHERE account.COMPANY_CD = v_company_cd
+      AND account.ISABLEINPUT = '1'
       AND IFNULL(account.ISDEL, '0')  = '0' 
       AND (v_account_cd = '' OR EXISTS (SELECT 1 FROM tmp_filter_account_cd f WHERE f.CD = (account.ACC_CD)))
     ORDER BY account.ACC_CD;
+
+-- SELECT * from tmp_account_detail_accounts; -- 99999
 
     -- Build the selected accounts' real chart-of-accounts ancestry here. The
     -- API and TreeList receive a complete parent key from the procedure.
@@ -14762,6 +14761,8 @@ BEGIN
        AND IFNULL(parent.ISDEL, '0')  = '0' 
     ORDER BY account.ACC_CD;
 
+ -- SELECT * from tmp_account_detail_tree_accounts; -- 99999
+
     -- Use separate frontier/candidate tables: MySQL 5.6 cannot reopen a
     -- temporary table that is both the INSERT target and a SELECT source.
     DROP TEMPORARY TABLE IF EXISTS tmp_account_detail_tree_frontier;
@@ -14786,6 +14787,8 @@ BEGIN
 
     INSERT INTO tmp_account_detail_tree_frontier (ACC_ID)
     SELECT ACC_ID FROM tmp_account_detail_tree_accounts;
+
+-- SELECT * from tmp_account_detail_tree_accounts; -- 99999
 
     SET v_rows_inserted = 1;
     WHILE v_rows_inserted > 0 DO
@@ -14953,7 +14956,7 @@ BEGIN
         DOCUMENT_NO VARCHAR(50) NOT NULL DEFAULT '',
         DOCUMENT_DATE VARCHAR(20) NOT NULL DEFAULT '',
         DESCRIPTION VARCHAR(1000) NOT NULL DEFAULT '',
-        COUNTER_ACCOUNT VARCHAR(50) NOT NULL DEFAULT '',
+        CSD_ACC_CD VARCHAR(50) NOT NULL DEFAULT '',
         DEBIT_AMOUNT DECIMAL(18,6) NOT NULL DEFAULT 0.000000,
         CREDIT_AMOUNT DECIMAL(18,6) NOT NULL DEFAULT 0.000000,
         NOTE_TEXT VARCHAR(255) NOT NULL DEFAULT '',
@@ -14976,7 +14979,7 @@ BEGIN
         DOCUMENT_NO,
         DOCUMENT_DATE,
         DESCRIPTION,
-        COUNTER_ACCOUNT,
+        CSD_ACC_CD,
         DEBIT_AMOUNT,
         CREDIT_AMOUNT,
         NOTE_TEXT,
@@ -15044,7 +15047,7 @@ BEGIN
         DOCUMENT_NO,
         DOCUMENT_DATE,
         DESCRIPTION,
-        COUNTER_ACCOUNT,
+        CSD_ACC_CD,
         DEBIT_AMOUNT,
         CREDIT_AMOUNT,
         NOTE_TEXT,
@@ -15147,8 +15150,8 @@ BEGIN
         ON movement.ACC_CD = account.ACC_CD
     GROUP BY account.ACC_CD, base.OPEN_YMD, base.DEBIT_AMOUNT, base.CREDIT_AMOUNT;
 
-    DROP TEMPORARY TABLE IF EXISTS tmp_account_detail_report;
-    CREATE TEMPORARY TABLE tmp_account_detail_report
+    DROP TEMPORARY TABLE IF EXISTS tmp_REPORT_RETURN;
+    CREATE TEMPORARY TABLE tmp_REPORT_RETURN
     (
         ROW_NO INT NOT NULL AUTO_INCREMENT,
         ROW_KEY VARCHAR(100) NOT NULL DEFAULT '',
@@ -15168,7 +15171,7 @@ BEGIN
         DOCUMENT_NO VARCHAR(50) NOT NULL DEFAULT '',
         DOCUMENT_DATE VARCHAR(20) NOT NULL DEFAULT '',
         DESCRIPTION VARCHAR(1000) NOT NULL DEFAULT '',
-        COUNTER_ACCOUNT VARCHAR(50) NOT NULL DEFAULT '',
+        CSD_ACC_CD VARCHAR(50) NOT NULL DEFAULT '',
         DEBIT_AMOUNT DECIMAL(18,6) NULL,
         CREDIT_AMOUNT DECIMAL(18,6) NULL,
         BALANCE_DEBIT DECIMAL(18,6) NULL,
@@ -15177,11 +15180,11 @@ BEGIN
         SOURCE_CHIT_ID BIGINT NULL DEFAULT NULL,
         SOURCE_CHIT_TYPE VARCHAR(20) NOT NULL DEFAULT '',
         PRIMARY KEY (ROW_NO),
-        INDEX idx_tmp_account_detail_report_01 (ROW_SORT, ROW_NO)
+        INDEX idx_tmp_REPORT_RETURN_01 (ROW_SORT, ROW_NO)
     ) ENGINE=InnoDB;
 
     IF (SELECT COUNT(*) FROM tmp_account_detail_accounts) = 0 THEN
-        INSERT INTO tmp_account_detail_report
+        INSERT INTO tmp_REPORT_RETURN
         (
             ROW_KEY,
             ROW_SORT,
@@ -15208,7 +15211,7 @@ BEGIN
             'Chọn tài khoản để xem sổ chi tiết'
         );
     ELSE
-        INSERT INTO tmp_account_detail_report
+        INSERT INTO tmp_REPORT_RETURN
         (
             ROW_KEY,
             PARENT_ROW_KEY,
@@ -15223,11 +15226,11 @@ BEGIN
             CURRENCY_TEXT,
             REPORT_PERIOD_TEXT,
             AMOUNT_UNIT_TEXT,
-            DESCRIPTION,
-            DEBIT_AMOUNT,
-            CREDIT_AMOUNT,
-            BALANCE_DEBIT,
-            BALANCE_CREDIT
+            DESCRIPTION
+--            , DEBIT_AMOUNT
+--            , CREDIT_AMOUNT
+--            , BALANCE_DEBIT
+--            , BALANCE_CREDIT
         )
         SELECT
             CONCAT(account.ACC_CD, '_GROUP'),
@@ -15243,11 +15246,11 @@ BEGIN
             v_currency_text,
             v_report_period_text,
             v_amount_unit_text,
-            '',
-            ROUND(SUM(IFNULL(sums.PERIOD_DEBIT, 0)), 2),
-            ROUND(SUM(IFNULL(sums.PERIOD_CREDIT, 0)), 2),
-            ROUND(GREATEST(SUM(IFNULL(sums.ENDING_NET, 0)), 0), 2),
-            ROUND(GREATEST(-SUM(IFNULL(sums.ENDING_NET, 0)), 0), 2)
+            ''
+--            , ROUND(SUM(IFNULL(sums.PERIOD_DEBIT, 0)), 2)
+--            , ROUND(SUM(IFNULL(sums.PERIOD_CREDIT, 0)), 2)
+--            , ROUND(GREATEST(SUM(IFNULL(sums.ENDING_NET, 0)), 0), 2)
+--            , ROUND(GREATEST(-SUM(IFNULL(sums.ENDING_NET, 0)), 0), 2)
         FROM tmp_account_detail_tree_accounts account
         LEFT JOIN tmp_account_detail_account_paths paths
             ON paths.ANCESTOR_ID = account.ACC_ID
@@ -15256,7 +15259,9 @@ BEGIN
         GROUP BY account.ACCOUNT_SORT, account.ACC_ID, account.ACC_PARENT_ID,
             account.PARENT_CD, account.ACC_CD, account.ACCOUNT_NAME, account.ACCOUNT_LEVEL;
 
-        INSERT INTO tmp_account_detail_report
+
+
+        INSERT INTO tmp_REPORT_RETURN
         (
             ROW_KEY,
             PARENT_ROW_KEY,
@@ -15272,8 +15277,8 @@ BEGIN
             REPORT_PERIOD_TEXT,
             AMOUNT_UNIT_TEXT,
             DESCRIPTION,
-            BALANCE_DEBIT,
-            BALANCE_CREDIT
+            DEBIT_AMOUNT, -- BALANCE_DEBIT,
+            CREDIT_AMOUNT -- BALANCE_CREDIT
         )
         SELECT
             CONCAT(account.ACC_CD, '_OPENING'),
@@ -15296,7 +15301,10 @@ BEGIN
         INNER JOIN tmp_account_detail_sums sums
             ON sums.ACC_CD = account.ACC_CD;
 
-        INSERT INTO tmp_account_detail_report
+
+
+/*
+        INSERT INTO tmp_REPORT_RETURN
         (
             ROW_KEY,
             PARENT_ROW_KEY,
@@ -15314,7 +15322,7 @@ BEGIN
             DESCRIPTION
         )
         SELECT
-            CONCAT(account.ACC_CD, '_PERIOD_HEADER'),
+            CONCAT(account.ACC_CD, '_GROUP'), -- _PERIOD_HEADER
             CONCAT(account.ACC_CD, '_GROUP'),
             account.ACCOUNT_SORT * 1000000 + 20,
             v_company_cd,
@@ -15328,9 +15336,9 @@ BEGIN
             v_report_period_text,
             v_amount_unit_text,
             'Số phát sinh trong kỳ'
-        FROM tmp_account_detail_accounts account;
-
-        INSERT INTO tmp_account_detail_report
+        FROM tmp_account_detail_accounts ACCOUNT;
+*/
+        INSERT INTO tmp_REPORT_RETURN
         (
             ROW_KEY,
             PARENT_ROW_KEY,
@@ -15349,7 +15357,7 @@ BEGIN
             DOCUMENT_NO,
             DOCUMENT_DATE,
             DESCRIPTION,
-            COUNTER_ACCOUNT,
+            CSD_ACC_CD,
             DEBIT_AMOUNT,
             CREDIT_AMOUNT,
             BALANCE_DEBIT,
@@ -15360,7 +15368,7 @@ BEGIN
         )
         SELECT
             CONCAT('DETAIL_', running.ROW_NO),
-            CONCAT(running.ACC_CD, '_PERIOD_HEADER'),
+            CONCAT(running.ACC_CD, '_GROUP'), -- _PERIOD_HEADER
             running.ACCOUNT_SORT * 1000000 + 1000 + running.ROW_NO,
             v_company_cd,
             CONCAT('ACCOUNT_DETAIL_', running.ACCOUNT_SORT, '_', running.ACC_CD),
@@ -15376,7 +15384,7 @@ BEGIN
             running.DOCUMENT_NO,
             running.DOCUMENT_DATE,
             running.DESCRIPTION,
-            running.COUNTER_ACCOUNT,
+            running.CSD_ACC_CD,
             ROUND(running.DEBIT_AMOUNT, 2),
             ROUND(running.CREDIT_AMOUNT, 2),
             ROUND(GREATEST(running.RUNNING_NET, 0), 2),
@@ -15413,7 +15421,7 @@ BEGIN
                     movement.DOCUMENT_NO,
                     movement.DOCUMENT_DATE,
                     movement.DESCRIPTION,
-                    movement.COUNTER_ACCOUNT,
+                    movement.CSD_ACC_CD,
                     movement.DEBIT_AMOUNT,
                     movement.CREDIT_AMOUNT,
                     movement.NOTE_TEXT,
@@ -15431,7 +15439,9 @@ BEGIN
             ) ordered_movement
         ) running;
 
-        INSERT INTO tmp_account_detail_report
+
+
+        INSERT INTO tmp_REPORT_RETURN
         (
             ROW_KEY,
             PARENT_ROW_KEY,
@@ -15447,7 +15457,7 @@ BEGIN
             REPORT_PERIOD_TEXT,
             AMOUNT_UNIT_TEXT,
             DESCRIPTION,
-            COUNTER_ACCOUNT,
+            CSD_ACC_CD,
             DEBIT_AMOUNT,
             CREDIT_AMOUNT
         )
@@ -15465,15 +15475,17 @@ BEGIN
             v_currency_text,
             v_report_period_text,
             v_amount_unit_text,
-            'Cộng số phát sinh',
-            'x',
+            'Cộng phát sinh',
+            '',
             ROUND(sums.PERIOD_DEBIT, 2),
             ROUND(sums.PERIOD_CREDIT, 2)
         FROM tmp_account_detail_accounts account
         INNER JOIN tmp_account_detail_sums sums
             ON sums.ACC_CD = account.ACC_CD;
 
-        INSERT INTO tmp_account_detail_report
+
+
+        INSERT INTO tmp_REPORT_RETURN
         (
             ROW_KEY,
             PARENT_ROW_KEY,
@@ -15489,7 +15501,7 @@ BEGIN
             REPORT_PERIOD_TEXT,
             AMOUNT_UNIT_TEXT,
             DESCRIPTION,
-            COUNTER_ACCOUNT,
+            CSD_ACC_CD,
             BALANCE_DEBIT,
             BALANCE_CREDIT
         )
@@ -15508,7 +15520,7 @@ BEGIN
             v_report_period_text,
             v_amount_unit_text,
             'Số dư cuối kỳ',
-            'x',
+            '',
             ROUND(GREATEST(sums.ENDING_NET, 0), 2),
             ROUND(GREATEST(-sums.ENDING_NET, 0), 2)
         FROM tmp_account_detail_accounts account
@@ -15525,6 +15537,8 @@ BEGIN
         REPORT_GROUP_KEY AS __REPORT_GROUP_KEY,
         ROW_TYPE AS __ROW_TYPE,
         ROW_LEVEL AS __ROW_LEVEL,
+        
+        CONCAT(ACCOUNT_CD_TEXT, '-', ACCOUNT_NAME_TEXT)  AS ACC_CD,
         ACCOUNT_CD_TEXT,
         ACCOUNT_NAME_TEXT,
         OBJECT_TEXT,
@@ -15535,7 +15549,7 @@ BEGIN
         DOCUMENT_NO,
         DOCUMENT_DATE,
         DESCRIPTION,
-        COUNTER_ACCOUNT,
+        CSD_ACC_CD,
         DEBIT_AMOUNT,
         CREDIT_AMOUNT,
         BALANCE_DEBIT,
@@ -15544,10 +15558,10 @@ BEGIN
         SOURCE_CHIT_ID AS __CHIT_ID,
         SOURCE_CHIT_TYPE AS __CHIT_TYPE,
         CASE WHEN ROW_TYPE = 'DETAIL' AND IFNULL(SOURCE_CHIT_ID, 0) > 0 THEN 'DOCUMENT' ELSE 'NONE' END AS __LINK_TYPE
-    FROM tmp_account_detail_report
+    FROM tmp_REPORT_RETURN
     ORDER BY ROW_SORT, ROW_NO;
 
-    DROP TEMPORARY TABLE IF EXISTS tmp_account_detail_report;
+    DROP TEMPORARY TABLE IF EXISTS tmp_REPORT_RETURN;
     DROP TEMPORARY TABLE IF EXISTS tmp_account_detail_account_paths;
     DROP TEMPORARY TABLE IF EXISTS tmp_account_detail_tree_accounts;
     DROP TEMPORARY TABLE IF EXISTS tmp_account_detail_sums;
@@ -29785,6 +29799,286 @@ BEGIN
 END//
 DELIMITER ;
 
+-- Dumping structure for procedure am_web_001.rpt_inventory_detail_account
+DROP PROCEDURE IF EXISTS `rpt_inventory_detail_account`;
+DELIMITER //
+CREATE PROCEDURE `rpt_inventory_detail_account`(
+    IN p_COMPANY_CD VARCHAR(20),
+    IN p_FROM_DATE DATE,
+    IN p_TO_DATE DATE,
+    IN p_PRODUCT_CD TEXT,
+    IN p_ACCOUNT_CD TEXT,
+    IN p_FC_TYPE VARCHAR(10),
+    IN p_HIDE_NO_MOVEMENT TINYINT,
+    IN p_LANGUAGE VARCHAR(20)
+)
+BEGIN
+    DECLARE v_language VARCHAR(20) DEFAULT UPPER(COALESCE(p_LANGUAGE, 'VIET'));
+    DECLARE v_fc_type VARCHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_month_start DATE;
+    DECLARE v_product_filter TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_dimension_filter TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+    IF p_FROM_DATE IS NULL OR p_TO_DATE IS NULL OR p_FROM_DATE > p_TO_DATE THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid inventory report date range';
+    END IF;
+
+    SET v_fc_type = UPPER(TRIM(COALESCE(p_FC_TYPE, '')));
+    SET v_month_start = DATE_SUB(p_TO_DATE, INTERVAL (DAYOFMONTH(p_TO_DATE) - 1) DAY);
+    SET v_product_filter = TRIM(COALESCE(p_PRODUCT_CD, ''));
+    SET v_dimension_filter = TRIM(COALESCE(p_ACCOUNT_CD, ''));
+
+    WITH product_filter AS (
+        SELECT TRIM(CODE) AS CODE
+        FROM JSON_TABLE(REPLACE(JSON_ARRAY(v_product_filter), ',', '","'),
+            '$[*]' COLUMNS (CODE VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PATH '$')) tokens
+    ), dimension_filter AS (
+        SELECT TRIM(CODE) AS CODE
+        FROM JSON_TABLE(REPLACE(JSON_ARRAY(v_dimension_filter), ',', '","'),
+            '$[*]' COLUMNS (CODE VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PATH '$')) tokens
+    ), movement AS (
+        SELECT
+            'INPUT' AS FLOW_TYPE,
+            ii.INPUT_ID AS LINE_ID,
+            ii.PRODUCT_ID, ii.PRODUCT_CD, ii.STORE_ID, ii.STORE_CD,
+            ii.UNIT_ID, ii.UNIT_CD, ii.SORT,
+            COALESCE(NULLIF(ii.CHIT_TYPE, ''), h.CHIT_TYPE, '') AS DOCUMENT_TYPE,
+            COALESCE(DATE(ii.INVENTORY_YMD), STR_TO_DATE(NULLIF(h.INVENTORY_YMD, ''), '%Y%m%d')) AS DOCUMENT_DATE,
+            COALESCE(NULLIF(h.INVENTORY_NO, ''), NULLIF(chit.CHIT_NO, ''), ii.INVENTORY_CD, '') AS DOCUMENT_NO,
+            COALESCE(NULLIF(ii.SUMMARY, ''), h.REMARK, '') AS DESCRIPTION,
+            COALESCE(posting.DEBIT, '') AS ACCOUNT_CD,
+            COALESCE(posting.CREDIT, '') AS COUNTERPART_ACCOUNT,
+            COALESCE(h.INVENTORY_ID, chit.CHIT_ID) AS SOURCE_ID,
+            COALESCE(h.CHIT_TYPE, chit.CHIT_TYPE) AS SOURCE_TYPE,
+            CAST(ii.QUANTITY AS DECIMAL(24, 6)) AS QUANTITY,
+            CAST(COALESCE(NULLIF(ii.AMOUNT_CC, 0), ii.QUANTITY * ii.UNIT_PRICE_CC) AS DECIMAL(24, 6)) AS AMOUNT,
+            CAST(CASE WHEN ii.FC_TYPE = v_fc_type THEN ii.AMOUNT_FC END AS DECIMAL(24, 6)) AS AMOUNT_FC,
+            CAST(ii.UNIT_PRICE_CC AS DECIMAL(24, 6)) AS UNIT_PRICE,
+            CAST(CASE WHEN ii.FC_TYPE = v_fc_type THEN ii.UNIT_PRICE_FC END AS DECIMAL(24, 6)) AS UNIT_PRICE_FC
+        FROM chit_inventory_input ii
+        LEFT JOIN chit_inventory_info h
+            ON h.COMPANY_CD = ii.COMPANY_CD AND h.INVENTORY_ID = ii.INVENTORY_ID
+           AND (ii.CHIT_TYPE = h.CHIT_TYPE
+                OR (ii.CHIT_TYPE = 'IA' AND h.CHIT_TYPE IN ('TRANSFER', 'INVENTORY_TRANSFER', 'INVENTORY_TRANSFER_VOUCHER')))
+        LEFT JOIN chitdetailinfo posting
+            ON posting.COMPANY_CD = ii.COMPANY_CD AND posting.ISDEL = '0'
+           AND posting.CHITDETAIL_ID = ii.CHITDETAIL_ID
+        LEFT JOIN chitinfo chit
+            ON chit.COMPANY_CD = ii.COMPANY_CD
+           AND chit.CHIT_ID = posting.CHIT_ID
+        WHERE ii.COMPANY_CD = p_COMPANY_CD AND ii.ISDEL = '0'
+          AND (h.INVENTORY_ID IS NULL OR h.ISDEL = '0')
+          AND (chit.CHIT_ID IS NULL OR chit.ISDEL = '0')
+          AND (ii.INVENTORY_YMD < DATE_ADD(p_TO_DATE, INTERVAL 1 DAY)
+               OR (ii.INVENTORY_YMD IS NULL AND h.INVENTORY_YMD <= DATE_FORMAT(p_TO_DATE, '%Y%m%d')))
+        UNION ALL
+        SELECT
+            'OUTPUT' AS FLOW_TYPE,
+            io.OUTPUT_ID AS LINE_ID,
+            io.PRODUCT_ID, io.PRODUCT_CD, io.STORE_ID, io.STORE_CD,
+            io.UNIT_ID, io.UNIT_CD, io.SORT,
+            COALESCE(NULLIF(io.CHIT_TYPE, ''), h.CHIT_TYPE, '') AS DOCUMENT_TYPE,
+            COALESCE(DATE(io.INVENTORY_YMD), STR_TO_DATE(NULLIF(h.INVENTORY_YMD, ''), '%Y%m%d')) AS DOCUMENT_DATE,
+            COALESCE(NULLIF(h.INVENTORY_NO, ''), NULLIF(chit.CHIT_NO, ''), io.INVENTORY_CD, '') AS DOCUMENT_NO,
+            COALESCE(NULLIF(io.SUMMARY, ''), h.REMARK, '') AS DESCRIPTION,
+            COALESCE(posting.CREDIT, '') AS ACCOUNT_CD,
+            COALESCE(posting.DEBIT, '') AS COUNTERPART_ACCOUNT,
+            COALESCE(h.INVENTORY_ID, chit.CHIT_ID) AS SOURCE_ID,
+            COALESCE(h.CHIT_TYPE, chit.CHIT_TYPE) AS SOURCE_TYPE,
+            CAST(io.QUANTITY AS DECIMAL(24, 6)) AS QUANTITY,
+            CAST(CASE WHEN io.CHIT_TYPE = 'IO' THEN io.AMOUNT_CC
+                      ELSE COALESCE(NULLIF(io.AMOUNT_CC, 0), io.QUANTITY * io.UNIT_PRICE_CC) END AS DECIMAL(24, 6)) AS AMOUNT,
+            CAST(CASE WHEN io.FC_TYPE = v_fc_type THEN io.AMOUNT_FC END AS DECIMAL(24, 6)) AS AMOUNT_FC,
+            CAST(io.UNIT_PRICE_CC AS DECIMAL(24, 6)) AS UNIT_PRICE,
+            CAST(CASE WHEN io.FC_TYPE = v_fc_type THEN io.UNIT_PRICE_FC END AS DECIMAL(24, 6)) AS UNIT_PRICE_FC
+        FROM chit_inventory_output io
+        LEFT JOIN chit_inventory_info h
+            ON h.COMPANY_CD = io.COMPANY_CD AND h.INVENTORY_ID = io.INVENTORY_ID
+           AND (io.CHIT_TYPE = h.CHIT_TYPE
+                OR (io.CHIT_TYPE = 'IA' AND h.CHIT_TYPE IN ('TRANSFER', 'INVENTORY_TRANSFER', 'INVENTORY_TRANSFER_VOUCHER')))
+        LEFT JOIN chitdetailinfo source_detail
+            ON source_detail.COMPANY_CD = io.COMPANY_CD AND source_detail.CHITDETAIL_ID = io.CHITDETAIL_ID
+           AND source_detail.ISDEL = '0'
+        LEFT JOIN chitdetailinfo posting
+            ON posting.COMPANY_CD = io.COMPANY_CD AND posting.ISDEL = '0'
+           AND posting.CHITDETAIL_ID = COALESCE(
+                CASE WHEN io.CHIT_TYPE = 'IO' THEN COALESCE(
+                    NULLIF(io.CHITDETAIL_ID_COGS, 0), NULLIF(h.CHITDETAIL_ID_COGS, 0),
+                    (SELECT MIN(legacy.CHITDETAIL_ID)
+                     FROM chitdetailinfo legacy
+                     WHERE legacy.COMPANY_CD = io.COMPANY_CD AND legacy.CHIT_ID = h.CHIT_ID_COGS
+                       AND legacy.SORT = 1 AND legacy.ISDEL = '0')
+                ) END,
+                io.CHITDETAIL_ID
+           )
+        LEFT JOIN chitinfo chit
+            ON chit.COMPANY_CD = io.COMPANY_CD
+           AND chit.CHIT_ID = COALESCE(source_detail.CHIT_ID, posting.CHIT_ID)
+        WHERE io.COMPANY_CD = p_COMPANY_CD AND io.ISDEL = '0'
+          AND (h.INVENTORY_ID IS NULL OR h.ISDEL = '0')
+          AND (chit.CHIT_ID IS NULL OR chit.ISDEL = '0')
+          AND (io.INVENTORY_YMD < DATE_ADD(p_TO_DATE, INTERVAL 1 DAY)
+               OR (io.INVENTORY_YMD IS NULL AND h.INVENTORY_YMD <= DATE_FORMAT(p_TO_DATE, '%Y%m%d')))
+    ), catalog AS (
+        SELECT m.FLOW_TYPE, m.LINE_ID, m.SORT, m.DOCUMENT_TYPE, m.DOCUMENT_DATE, m.DOCUMENT_NO,
+            m.DESCRIPTION, m.ACCOUNT_CD, m.COUNTERPART_ACCOUNT, m.SOURCE_ID, m.SOURCE_TYPE,
+            m.QUANTITY, m.AMOUNT, m.AMOUNT_FC, m.UNIT_PRICE, m.UNIT_PRICE_FC,
+            COALESCE(NULLIF(m.PRODUCT_CD, ''), product.PRODUCT_CD, '') AS PRODUCT_CD,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN product.PRODUCT_NM_ENG WHEN 'KOR' THEN product.PRODUCT_NM_KOR
+                WHEN 'CHN' THEN product.PRODUCT_NM_CHINA ELSE product.PRODUCT_NM_VIET END, ''),
+                NULLIF(product.PRODUCT_NM_VIET, '')), NULLIF(m.PRODUCT_CD, ''), '') AS PRODUCT_NAME,
+            COALESCE(NULLIF(m.STORE_CD, ''), store.STORE_CD, '') AS STORE_CD,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN store.STORE_NM_ENG WHEN 'KOR' THEN store.STORE_NM_KOR
+                WHEN 'CHN' THEN store.STORE_NM_CHINA ELSE store.STORE_NM_VIET END, ''),
+                NULLIF(store.STORE_NM_VIET, '')), NULLIF(m.STORE_CD, ''), '') AS STORE_NAME,
+            COALESCE(NULLIF(unit.UNIT_NM, ''), m.UNIT_CD, '') AS UNIT_NAME,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN account.ACCTITLE_NM_ENG WHEN 'KOR' THEN account.ACCTITLE_NM_KOR
+                WHEN 'CHN' THEN account.ACCTITLE_NM_CHINA ELSE account.ACCTITLE_NM_VIET END, ''),
+                NULLIF(account.ACCTITLE_NM_VIET, '')), NULLIF(m.ACCOUNT_CD, ''), '') AS ACCOUNT_NAME
+        FROM movement m
+        LEFT JOIN product_info product
+            ON product.COMPANY_CD = p_COMPANY_CD AND product.PRODUCT_ID = m.PRODUCT_ID AND product.ISDEL = '0'
+        LEFT JOIN store_info store
+            ON store.COMPANY_CD = p_COMPANY_CD AND store.STORE_ID = m.STORE_ID AND store.ISDEL = '0'
+        LEFT JOIN product_unit unit
+            ON unit.COMPANY_CD = p_COMPANY_CD AND unit.UNIT_ID = m.UNIT_ID AND unit.ISDEL = '0'
+        LEFT JOIN acclist_info account
+            ON account.COMPANY_CD = p_COMPANY_CD AND account.ACC_ID = (
+                SELECT MAX(a.ACC_ID)
+                FROM acclist_info a
+                WHERE a.COMPANY_CD = p_COMPANY_CD AND a.ACC_CD = m.ACCOUNT_CD AND a.ISDEL = '0'
+            )
+        WHERE m.DOCUMENT_DATE <= p_TO_DATE
+    ), filtered AS (
+        SELECT catalog.*,
+            UPPER(ACCOUNT_CD) AS DIMENSION_CD,
+            UPPER(PRODUCT_CD) AS PRODUCT_GROUP,
+            DOCUMENT_DATE >= p_FROM_DATE AS IN_PERIOD,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN QUANTITY ELSE -QUANTITY END AS NET_QTY,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT ELSE -AMOUNT END AS NET_AMOUNT,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT_FC ELSE -AMOUNT_FC END AS NET_FC
+        FROM catalog
+        WHERE (v_product_filter IN ('', 'all')
+               OR EXISTS (SELECT 1 FROM product_filter f WHERE f.CODE = catalog.PRODUCT_CD))
+          AND (v_dimension_filter IN ('', 'all')
+               OR EXISTS (SELECT 1 FROM dimension_filter f WHERE f.CODE = catalog.ACCOUNT_CD))
+    ), totals AS (
+        SELECT DIMENSION_CD, PRODUCT_GROUP,
+            CONCAT('PRODUCT-', SHA2(JSON_ARRAY(DIMENSION_CD, PRODUCT_GROUP), 256)) AS PRODUCT_KEY,
+            CONCAT('DIMENSION-', SHA2(DIMENSION_CD, 256)) AS DIMENSION_KEY,
+            MAX(ACCOUNT_NAME) AS DIMENSION_NAME,
+            MAX(PRODUCT_NAME) AS PRODUCT_NAME,
+            MAX(UNIT_NAME) AS UNIT_NAME,
+            SUM(IF(IN_PERIOD, 0, NET_QTY)) AS OPEN_QTY,
+            SUM(IF(IN_PERIOD, 0, NET_AMOUNT)) AS OPEN_AMOUNT,
+            SUM(IF(IN_PERIOD, NULL, NET_FC)) AS OPEN_FC,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', QUANTITY, 0)) AS IN_QTY,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', AMOUNT, 0)) AS IN_AMOUNT,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', AMOUNT_FC, NULL)) AS IN_FC,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', QUANTITY, 0)) AS OUT_QTY,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', AMOUNT, 0)) AS OUT_AMOUNT,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', AMOUNT_FC, NULL)) AS OUT_FC,
+            SUM(NET_QTY) AS END_QTY,
+            SUM(NET_AMOUNT) AS END_AMOUNT,
+            SUM(NET_FC) AS END_FC,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_QTY WHEN FLOW_TYPE = 'INPUT' THEN QUANTITY ELSE 0 END) AS MONTH_AVAILABLE_QTY,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_AMOUNT WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT ELSE 0 END) AS MONTH_AVAILABLE_AMOUNT,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_FC WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT_FC END) AS MONTH_AVAILABLE_FC,
+            SUM(IF(AMOUNT_FC IS NOT NULL, IF(IN_PERIOD, IF(FLOW_TYPE = 'INPUT', QUANTITY, 0), NET_QTY), 0)) AS PERIOD_AVAILABLE_FC_QTY,
+            SUM(IF(AMOUNT_FC IS NOT NULL, IF(DOCUMENT_DATE < v_month_start, NET_QTY, IF(FLOW_TYPE = 'INPUT', QUANTITY, 0)), 0)) AS MONTH_AVAILABLE_FC_QTY
+        FROM filtered
+        GROUP BY DIMENSION_CD, PRODUCT_GROUP
+        HAVING COALESCE(p_HIDE_NO_MOVEMENT, 0) = 0 OR SUM(IN_PERIOD AND DOCUMENT_TYPE <> 'IRO') > 0
+    ), details AS (
+        SELECT f.*, t.PRODUCT_KEY,
+            ROW_NUMBER() OVER ledger AS LINE_SORT,
+            t.OPEN_QTY + SUM(NET_QTY) OVER ledger AS BALANCE_QTY,
+            t.OPEN_AMOUNT + SUM(NET_AMOUNT) OVER ledger AS BALANCE_AMOUNT,
+            CASE WHEN t.OPEN_FC IS NOT NULL OR SUM(NET_FC) OVER ledger IS NOT NULL
+                THEN COALESCE(t.OPEN_FC, 0) + COALESCE(SUM(NET_FC) OVER ledger, 0) END AS BALANCE_FC
+        FROM filtered f
+        JOIN totals t USING (DIMENSION_CD, PRODUCT_GROUP)
+        WHERE f.IN_PERIOD
+        WINDOW ledger AS (PARTITION BY f.DIMENSION_CD, f.PRODUCT_GROUP
+            ORDER BY f.DOCUMENT_DATE, f.DOCUMENT_NO, f.SORT, f.FLOW_TYPE, f.LINE_ID ROWS UNBOUNDED PRECEDING)
+    ), summary_types AS (
+        SELECT 'OPENING' AS ROW_TYPE, 1 AS ROW_SORT, CASE v_language WHEN 'ENG' THEN 'Opening balance' WHEN 'KOR' THEN '기초 잔액' WHEN 'CHN' THEN '期初余额' ELSE 'Chỉ tiêu đầu kỳ' END AS LABEL
+        UNION ALL SELECT 'TOTAL', 3, CASE v_language WHEN 'ENG' THEN 'Period movement' WHEN 'KOR' THEN '기간 합계' WHEN 'CHN' THEN '本期发生额' ELSE 'Cộng phát sinh' END
+        UNION ALL SELECT 'CLOSING', 4, CASE v_language WHEN 'ENG' THEN 'Closing balance' WHEN 'KOR' THEN '기말 재고' WHEN 'CHN' THEN '期末库存' ELSE 'Hàng tồn kho' END
+        UNION ALL SELECT 'PERIOD_AVERAGE', 5, CASE v_language WHEN 'ENG' THEN 'Period average cost' WHEN 'KOR' THEN '기간 평균 단가' WHEN 'CHN' THEN '本期平均单价' ELSE 'Giá trung bình của kỳ này' END
+        UNION ALL SELECT 'MONTH_AVERAGE', 6, CASE v_language WHEN 'ENG' THEN 'Month average cost' WHEN 'KOR' THEN '월 평균 단가' WHEN 'CHN' THEN '本月平均单价' ELSE 'Giá trung bình của tháng này' END
+    ), report_rows AS (
+        SELECT DISTINCT t.DIMENSION_KEY AS ROW_KEY, NULL AS PARENT_KEY, 'GROUP' AS ROW_TYPE, 0 AS ROW_LEVEL,
+            t.DIMENSION_CD, '' AS PRODUCT_GROUP, 0 AS SECTION_SORT, 0 AS LINE_SORT,
+            CONCAT('Tài khoản: ', t.DIMENSION_CD, IF(t.DIMENSION_CD = '', '', ' '), COALESCE(NULLIF(MAX(t.DIMENSION_NAME) OVER (PARTITION BY t.DIMENSION_CD), ''), '—')) AS DESCRIPTION,
+            NULL AS DOCUMENT_NO, NULL AS DOCUMENT_DATE, NULL AS PRODUCT_CD, NULL AS PRODUCT_NAME,
+            NULL AS STORE_CD, NULL AS STORE_NAME, NULL AS UNIT_NAME, NULL AS ACCOUNT_CD, NULL AS ACCOUNT_NAME,
+            NULL AS COUNTERPART_ACCOUNT, NULL AS UNIT_PRICE, NULL AS UNIT_PRICE_FC,
+            NULL AS OPENING_QUANTITY, NULL AS OPENING_AMOUNT, NULL AS OPENING_AMOUNT_FC,
+            NULL AS INPUT_QUANTITY, NULL AS INPUT_AMOUNT, NULL AS INPUT_AMOUNT_FC,
+            NULL AS OUTPUT_QUANTITY, NULL AS OUTPUT_AMOUNT, NULL AS OUTPUT_AMOUNT_FC,
+            NULL AS BALANCE_QUANTITY, NULL AS BALANCE_AMOUNT, NULL AS BALANCE_AMOUNT_FC,
+            NULL AS AVERAGE_PRICE, NULL AS AVERAGE_PRICE_FC, NULL AS SOURCE_ID, NULL AS SOURCE_TYPE
+        FROM totals t
+        UNION ALL
+        SELECT t.PRODUCT_KEY AS ROW_KEY, t.DIMENSION_KEY AS PARENT_KEY, 'GROUP' AS ROW_TYPE, 1 AS ROW_LEVEL,
+            t.DIMENSION_CD, t.PRODUCT_GROUP, 0 AS SECTION_SORT, 0 AS LINE_SORT,
+            CONCAT(t.PRODUCT_GROUP, IF(t.PRODUCT_NAME = t.PRODUCT_GROUP, '', CONCAT(' — ', t.PRODUCT_NAME))) AS DESCRIPTION,
+            NULL AS DOCUMENT_NO, NULL AS DOCUMENT_DATE, t.PRODUCT_GROUP AS PRODUCT_CD, t.PRODUCT_NAME,
+            NULL AS STORE_CD, NULL AS STORE_NAME, t.UNIT_NAME, NULL AS ACCOUNT_CD, NULL AS ACCOUNT_NAME,
+            NULL AS COUNTERPART_ACCOUNT, NULL AS UNIT_PRICE, NULL AS UNIT_PRICE_FC,
+            NULL AS OPENING_QUANTITY, NULL AS OPENING_AMOUNT, NULL AS OPENING_AMOUNT_FC,
+            NULL AS INPUT_QUANTITY, NULL AS INPUT_AMOUNT, NULL AS INPUT_AMOUNT_FC,
+            NULL AS OUTPUT_QUANTITY, NULL AS OUTPUT_AMOUNT, NULL AS OUTPUT_AMOUNT_FC,
+            NULL AS BALANCE_QUANTITY, NULL AS BALANCE_AMOUNT, NULL AS BALANCE_AMOUNT_FC,
+            NULL AS AVERAGE_PRICE, NULL AS AVERAGE_PRICE_FC, NULL AS SOURCE_ID, NULL AS SOURCE_TYPE
+        FROM totals t
+        UNION ALL
+        SELECT CONCAT(f.FLOW_TYPE, '-', f.LINE_ID), f.PRODUCT_KEY, f.FLOW_TYPE, 2,
+            f.DIMENSION_CD, f.PRODUCT_GROUP, 2, f.LINE_SORT, f.DESCRIPTION,
+            f.DOCUMENT_NO, f.DOCUMENT_DATE, f.PRODUCT_CD, f.PRODUCT_NAME,
+            f.STORE_CD, f.STORE_NAME, f.UNIT_NAME, f.ACCOUNT_CD, f.ACCOUNT_NAME,
+            f.COUNTERPART_ACCOUNT, f.UNIT_PRICE, f.UNIT_PRICE_FC,
+            NULL, NULL, NULL,
+            IF(f.FLOW_TYPE = 'INPUT', f.QUANTITY, NULL), IF(f.FLOW_TYPE = 'INPUT', f.AMOUNT, NULL), IF(f.FLOW_TYPE = 'INPUT', f.AMOUNT_FC, NULL),
+            IF(f.FLOW_TYPE = 'OUTPUT', f.QUANTITY, NULL), IF(f.FLOW_TYPE = 'OUTPUT', f.AMOUNT, NULL), IF(f.FLOW_TYPE = 'OUTPUT', f.AMOUNT_FC, NULL),
+            f.BALANCE_QTY, f.BALANCE_AMOUNT, f.BALANCE_FC, NULL, NULL, f.SOURCE_ID, f.SOURCE_TYPE
+        FROM details f
+        UNION ALL
+        SELECT CONCAT(t.PRODUCT_KEY, '-', s.ROW_TYPE), t.PRODUCT_KEY, s.ROW_TYPE, 2,
+            t.DIMENSION_CD, t.PRODUCT_GROUP, s.ROW_SORT, 0, s.LABEL,
+            NULL, NULL, t.PRODUCT_GROUP, t.PRODUCT_NAME, NULL, NULL, t.UNIT_NAME, NULL, NULL,
+            NULL, NULL, NULL,
+            IF(s.ROW_TYPE = 'OPENING', t.OPEN_QTY, NULL), IF(s.ROW_TYPE = 'OPENING', t.OPEN_AMOUNT, NULL), IF(s.ROW_TYPE = 'OPENING', t.OPEN_FC, NULL),
+            IF(s.ROW_TYPE = 'TOTAL', t.IN_QTY, NULL), IF(s.ROW_TYPE = 'TOTAL', t.IN_AMOUNT, NULL), IF(s.ROW_TYPE = 'TOTAL', t.IN_FC, NULL),
+            IF(s.ROW_TYPE = 'TOTAL', t.OUT_QTY, NULL), IF(s.ROW_TYPE = 'TOTAL', t.OUT_AMOUNT, NULL), IF(s.ROW_TYPE = 'TOTAL', t.OUT_FC, NULL),
+            IF(s.ROW_TYPE = 'CLOSING', t.END_QTY, NULL), IF(s.ROW_TYPE = 'CLOSING', t.END_AMOUNT, NULL), IF(s.ROW_TYPE = 'CLOSING', t.END_FC, NULL),
+            CASE s.ROW_TYPE WHEN 'PERIOD_AVERAGE' THEN (t.OPEN_AMOUNT + t.IN_AMOUNT) / NULLIF(t.OPEN_QTY + t.IN_QTY, 0)
+                WHEN 'MONTH_AVERAGE' THEN t.MONTH_AVAILABLE_AMOUNT / NULLIF(t.MONTH_AVAILABLE_QTY, 0) END,
+            CASE s.ROW_TYPE WHEN 'PERIOD_AVERAGE' THEN
+                CASE WHEN t.OPEN_FC IS NOT NULL OR t.IN_FC IS NOT NULL
+                    THEN (COALESCE(t.OPEN_FC, 0) + COALESCE(t.IN_FC, 0)) / NULLIF(t.PERIOD_AVAILABLE_FC_QTY, 0) END
+                WHEN 'MONTH_AVERAGE' THEN t.MONTH_AVAILABLE_FC / NULLIF(t.MONTH_AVAILABLE_FC_QTY, 0) END,
+            NULL, NULL
+        FROM totals t CROSS JOIN summary_types s
+    )
+    SELECT ROW_KEY AS __ROW_KEY, PARENT_KEY AS __PARENT_ROW_KEY, ROW_TYPE AS __ROW_TYPE,
+        ROW_LEVEL AS __ROW_LEVEL,
+        ROW_NUMBER() OVER (ORDER BY DIMENSION_CD, PRODUCT_GROUP, SECTION_SORT, LINE_SORT, ROW_KEY) AS __ROW_SORT,
+        p_COMPANY_CD AS __COMPANY_CD, SOURCE_ID AS __CHIT_ID, SOURCE_TYPE AS __CHIT_TYPE,
+        DESCRIPTION, DOCUMENT_NO, DOCUMENT_DATE, DOCUMENT_DATE AS ENTRY_DATE,
+        PRODUCT_CD, PRODUCT_NAME, UNIT_NAME, STORE_CD, STORE_NAME, ACCOUNT_CD, ACCOUNT_NAME, COUNTERPART_ACCOUNT,
+        UNIT_PRICE, UNIT_PRICE_FC, OPENING_QUANTITY, OPENING_AMOUNT, OPENING_AMOUNT_FC,
+        INPUT_QUANTITY, INPUT_AMOUNT, INPUT_AMOUNT_FC, OUTPUT_QUANTITY, OUTPUT_AMOUNT, OUTPUT_AMOUNT_FC,
+        BALANCE_QUANTITY, BALANCE_AMOUNT, BALANCE_AMOUNT_FC, AVERAGE_PRICE, AVERAGE_PRICE_FC
+    FROM report_rows
+    ORDER BY __ROW_SORT;
+END//
+DELIMITER ;
+
 -- Dumping structure for procedure am_web_001.rpt_inventory_detail_book
 DROP PROCEDURE IF EXISTS `rpt_inventory_detail_book`;
 DELIMITER //
@@ -29808,55 +30102,12 @@ BEGIN
     DECLARE v_total_output_quantity DECIMAL(18,4) DEFAULT 0.0000;
     DECLARE v_total_output_amount DECIMAL(18,2) DEFAULT 0.00;
     DECLARE v_store_name VARCHAR(255) DEFAULT '';
-    DECLARE v_bad_output BIGINT DEFAULT NULL;
-    DECLARE v_cogs_error VARCHAR(128);
     IF p_FROM_DATE IS NULL OR p_TO_DATE IS NULL THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fromDate and toDate are required';
     END IF;
 
     IF p_FROM_DATE > p_TO_DATE THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'fromDate must be earlier than or equal to toDate';
-    END IF;
-
-    SELECT MIN(io.OUTPUT_ID) INTO v_bad_output
-    FROM chit_inventory_output io
-    LEFT JOIN chit_inventory_info t ON t.COMPANY_CD=io.COMPANY_CD AND t.INVENTORY_ID=io.INVENTORY_ID AND t.ISDEL='0'
-    LEFT JOIN chitinfo c ON c.COMPANY_CD=t.COMPANY_CD AND c.CHIT_ID=t.CHIT_ID_COGS AND c.ISDEL='0' AND c.CHIT_TYPE IN ('OT','IO_COGS') AND c.INPUT_TYPE='AR'
-    LEFT JOIN (
-        SELECT COMPANY_CD,CHIT_ID,COUNT(*) AS DETAIL_COUNT,SUM(AMOUNT) AS DETAIL_AMOUNT,MIN(DEBIT) AS DEBIT,MIN(CREDIT) AS CREDIT
-        FROM chitdetailinfo WHERE ISDEL='0' GROUP BY COMPANY_CD,CHIT_ID
-    ) d ON d.COMPANY_CD=c.COMPANY_CD AND d.CHIT_ID=c.CHIT_ID
-    LEFT JOIN chitdetailinfo linked_cogs ON linked_cogs.COMPANY_CD=t.COMPANY_CD
-        AND linked_cogs.CHITDETAIL_ID=t.CHITDETAIL_ID_COGS AND linked_cogs.CHIT_ID=c.CHIT_ID
-        AND linked_cogs.ISDEL='0'
-    LEFT JOIN (
-        SELECT COMPANY_CD,INVENTORY_ID,SUM(AMOUNT_CC) AS COST_AMOUNT
-        FROM chit_inventory_output WHERE ISDEL='0' AND CHIT_TYPE='IO' GROUP BY COMPANY_CD,INVENTORY_ID
-    ) totals ON totals.COMPANY_CD=io.COMPANY_CD AND totals.INVENTORY_ID=io.INVENTORY_ID
-    WHERE io.COMPANY_CD=p_COMPANY_CD AND io.ISDEL='0' AND io.CHIT_TYPE='IO'
-        AND DATE(io.INVENTORY_YMD) <= p_TO_DATE
-        -- Only require a COGS voucher when the inventory issue has COGS enabled.
-        -- Keep missing inventory headers in scope so orphaned output rows still fail validation.
-        AND (t.INVENTORY_ID IS NULL OR IFNULL(t.IS_COGS,'0') <> '0')
-        AND (t.INVENTORY_ID IS NULL OR c.CHIT_ID IS NULL OR NOT (
-            (linked_cogs.CHITDETAIL_ID IS NOT NULL AND linked_cogs.DEBIT='632' AND linked_cogs.CREDIT='156'
-                AND linked_cogs.AMOUNT>=0 AND linked_cogs.CHIT_YMD=t.INVENTORY_YMD
-                AND ROUND(c.AMOUNT,2)=ROUND(d.DETAIL_AMOUNT,2))
-            OR (t.CHITDETAIL_ID_COGS IS NULL AND IFNULL(d.DETAIL_COUNT,0)=1 AND d.DEBIT='632' AND d.CREDIT='156'
-                AND ROUND(d.DETAIL_AMOUNT,2)=ROUND(totals.COST_AMOUNT,2)
-                AND ROUND(c.AMOUNT,2)=ROUND(totals.COST_AMOUNT,2)
-                AND EXISTS (SELECT 1 FROM acclist_info a WHERE a.COMPANY_CD=c.COMPANY_CD AND a.ACC_CD='632' AND a.ISDEL='0')
-                AND EXISTS (SELECT 1 FROM acclist_info a WHERE a.COMPANY_CD=c.COMPANY_CD AND a.ACC_CD='156' AND a.ISDEL='0'))
-            OR (t.CHITDETAIL_ID_COGS IS NULL AND EXISTS (
-                SELECT 1 FROM chitdetailinfo legacy
-                WHERE legacy.COMPANY_CD=io.COMPANY_CD AND legacy.CHIT_ID=c.CHIT_ID
-                    AND legacy.CHITDETAIL_ID=io.CHITDETAIL_ID_COGS AND legacy.ISDEL='0'
-                    AND ROUND(legacy.AMOUNT,2)=ROUND(io.AMOUNT_CC,2)
-                    AND legacy.DEBIT LIKE '632%' AND legacy.CREDIT LIKE '156%'
-            ))));
-    IF v_bad_output IS NOT NULL THEN
-        SET v_cogs_error = CONCAT('Missing or invalid COGS for inventory output ',v_bad_output);
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT=v_cogs_error;
     END IF;
 
     SET v_menu_code = UPPER(TRIM(IFNULL(p_MENU_CODE, '')));
@@ -30357,6 +30608,834 @@ BEGIN
         AMOUNT_UNIT_TEXT AS __AMOUNT_UNIT_TEXT
     FROM tmp_inventory_detail_report
     ORDER BY ROW_NO;
+END//
+DELIMITER ;
+
+-- Dumping structure for procedure am_web_001.rpt_inventory_detail_department
+DROP PROCEDURE IF EXISTS `rpt_inventory_detail_department`;
+DELIMITER //
+CREATE PROCEDURE `rpt_inventory_detail_department`(
+    IN p_COMPANY_CD VARCHAR(20),
+    IN p_FROM_DATE DATE,
+    IN p_TO_DATE DATE,
+    IN p_PRODUCT_CD TEXT,
+    IN p_DEPARTMENT_CD TEXT,
+    IN p_FC_TYPE VARCHAR(10),
+    IN p_HIDE_NO_MOVEMENT TINYINT,
+    IN p_LANGUAGE VARCHAR(20)
+)
+BEGIN
+    DECLARE v_language VARCHAR(20) DEFAULT UPPER(COALESCE(p_LANGUAGE, 'VIET'));
+    DECLARE v_fc_type VARCHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_month_start DATE;
+    DECLARE v_product_filter TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_dimension_filter TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+    IF p_FROM_DATE IS NULL OR p_TO_DATE IS NULL OR p_FROM_DATE > p_TO_DATE THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid inventory report date range';
+    END IF;
+
+    SET v_fc_type = UPPER(TRIM(COALESCE(p_FC_TYPE, '')));
+    SET v_month_start = DATE_SUB(p_TO_DATE, INTERVAL (DAYOFMONTH(p_TO_DATE) - 1) DAY);
+    SET v_product_filter = TRIM(COALESCE(p_PRODUCT_CD, ''));
+    SET v_dimension_filter = TRIM(COALESCE(p_DEPARTMENT_CD, ''));
+
+    WITH product_filter AS (
+        SELECT TRIM(CODE) AS CODE
+        FROM JSON_TABLE(REPLACE(JSON_ARRAY(v_product_filter), ',', '","'),
+            '$[*]' COLUMNS (CODE VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PATH '$')) tokens
+    ), dimension_filter AS (
+        SELECT TRIM(CODE) AS CODE
+        FROM JSON_TABLE(REPLACE(JSON_ARRAY(v_dimension_filter), ',', '","'),
+            '$[*]' COLUMNS (CODE VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PATH '$')) tokens
+    ), movement AS (
+        SELECT
+            'INPUT' AS FLOW_TYPE,
+            ii.INPUT_ID AS LINE_ID,
+            ii.PRODUCT_ID, ii.PRODUCT_CD, ii.STORE_ID, ii.STORE_CD,
+            ii.UNIT_ID, ii.UNIT_CD, ii.SORT,
+            COALESCE(NULLIF(ii.CHIT_TYPE, ''), h.CHIT_TYPE, '') AS DOCUMENT_TYPE,
+            COALESCE(DATE(ii.INVENTORY_YMD), STR_TO_DATE(NULLIF(h.INVENTORY_YMD, ''), '%Y%m%d')) AS DOCUMENT_DATE,
+            COALESCE(NULLIF(h.INVENTORY_NO, ''), NULLIF(chit.CHIT_NO, ''), ii.INVENTORY_CD, '') AS DOCUMENT_NO,
+            COALESCE(NULLIF(ii.SUMMARY, ''), h.REMARK, '') AS DESCRIPTION,
+            COALESCE(posting.DEBIT, '') AS ACCOUNT_CD,
+            COALESCE(posting.CREDIT, '') AS COUNTERPART_ACCOUNT,
+            COALESCE(h.INVENTORY_ID, chit.CHIT_ID) AS SOURCE_ID,
+            COALESCE(h.CHIT_TYPE, chit.CHIT_TYPE) AS SOURCE_TYPE,
+            posting.CHITDETAIL_ID AS DEPARTMENT_DETAIL_ID,
+            CAST(ii.QUANTITY AS DECIMAL(24, 6)) AS QUANTITY,
+            CAST(COALESCE(NULLIF(ii.AMOUNT_CC, 0), ii.QUANTITY * ii.UNIT_PRICE_CC) AS DECIMAL(24, 6)) AS AMOUNT,
+            CAST(CASE WHEN ii.FC_TYPE = v_fc_type THEN ii.AMOUNT_FC END AS DECIMAL(24, 6)) AS AMOUNT_FC,
+            CAST(ii.UNIT_PRICE_CC AS DECIMAL(24, 6)) AS UNIT_PRICE,
+            CAST(CASE WHEN ii.FC_TYPE = v_fc_type THEN ii.UNIT_PRICE_FC END AS DECIMAL(24, 6)) AS UNIT_PRICE_FC
+        FROM chit_inventory_input ii
+        LEFT JOIN chit_inventory_info h
+            ON h.COMPANY_CD = ii.COMPANY_CD AND h.INVENTORY_ID = ii.INVENTORY_ID
+           AND (ii.CHIT_TYPE = h.CHIT_TYPE
+                OR (ii.CHIT_TYPE = 'IA' AND h.CHIT_TYPE IN ('TRANSFER', 'INVENTORY_TRANSFER', 'INVENTORY_TRANSFER_VOUCHER')))
+        LEFT JOIN chitdetailinfo posting
+            ON posting.COMPANY_CD = ii.COMPANY_CD AND posting.ISDEL = '0'
+           AND posting.CHITDETAIL_ID = ii.CHITDETAIL_ID
+        LEFT JOIN chitinfo chit
+            ON chit.COMPANY_CD = ii.COMPANY_CD
+           AND chit.CHIT_ID = posting.CHIT_ID
+        WHERE ii.COMPANY_CD = p_COMPANY_CD AND ii.ISDEL = '0'
+          AND (h.INVENTORY_ID IS NULL OR h.ISDEL = '0')
+          AND (chit.CHIT_ID IS NULL OR chit.ISDEL = '0')
+          AND (ii.INVENTORY_YMD < DATE_ADD(p_TO_DATE, INTERVAL 1 DAY)
+               OR (ii.INVENTORY_YMD IS NULL AND h.INVENTORY_YMD <= DATE_FORMAT(p_TO_DATE, '%Y%m%d')))
+        UNION ALL
+        SELECT
+            'OUTPUT' AS FLOW_TYPE,
+            io.OUTPUT_ID AS LINE_ID,
+            io.PRODUCT_ID, io.PRODUCT_CD, io.STORE_ID, io.STORE_CD,
+            io.UNIT_ID, io.UNIT_CD, io.SORT,
+            COALESCE(NULLIF(io.CHIT_TYPE, ''), h.CHIT_TYPE, '') AS DOCUMENT_TYPE,
+            COALESCE(DATE(io.INVENTORY_YMD), STR_TO_DATE(NULLIF(h.INVENTORY_YMD, ''), '%Y%m%d')) AS DOCUMENT_DATE,
+            COALESCE(NULLIF(h.INVENTORY_NO, ''), NULLIF(chit.CHIT_NO, ''), io.INVENTORY_CD, '') AS DOCUMENT_NO,
+            COALESCE(NULLIF(io.SUMMARY, ''), h.REMARK, '') AS DESCRIPTION,
+            COALESCE(posting.CREDIT, '') AS ACCOUNT_CD,
+            COALESCE(posting.DEBIT, '') AS COUNTERPART_ACCOUNT,
+            COALESCE(h.INVENTORY_ID, chit.CHIT_ID) AS SOURCE_ID,
+            COALESCE(h.CHIT_TYPE, chit.CHIT_TYPE) AS SOURCE_TYPE,
+            COALESCE(source_detail.CHITDETAIL_ID, posting.CHITDETAIL_ID) AS DEPARTMENT_DETAIL_ID,
+            CAST(io.QUANTITY AS DECIMAL(24, 6)) AS QUANTITY,
+            CAST(CASE WHEN io.CHIT_TYPE = 'IO' THEN io.AMOUNT_CC
+                      ELSE COALESCE(NULLIF(io.AMOUNT_CC, 0), io.QUANTITY * io.UNIT_PRICE_CC) END AS DECIMAL(24, 6)) AS AMOUNT,
+            CAST(CASE WHEN io.FC_TYPE = v_fc_type THEN io.AMOUNT_FC END AS DECIMAL(24, 6)) AS AMOUNT_FC,
+            CAST(io.UNIT_PRICE_CC AS DECIMAL(24, 6)) AS UNIT_PRICE,
+            CAST(CASE WHEN io.FC_TYPE = v_fc_type THEN io.UNIT_PRICE_FC END AS DECIMAL(24, 6)) AS UNIT_PRICE_FC
+        FROM chit_inventory_output io
+        LEFT JOIN chit_inventory_info h
+            ON h.COMPANY_CD = io.COMPANY_CD AND h.INVENTORY_ID = io.INVENTORY_ID
+           AND (io.CHIT_TYPE = h.CHIT_TYPE
+                OR (io.CHIT_TYPE = 'IA' AND h.CHIT_TYPE IN ('TRANSFER', 'INVENTORY_TRANSFER', 'INVENTORY_TRANSFER_VOUCHER')))
+        LEFT JOIN chitdetailinfo source_detail
+            ON source_detail.COMPANY_CD = io.COMPANY_CD AND source_detail.CHITDETAIL_ID = io.CHITDETAIL_ID
+           AND source_detail.ISDEL = '0'
+        LEFT JOIN chitdetailinfo posting
+            ON posting.COMPANY_CD = io.COMPANY_CD AND posting.ISDEL = '0'
+           AND posting.CHITDETAIL_ID = COALESCE(
+                CASE WHEN io.CHIT_TYPE = 'IO' THEN COALESCE(
+                    NULLIF(io.CHITDETAIL_ID_COGS, 0), NULLIF(h.CHITDETAIL_ID_COGS, 0),
+                    (SELECT MIN(legacy.CHITDETAIL_ID)
+                     FROM chitdetailinfo legacy
+                     WHERE legacy.COMPANY_CD = io.COMPANY_CD AND legacy.CHIT_ID = h.CHIT_ID_COGS
+                       AND legacy.SORT = 1 AND legacy.ISDEL = '0')
+                ) END,
+                io.CHITDETAIL_ID
+           )
+        LEFT JOIN chitinfo chit
+            ON chit.COMPANY_CD = io.COMPANY_CD
+           AND chit.CHIT_ID = COALESCE(source_detail.CHIT_ID, posting.CHIT_ID)
+        WHERE io.COMPANY_CD = p_COMPANY_CD AND io.ISDEL = '0'
+          AND (h.INVENTORY_ID IS NULL OR h.ISDEL = '0')
+          AND (chit.CHIT_ID IS NULL OR chit.ISDEL = '0')
+          AND (io.INVENTORY_YMD < DATE_ADD(p_TO_DATE, INTERVAL 1 DAY)
+               OR (io.INVENTORY_YMD IS NULL AND h.INVENTORY_YMD <= DATE_FORMAT(p_TO_DATE, '%Y%m%d')))
+    ), catalog AS (
+        SELECT m.FLOW_TYPE, m.LINE_ID, m.SORT, m.DOCUMENT_TYPE, m.DOCUMENT_DATE, m.DOCUMENT_NO,
+            m.DESCRIPTION, m.ACCOUNT_CD, m.COUNTERPART_ACCOUNT, m.SOURCE_ID, m.SOURCE_TYPE,
+            m.QUANTITY, m.AMOUNT, m.AMOUNT_FC, m.UNIT_PRICE, m.UNIT_PRICE_FC,
+            COALESCE(NULLIF(m.PRODUCT_CD, ''), product.PRODUCT_CD, '') AS PRODUCT_CD,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN product.PRODUCT_NM_ENG WHEN 'KOR' THEN product.PRODUCT_NM_KOR
+                WHEN 'CHN' THEN product.PRODUCT_NM_CHINA ELSE product.PRODUCT_NM_VIET END, ''),
+                NULLIF(product.PRODUCT_NM_VIET, '')), NULLIF(m.PRODUCT_CD, ''), '') AS PRODUCT_NAME,
+            COALESCE(NULLIF(m.STORE_CD, ''), store.STORE_CD, '') AS STORE_CD,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN store.STORE_NM_ENG WHEN 'KOR' THEN store.STORE_NM_KOR
+                WHEN 'CHN' THEN store.STORE_NM_CHINA ELSE store.STORE_NM_VIET END, ''),
+                NULLIF(store.STORE_NM_VIET, '')), NULLIF(m.STORE_CD, ''), '') AS STORE_NAME,
+            COALESCE(NULLIF(unit.UNIT_NM, ''), m.UNIT_CD, '') AS UNIT_NAME,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN account.ACCTITLE_NM_ENG WHEN 'KOR' THEN account.ACCTITLE_NM_KOR
+                WHEN 'CHN' THEN account.ACCTITLE_NM_CHINA ELSE account.ACCTITLE_NM_VIET END, ''),
+                NULLIF(account.ACCTITLE_NM_VIET, '')), NULLIF(m.ACCOUNT_CD, ''), '') AS ACCOUNT_NAME,
+            COALESCE(NULLIF(ext.DEPARTMENT_CD, ''), department.DEPARTMENT_CD, '') AS DEPARTMENT_CD,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN department.DEP_NAME_ENG WHEN 'KOR' THEN department.DEP_NAME_KOR
+                WHEN 'CHN' THEN department.DEP_NAME_CHINA ELSE department.DEP_NAME_VIET END, ''),
+                NULLIF(department.DEP_NAME_VIET, '')), NULLIF(ext.DEPARTMENT_CD, ''), '') AS DEPARTMENT_NAME
+        FROM movement m
+        LEFT JOIN product_info product
+            ON product.COMPANY_CD = p_COMPANY_CD AND product.PRODUCT_ID = m.PRODUCT_ID AND product.ISDEL = '0'
+        LEFT JOIN store_info store
+            ON store.COMPANY_CD = p_COMPANY_CD AND store.STORE_ID = m.STORE_ID AND store.ISDEL = '0'
+        LEFT JOIN product_unit unit
+            ON unit.COMPANY_CD = p_COMPANY_CD AND unit.UNIT_ID = m.UNIT_ID AND unit.ISDEL = '0'
+        LEFT JOIN acclist_info account
+            ON account.COMPANY_CD = p_COMPANY_CD AND account.ACC_ID = (
+                SELECT MAX(a.ACC_ID)
+                FROM acclist_info a
+                WHERE a.COMPANY_CD = p_COMPANY_CD AND a.ACC_CD = m.ACCOUNT_CD AND a.ISDEL = '0'
+            )
+        LEFT JOIN chitdetailinfo_ext ext
+            ON ext.COMPANY_CD = p_COMPANY_CD AND ext.CHITDETAIL_ID = m.DEPARTMENT_DETAIL_ID AND ext.ISDEL = '0'
+        LEFT JOIN department_info department
+            ON department.COMPANY_CD = p_COMPANY_CD AND department.DEPARTMENT_ID = ext.DEPARTMENT_ID
+           AND COALESCE(department.ISDEL, '0') = '0'
+        WHERE m.DOCUMENT_DATE <= p_TO_DATE
+    ), filtered AS (
+        SELECT catalog.*,
+            UPPER(DEPARTMENT_CD) AS DIMENSION_CD,
+            UPPER(PRODUCT_CD) AS PRODUCT_GROUP,
+            DOCUMENT_DATE >= p_FROM_DATE AS IN_PERIOD,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN QUANTITY ELSE -QUANTITY END AS NET_QTY,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT ELSE -AMOUNT END AS NET_AMOUNT,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT_FC ELSE -AMOUNT_FC END AS NET_FC
+        FROM catalog
+        WHERE (v_product_filter IN ('', 'all')
+               OR EXISTS (SELECT 1 FROM product_filter f WHERE f.CODE = catalog.PRODUCT_CD))
+          AND (v_dimension_filter IN ('', 'all')
+               OR EXISTS (SELECT 1 FROM dimension_filter f WHERE f.CODE = catalog.DEPARTMENT_CD))
+    ), totals AS (
+        SELECT DIMENSION_CD, PRODUCT_GROUP,
+            CONCAT('PRODUCT-', SHA2(JSON_ARRAY(DIMENSION_CD, PRODUCT_GROUP), 256)) AS PRODUCT_KEY,
+            CONCAT('DIMENSION-', SHA2(DIMENSION_CD, 256)) AS DIMENSION_KEY,
+            MAX(DEPARTMENT_NAME) AS DIMENSION_NAME,
+            MAX(PRODUCT_NAME) AS PRODUCT_NAME,
+            MAX(UNIT_NAME) AS UNIT_NAME,
+            SUM(IF(IN_PERIOD, 0, NET_QTY)) AS OPEN_QTY,
+            SUM(IF(IN_PERIOD, 0, NET_AMOUNT)) AS OPEN_AMOUNT,
+            SUM(IF(IN_PERIOD, NULL, NET_FC)) AS OPEN_FC,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', QUANTITY, 0)) AS IN_QTY,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', AMOUNT, 0)) AS IN_AMOUNT,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', AMOUNT_FC, NULL)) AS IN_FC,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', QUANTITY, 0)) AS OUT_QTY,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', AMOUNT, 0)) AS OUT_AMOUNT,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', AMOUNT_FC, NULL)) AS OUT_FC,
+            SUM(NET_QTY) AS END_QTY,
+            SUM(NET_AMOUNT) AS END_AMOUNT,
+            SUM(NET_FC) AS END_FC,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_QTY WHEN FLOW_TYPE = 'INPUT' THEN QUANTITY ELSE 0 END) AS MONTH_AVAILABLE_QTY,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_AMOUNT WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT ELSE 0 END) AS MONTH_AVAILABLE_AMOUNT,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_FC WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT_FC END) AS MONTH_AVAILABLE_FC,
+            SUM(IF(AMOUNT_FC IS NOT NULL, IF(IN_PERIOD, IF(FLOW_TYPE = 'INPUT', QUANTITY, 0), NET_QTY), 0)) AS PERIOD_AVAILABLE_FC_QTY,
+            SUM(IF(AMOUNT_FC IS NOT NULL, IF(DOCUMENT_DATE < v_month_start, NET_QTY, IF(FLOW_TYPE = 'INPUT', QUANTITY, 0)), 0)) AS MONTH_AVAILABLE_FC_QTY
+        FROM filtered
+        GROUP BY DIMENSION_CD, PRODUCT_GROUP
+        HAVING COALESCE(p_HIDE_NO_MOVEMENT, 0) = 0 OR SUM(IN_PERIOD AND DOCUMENT_TYPE <> 'IRO') > 0
+    ), details AS (
+        SELECT f.*, t.PRODUCT_KEY,
+            ROW_NUMBER() OVER ledger AS LINE_SORT,
+            t.OPEN_QTY + SUM(NET_QTY) OVER ledger AS BALANCE_QTY,
+            t.OPEN_AMOUNT + SUM(NET_AMOUNT) OVER ledger AS BALANCE_AMOUNT,
+            CASE WHEN t.OPEN_FC IS NOT NULL OR SUM(NET_FC) OVER ledger IS NOT NULL
+                THEN COALESCE(t.OPEN_FC, 0) + COALESCE(SUM(NET_FC) OVER ledger, 0) END AS BALANCE_FC
+        FROM filtered f
+        JOIN totals t USING (DIMENSION_CD, PRODUCT_GROUP)
+        WHERE f.IN_PERIOD
+        WINDOW ledger AS (PARTITION BY f.DIMENSION_CD, f.PRODUCT_GROUP
+            ORDER BY f.DOCUMENT_DATE, f.DOCUMENT_NO, f.SORT, f.FLOW_TYPE, f.LINE_ID ROWS UNBOUNDED PRECEDING)
+    ), summary_types AS (
+        SELECT 'OPENING' AS ROW_TYPE, 1 AS ROW_SORT, CASE v_language WHEN 'ENG' THEN 'Opening balance' WHEN 'KOR' THEN '기초 잔액' WHEN 'CHN' THEN '期初余额' ELSE 'Chỉ tiêu đầu kỳ' END AS LABEL
+        UNION ALL SELECT 'TOTAL', 3, CASE v_language WHEN 'ENG' THEN 'Period movement' WHEN 'KOR' THEN '기간 합계' WHEN 'CHN' THEN '本期发生额' ELSE 'Cộng phát sinh' END
+        UNION ALL SELECT 'CLOSING', 4, CASE v_language WHEN 'ENG' THEN 'Closing balance' WHEN 'KOR' THEN '기말 재고' WHEN 'CHN' THEN '期末库存' ELSE 'Hàng tồn kho' END
+        UNION ALL SELECT 'PERIOD_AVERAGE', 5, CASE v_language WHEN 'ENG' THEN 'Period average cost' WHEN 'KOR' THEN '기간 평균 단가' WHEN 'CHN' THEN '本期平均单价' ELSE 'Giá trung bình của kỳ này' END
+        UNION ALL SELECT 'MONTH_AVERAGE', 6, CASE v_language WHEN 'ENG' THEN 'Month average cost' WHEN 'KOR' THEN '월 평균 단가' WHEN 'CHN' THEN '本月平均单价' ELSE 'Giá trung bình của tháng này' END
+    ), report_rows AS (
+        SELECT DISTINCT t.DIMENSION_KEY AS ROW_KEY, NULL AS PARENT_KEY, 'GROUP' AS ROW_TYPE, 0 AS ROW_LEVEL,
+            t.DIMENSION_CD, '' AS PRODUCT_GROUP, 0 AS SECTION_SORT, 0 AS LINE_SORT,
+            CONCAT('Đối tượng tập hợp chi phí: ', t.DIMENSION_CD, IF(t.DIMENSION_CD = '', '', ' '), COALESCE(NULLIF(MAX(t.DIMENSION_NAME) OVER (PARTITION BY t.DIMENSION_CD), ''), '—')) AS DESCRIPTION,
+            NULL AS DOCUMENT_NO, NULL AS DOCUMENT_DATE, NULL AS PRODUCT_CD, NULL AS PRODUCT_NAME,
+            NULL AS STORE_CD, NULL AS STORE_NAME, NULL AS UNIT_NAME, NULL AS ACCOUNT_CD, NULL AS ACCOUNT_NAME,
+            NULL AS COUNTERPART_ACCOUNT, NULL AS UNIT_PRICE, NULL AS UNIT_PRICE_FC,
+            NULL AS OPENING_QUANTITY, NULL AS OPENING_AMOUNT, NULL AS OPENING_AMOUNT_FC,
+            NULL AS INPUT_QUANTITY, NULL AS INPUT_AMOUNT, NULL AS INPUT_AMOUNT_FC,
+            NULL AS OUTPUT_QUANTITY, NULL AS OUTPUT_AMOUNT, NULL AS OUTPUT_AMOUNT_FC,
+            NULL AS BALANCE_QUANTITY, NULL AS BALANCE_AMOUNT, NULL AS BALANCE_AMOUNT_FC,
+            NULL AS AVERAGE_PRICE, NULL AS AVERAGE_PRICE_FC, NULL AS SOURCE_ID, NULL AS SOURCE_TYPE
+        FROM totals t
+        UNION ALL
+        SELECT t.PRODUCT_KEY AS ROW_KEY, t.DIMENSION_KEY AS PARENT_KEY, 'GROUP' AS ROW_TYPE, 1 AS ROW_LEVEL,
+            t.DIMENSION_CD, t.PRODUCT_GROUP, 0 AS SECTION_SORT, 0 AS LINE_SORT,
+            CONCAT(t.PRODUCT_GROUP, IF(t.PRODUCT_NAME = t.PRODUCT_GROUP, '', CONCAT(' — ', t.PRODUCT_NAME))) AS DESCRIPTION,
+            NULL AS DOCUMENT_NO, NULL AS DOCUMENT_DATE, t.PRODUCT_GROUP AS PRODUCT_CD, t.PRODUCT_NAME,
+            NULL AS STORE_CD, NULL AS STORE_NAME, t.UNIT_NAME, NULL AS ACCOUNT_CD, NULL AS ACCOUNT_NAME,
+            NULL AS COUNTERPART_ACCOUNT, NULL AS UNIT_PRICE, NULL AS UNIT_PRICE_FC,
+            NULL AS OPENING_QUANTITY, NULL AS OPENING_AMOUNT, NULL AS OPENING_AMOUNT_FC,
+            NULL AS INPUT_QUANTITY, NULL AS INPUT_AMOUNT, NULL AS INPUT_AMOUNT_FC,
+            NULL AS OUTPUT_QUANTITY, NULL AS OUTPUT_AMOUNT, NULL AS OUTPUT_AMOUNT_FC,
+            NULL AS BALANCE_QUANTITY, NULL AS BALANCE_AMOUNT, NULL AS BALANCE_AMOUNT_FC,
+            NULL AS AVERAGE_PRICE, NULL AS AVERAGE_PRICE_FC, NULL AS SOURCE_ID, NULL AS SOURCE_TYPE
+        FROM totals t
+        UNION ALL
+        SELECT CONCAT(f.FLOW_TYPE, '-', f.LINE_ID), f.PRODUCT_KEY, f.FLOW_TYPE, 2,
+            f.DIMENSION_CD, f.PRODUCT_GROUP, 2, f.LINE_SORT, f.DESCRIPTION,
+            f.DOCUMENT_NO, f.DOCUMENT_DATE, f.PRODUCT_CD, f.PRODUCT_NAME,
+            f.STORE_CD, f.STORE_NAME, f.UNIT_NAME, f.ACCOUNT_CD, f.ACCOUNT_NAME,
+            f.COUNTERPART_ACCOUNT, f.UNIT_PRICE, f.UNIT_PRICE_FC,
+            NULL, NULL, NULL,
+            IF(f.FLOW_TYPE = 'INPUT', f.QUANTITY, NULL), IF(f.FLOW_TYPE = 'INPUT', f.AMOUNT, NULL), IF(f.FLOW_TYPE = 'INPUT', f.AMOUNT_FC, NULL),
+            IF(f.FLOW_TYPE = 'OUTPUT', f.QUANTITY, NULL), IF(f.FLOW_TYPE = 'OUTPUT', f.AMOUNT, NULL), IF(f.FLOW_TYPE = 'OUTPUT', f.AMOUNT_FC, NULL),
+            f.BALANCE_QTY, f.BALANCE_AMOUNT, f.BALANCE_FC, NULL, NULL, f.SOURCE_ID, f.SOURCE_TYPE
+        FROM details f
+        UNION ALL
+        SELECT CONCAT(t.PRODUCT_KEY, '-', s.ROW_TYPE), t.PRODUCT_KEY, s.ROW_TYPE, 2,
+            t.DIMENSION_CD, t.PRODUCT_GROUP, s.ROW_SORT, 0, s.LABEL,
+            NULL, NULL, t.PRODUCT_GROUP, t.PRODUCT_NAME, NULL, NULL, t.UNIT_NAME, NULL, NULL,
+            NULL, NULL, NULL,
+            IF(s.ROW_TYPE = 'OPENING', t.OPEN_QTY, NULL), IF(s.ROW_TYPE = 'OPENING', t.OPEN_AMOUNT, NULL), IF(s.ROW_TYPE = 'OPENING', t.OPEN_FC, NULL),
+            IF(s.ROW_TYPE = 'TOTAL', t.IN_QTY, NULL), IF(s.ROW_TYPE = 'TOTAL', t.IN_AMOUNT, NULL), IF(s.ROW_TYPE = 'TOTAL', t.IN_FC, NULL),
+            IF(s.ROW_TYPE = 'TOTAL', t.OUT_QTY, NULL), IF(s.ROW_TYPE = 'TOTAL', t.OUT_AMOUNT, NULL), IF(s.ROW_TYPE = 'TOTAL', t.OUT_FC, NULL),
+            IF(s.ROW_TYPE = 'CLOSING', t.END_QTY, NULL), IF(s.ROW_TYPE = 'CLOSING', t.END_AMOUNT, NULL), IF(s.ROW_TYPE = 'CLOSING', t.END_FC, NULL),
+            CASE s.ROW_TYPE WHEN 'PERIOD_AVERAGE' THEN (t.OPEN_AMOUNT + t.IN_AMOUNT) / NULLIF(t.OPEN_QTY + t.IN_QTY, 0)
+                WHEN 'MONTH_AVERAGE' THEN t.MONTH_AVAILABLE_AMOUNT / NULLIF(t.MONTH_AVAILABLE_QTY, 0) END,
+            CASE s.ROW_TYPE WHEN 'PERIOD_AVERAGE' THEN
+                CASE WHEN t.OPEN_FC IS NOT NULL OR t.IN_FC IS NOT NULL
+                    THEN (COALESCE(t.OPEN_FC, 0) + COALESCE(t.IN_FC, 0)) / NULLIF(t.PERIOD_AVAILABLE_FC_QTY, 0) END
+                WHEN 'MONTH_AVERAGE' THEN t.MONTH_AVAILABLE_FC / NULLIF(t.MONTH_AVAILABLE_FC_QTY, 0) END,
+            NULL, NULL
+        FROM totals t CROSS JOIN summary_types s
+    )
+    SELECT ROW_KEY AS __ROW_KEY, PARENT_KEY AS __PARENT_ROW_KEY, ROW_TYPE AS __ROW_TYPE,
+        ROW_LEVEL AS __ROW_LEVEL,
+        ROW_NUMBER() OVER (ORDER BY DIMENSION_CD, PRODUCT_GROUP, SECTION_SORT, LINE_SORT, ROW_KEY) AS __ROW_SORT,
+        p_COMPANY_CD AS __COMPANY_CD, SOURCE_ID AS __CHIT_ID, SOURCE_TYPE AS __CHIT_TYPE,
+        DESCRIPTION, DOCUMENT_NO, DOCUMENT_DATE, DOCUMENT_DATE AS ENTRY_DATE,
+        PRODUCT_CD, PRODUCT_NAME, UNIT_NAME, STORE_CD, STORE_NAME, ACCOUNT_CD, ACCOUNT_NAME, COUNTERPART_ACCOUNT,
+        UNIT_PRICE, UNIT_PRICE_FC, OPENING_QUANTITY, OPENING_AMOUNT, OPENING_AMOUNT_FC,
+        INPUT_QUANTITY, INPUT_AMOUNT, INPUT_AMOUNT_FC, OUTPUT_QUANTITY, OUTPUT_AMOUNT, OUTPUT_AMOUNT_FC,
+        BALANCE_QUANTITY, BALANCE_AMOUNT, BALANCE_AMOUNT_FC, AVERAGE_PRICE, AVERAGE_PRICE_FC
+    FROM report_rows
+    ORDER BY __ROW_SORT;
+END//
+DELIMITER ;
+
+-- Dumping structure for procedure am_web_001.rpt_inventory_detail_product
+DROP PROCEDURE IF EXISTS `rpt_inventory_detail_product`;
+DELIMITER //
+CREATE PROCEDURE `rpt_inventory_detail_product`(
+    IN p_COMPANY_CD VARCHAR(20),
+    IN p_FROM_DATE DATE,
+    IN p_TO_DATE DATE,
+    IN p_PRODUCT_CD TEXT,
+    IN p_FC_TYPE VARCHAR(10),
+    IN p_HIDE_NO_MOVEMENT TINYINT,
+    IN p_LANGUAGE VARCHAR(20)
+)
+BEGIN
+    DECLARE v_language VARCHAR(20) DEFAULT UPPER(COALESCE(p_LANGUAGE, 'VIET'));
+    DECLARE v_fc_type VARCHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_month_start DATE;
+    DECLARE v_product_filter TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+    IF p_FROM_DATE IS NULL OR p_TO_DATE IS NULL OR p_FROM_DATE > p_TO_DATE THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid inventory report date range';
+    END IF;
+
+    SET v_fc_type = UPPER(TRIM(COALESCE(p_FC_TYPE, '')));
+    SET v_month_start = DATE_SUB(p_TO_DATE, INTERVAL (DAYOFMONTH(p_TO_DATE) - 1) DAY);
+    SET v_product_filter = TRIM(COALESCE(p_PRODUCT_CD, ''));
+
+    WITH product_filter AS (
+        SELECT TRIM(CODE) AS CODE
+        FROM JSON_TABLE(REPLACE(JSON_ARRAY(v_product_filter), ',', '","'),
+            '$[*]' COLUMNS (CODE VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PATH '$')) tokens
+    ), movement AS (
+        SELECT
+            'INPUT' AS FLOW_TYPE,
+            ii.INPUT_ID AS LINE_ID,
+            ii.PRODUCT_ID, ii.PRODUCT_CD, ii.STORE_ID, ii.STORE_CD,
+            ii.UNIT_ID, ii.UNIT_CD, ii.SORT,
+            COALESCE(NULLIF(ii.CHIT_TYPE, ''), h.CHIT_TYPE, '') AS DOCUMENT_TYPE,
+            COALESCE(DATE(ii.INVENTORY_YMD), STR_TO_DATE(NULLIF(h.INVENTORY_YMD, ''), '%Y%m%d')) AS DOCUMENT_DATE,
+            COALESCE(NULLIF(h.INVENTORY_NO, ''), NULLIF(chit.CHIT_NO, ''), ii.INVENTORY_CD, '') AS DOCUMENT_NO,
+            COALESCE(NULLIF(ii.SUMMARY, ''), h.REMARK, '') AS DESCRIPTION,
+            COALESCE(posting.DEBIT, '') AS ACCOUNT_CD,
+            COALESCE(posting.CREDIT, '') AS COUNTERPART_ACCOUNT,
+            COALESCE(h.INVENTORY_ID, chit.CHIT_ID) AS SOURCE_ID,
+            COALESCE(h.CHIT_TYPE, chit.CHIT_TYPE) AS SOURCE_TYPE,
+            CAST(ii.QUANTITY AS DECIMAL(24, 6)) AS QUANTITY,
+            CAST(COALESCE(NULLIF(ii.AMOUNT_CC, 0), ii.QUANTITY * ii.UNIT_PRICE_CC) AS DECIMAL(24, 6)) AS AMOUNT,
+            CAST(CASE WHEN ii.FC_TYPE = v_fc_type THEN ii.AMOUNT_FC END AS DECIMAL(24, 6)) AS AMOUNT_FC,
+            CAST(ii.UNIT_PRICE_CC AS DECIMAL(24, 6)) AS UNIT_PRICE,
+            CAST(CASE WHEN ii.FC_TYPE = v_fc_type THEN ii.UNIT_PRICE_FC END AS DECIMAL(24, 6)) AS UNIT_PRICE_FC
+        FROM chit_inventory_input ii
+        LEFT JOIN chit_inventory_info h
+            ON h.COMPANY_CD = ii.COMPANY_CD AND h.INVENTORY_ID = ii.INVENTORY_ID
+           AND (ii.CHIT_TYPE = h.CHIT_TYPE
+                OR (ii.CHIT_TYPE = 'IA' AND h.CHIT_TYPE IN ('TRANSFER', 'INVENTORY_TRANSFER', 'INVENTORY_TRANSFER_VOUCHER')))
+        LEFT JOIN chitdetailinfo posting
+            ON posting.COMPANY_CD = ii.COMPANY_CD AND posting.ISDEL = '0'
+           AND posting.CHITDETAIL_ID = ii.CHITDETAIL_ID
+        LEFT JOIN chitinfo chit
+            ON chit.COMPANY_CD = ii.COMPANY_CD
+           AND chit.CHIT_ID = posting.CHIT_ID
+        WHERE ii.COMPANY_CD = p_COMPANY_CD AND ii.ISDEL = '0'
+          AND (h.INVENTORY_ID IS NULL OR h.ISDEL = '0')
+          AND (chit.CHIT_ID IS NULL OR chit.ISDEL = '0')
+          AND (ii.INVENTORY_YMD < DATE_ADD(p_TO_DATE, INTERVAL 1 DAY)
+               OR (ii.INVENTORY_YMD IS NULL AND h.INVENTORY_YMD <= DATE_FORMAT(p_TO_DATE, '%Y%m%d')))
+        UNION ALL
+        SELECT
+            'OUTPUT' AS FLOW_TYPE,
+            io.OUTPUT_ID AS LINE_ID,
+            io.PRODUCT_ID, io.PRODUCT_CD, io.STORE_ID, io.STORE_CD,
+            io.UNIT_ID, io.UNIT_CD, io.SORT,
+            COALESCE(NULLIF(io.CHIT_TYPE, ''), h.CHIT_TYPE, '') AS DOCUMENT_TYPE,
+            COALESCE(DATE(io.INVENTORY_YMD), STR_TO_DATE(NULLIF(h.INVENTORY_YMD, ''), '%Y%m%d')) AS DOCUMENT_DATE,
+            COALESCE(NULLIF(h.INVENTORY_NO, ''), NULLIF(chit.CHIT_NO, ''), io.INVENTORY_CD, '') AS DOCUMENT_NO,
+            COALESCE(NULLIF(io.SUMMARY, ''), h.REMARK, '') AS DESCRIPTION,
+            COALESCE(posting.CREDIT, '') AS ACCOUNT_CD,
+            COALESCE(posting.DEBIT, '') AS COUNTERPART_ACCOUNT,
+            COALESCE(h.INVENTORY_ID, chit.CHIT_ID) AS SOURCE_ID,
+            COALESCE(h.CHIT_TYPE, chit.CHIT_TYPE) AS SOURCE_TYPE,
+            CAST(io.QUANTITY AS DECIMAL(24, 6)) AS QUANTITY,
+            CAST(CASE WHEN io.CHIT_TYPE = 'IO' THEN io.AMOUNT_CC
+                      ELSE COALESCE(NULLIF(io.AMOUNT_CC, 0), io.QUANTITY * io.UNIT_PRICE_CC) END AS DECIMAL(24, 6)) AS AMOUNT,
+            CAST(CASE WHEN io.FC_TYPE = v_fc_type THEN io.AMOUNT_FC END AS DECIMAL(24, 6)) AS AMOUNT_FC,
+            CAST(io.UNIT_PRICE_CC AS DECIMAL(24, 6)) AS UNIT_PRICE,
+            CAST(CASE WHEN io.FC_TYPE = v_fc_type THEN io.UNIT_PRICE_FC END AS DECIMAL(24, 6)) AS UNIT_PRICE_FC
+        FROM chit_inventory_output io
+        LEFT JOIN chit_inventory_info h
+            ON h.COMPANY_CD = io.COMPANY_CD AND h.INVENTORY_ID = io.INVENTORY_ID
+           AND (io.CHIT_TYPE = h.CHIT_TYPE
+                OR (io.CHIT_TYPE = 'IA' AND h.CHIT_TYPE IN ('TRANSFER', 'INVENTORY_TRANSFER', 'INVENTORY_TRANSFER_VOUCHER')))
+        LEFT JOIN chitdetailinfo source_detail
+            ON source_detail.COMPANY_CD = io.COMPANY_CD AND source_detail.CHITDETAIL_ID = io.CHITDETAIL_ID
+           AND source_detail.ISDEL = '0'
+        LEFT JOIN chitdetailinfo posting
+            ON posting.COMPANY_CD = io.COMPANY_CD AND posting.ISDEL = '0'
+           AND posting.CHITDETAIL_ID = COALESCE(
+                CASE WHEN io.CHIT_TYPE = 'IO' THEN COALESCE(
+                    NULLIF(io.CHITDETAIL_ID_COGS, 0), NULLIF(h.CHITDETAIL_ID_COGS, 0),
+                    (SELECT MIN(legacy.CHITDETAIL_ID)
+                     FROM chitdetailinfo legacy
+                     WHERE legacy.COMPANY_CD = io.COMPANY_CD AND legacy.CHIT_ID = h.CHIT_ID_COGS
+                       AND legacy.SORT = 1 AND legacy.ISDEL = '0')
+                ) END,
+                io.CHITDETAIL_ID
+           )
+        LEFT JOIN chitinfo chit
+            ON chit.COMPANY_CD = io.COMPANY_CD
+           AND chit.CHIT_ID = COALESCE(source_detail.CHIT_ID, posting.CHIT_ID)
+        WHERE io.COMPANY_CD = p_COMPANY_CD AND io.ISDEL = '0'
+          AND (h.INVENTORY_ID IS NULL OR h.ISDEL = '0')
+          AND (chit.CHIT_ID IS NULL OR chit.ISDEL = '0')
+          AND (io.INVENTORY_YMD < DATE_ADD(p_TO_DATE, INTERVAL 1 DAY)
+               OR (io.INVENTORY_YMD IS NULL AND h.INVENTORY_YMD <= DATE_FORMAT(p_TO_DATE, '%Y%m%d')))
+    ), catalog AS (
+        SELECT m.FLOW_TYPE, m.LINE_ID, m.SORT, m.DOCUMENT_TYPE, m.DOCUMENT_DATE, m.DOCUMENT_NO,
+            m.DESCRIPTION, m.ACCOUNT_CD, m.COUNTERPART_ACCOUNT, m.SOURCE_ID, m.SOURCE_TYPE,
+            m.QUANTITY, m.AMOUNT, m.AMOUNT_FC, m.UNIT_PRICE, m.UNIT_PRICE_FC,
+            COALESCE(NULLIF(m.PRODUCT_CD, ''), product.PRODUCT_CD, '') AS PRODUCT_CD,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN product.PRODUCT_NM_ENG WHEN 'KOR' THEN product.PRODUCT_NM_KOR
+                WHEN 'CHN' THEN product.PRODUCT_NM_CHINA ELSE product.PRODUCT_NM_VIET END, ''),
+                NULLIF(product.PRODUCT_NM_VIET, '')), NULLIF(m.PRODUCT_CD, ''), '') AS PRODUCT_NAME,
+            COALESCE(NULLIF(m.STORE_CD, ''), store.STORE_CD, '') AS STORE_CD,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN store.STORE_NM_ENG WHEN 'KOR' THEN store.STORE_NM_KOR
+                WHEN 'CHN' THEN store.STORE_NM_CHINA ELSE store.STORE_NM_VIET END, ''),
+                NULLIF(store.STORE_NM_VIET, '')), NULLIF(m.STORE_CD, ''), '') AS STORE_NAME,
+            COALESCE(NULLIF(unit.UNIT_NM, ''), m.UNIT_CD, '') AS UNIT_NAME,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN account.ACCTITLE_NM_ENG WHEN 'KOR' THEN account.ACCTITLE_NM_KOR
+                WHEN 'CHN' THEN account.ACCTITLE_NM_CHINA ELSE account.ACCTITLE_NM_VIET END, ''),
+                NULLIF(account.ACCTITLE_NM_VIET, '')), NULLIF(m.ACCOUNT_CD, ''), '') AS ACCOUNT_NAME
+        FROM movement m
+        LEFT JOIN product_info product
+            ON product.COMPANY_CD = p_COMPANY_CD AND product.PRODUCT_ID = m.PRODUCT_ID AND product.ISDEL = '0'
+        LEFT JOIN store_info store
+            ON store.COMPANY_CD = p_COMPANY_CD AND store.STORE_ID = m.STORE_ID AND store.ISDEL = '0'
+        LEFT JOIN product_unit unit
+            ON unit.COMPANY_CD = p_COMPANY_CD AND unit.UNIT_ID = m.UNIT_ID AND unit.ISDEL = '0'
+        LEFT JOIN acclist_info account
+            ON account.COMPANY_CD = p_COMPANY_CD AND account.ACC_ID = (
+                SELECT MAX(a.ACC_ID)
+                FROM acclist_info a
+                WHERE a.COMPANY_CD = p_COMPANY_CD AND a.ACC_CD = m.ACCOUNT_CD AND a.ISDEL = '0'
+            )
+        WHERE m.DOCUMENT_DATE <= p_TO_DATE
+    ), filtered AS (
+        SELECT catalog.*,
+            '' AS DIMENSION_CD,
+            UPPER(PRODUCT_CD) AS PRODUCT_GROUP,
+            DOCUMENT_DATE >= p_FROM_DATE AS IN_PERIOD,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN QUANTITY ELSE -QUANTITY END AS NET_QTY,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT ELSE -AMOUNT END AS NET_AMOUNT,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT_FC ELSE -AMOUNT_FC END AS NET_FC
+        FROM catalog
+        WHERE (v_product_filter IN ('', 'all')
+               OR EXISTS (SELECT 1 FROM product_filter f WHERE f.CODE = catalog.PRODUCT_CD))
+    ), totals AS (
+        SELECT DIMENSION_CD, PRODUCT_GROUP,
+            CONCAT('PRODUCT-', SHA2(JSON_ARRAY(DIMENSION_CD, PRODUCT_GROUP), 256)) AS PRODUCT_KEY,
+            MAX(PRODUCT_NAME) AS PRODUCT_NAME,
+            MAX(UNIT_NAME) AS UNIT_NAME,
+            SUM(IF(IN_PERIOD, 0, NET_QTY)) AS OPEN_QTY,
+            SUM(IF(IN_PERIOD, 0, NET_AMOUNT)) AS OPEN_AMOUNT,
+            SUM(IF(IN_PERIOD, NULL, NET_FC)) AS OPEN_FC,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', QUANTITY, 0)) AS IN_QTY,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', AMOUNT, 0)) AS IN_AMOUNT,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', AMOUNT_FC, NULL)) AS IN_FC,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', QUANTITY, 0)) AS OUT_QTY,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', AMOUNT, 0)) AS OUT_AMOUNT,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', AMOUNT_FC, NULL)) AS OUT_FC,
+            SUM(NET_QTY) AS END_QTY,
+            SUM(NET_AMOUNT) AS END_AMOUNT,
+            SUM(NET_FC) AS END_FC,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_QTY WHEN FLOW_TYPE = 'INPUT' THEN QUANTITY ELSE 0 END) AS MONTH_AVAILABLE_QTY,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_AMOUNT WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT ELSE 0 END) AS MONTH_AVAILABLE_AMOUNT,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_FC WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT_FC END) AS MONTH_AVAILABLE_FC,
+            SUM(IF(AMOUNT_FC IS NOT NULL, IF(IN_PERIOD, IF(FLOW_TYPE = 'INPUT', QUANTITY, 0), NET_QTY), 0)) AS PERIOD_AVAILABLE_FC_QTY,
+            SUM(IF(AMOUNT_FC IS NOT NULL, IF(DOCUMENT_DATE < v_month_start, NET_QTY, IF(FLOW_TYPE = 'INPUT', QUANTITY, 0)), 0)) AS MONTH_AVAILABLE_FC_QTY
+        FROM filtered
+        GROUP BY DIMENSION_CD, PRODUCT_GROUP
+        HAVING COALESCE(p_HIDE_NO_MOVEMENT, 0) = 0 OR SUM(IN_PERIOD AND DOCUMENT_TYPE <> 'IRO') > 0
+    ), details AS (
+        SELECT f.*, t.PRODUCT_KEY,
+            ROW_NUMBER() OVER ledger AS LINE_SORT,
+            t.OPEN_QTY + SUM(NET_QTY) OVER ledger AS BALANCE_QTY,
+            t.OPEN_AMOUNT + SUM(NET_AMOUNT) OVER ledger AS BALANCE_AMOUNT,
+            CASE WHEN t.OPEN_FC IS NOT NULL OR SUM(NET_FC) OVER ledger IS NOT NULL
+                THEN COALESCE(t.OPEN_FC, 0) + COALESCE(SUM(NET_FC) OVER ledger, 0) END AS BALANCE_FC
+        FROM filtered f
+        JOIN totals t USING (DIMENSION_CD, PRODUCT_GROUP)
+        WHERE f.IN_PERIOD
+        WINDOW ledger AS (PARTITION BY f.DIMENSION_CD, f.PRODUCT_GROUP
+            ORDER BY f.DOCUMENT_DATE, f.DOCUMENT_NO, f.SORT, f.FLOW_TYPE, f.LINE_ID ROWS UNBOUNDED PRECEDING)
+    ), summary_types AS (
+        SELECT 'OPENING' AS ROW_TYPE, 1 AS ROW_SORT, CASE v_language WHEN 'ENG' THEN 'Opening balance' WHEN 'KOR' THEN '기초 잔액' WHEN 'CHN' THEN '期初余额' ELSE 'Chỉ tiêu đầu kỳ' END AS LABEL
+        UNION ALL SELECT 'TOTAL', 3, CASE v_language WHEN 'ENG' THEN 'Period movement' WHEN 'KOR' THEN '기간 합계' WHEN 'CHN' THEN '本期发生额' ELSE 'Cộng phát sinh' END
+        UNION ALL SELECT 'CLOSING', 4, CASE v_language WHEN 'ENG' THEN 'Closing balance' WHEN 'KOR' THEN '기말 재고' WHEN 'CHN' THEN '期末库存' ELSE 'Hàng tồn kho' END
+        UNION ALL SELECT 'PERIOD_AVERAGE', 5, CASE v_language WHEN 'ENG' THEN 'Period average cost' WHEN 'KOR' THEN '기간 평균 단가' WHEN 'CHN' THEN '本期平均单价' ELSE 'Giá trung bình của kỳ này' END
+        UNION ALL SELECT 'MONTH_AVERAGE', 6, CASE v_language WHEN 'ENG' THEN 'Month average cost' WHEN 'KOR' THEN '월 평균 단가' WHEN 'CHN' THEN '本月平均单价' ELSE 'Giá trung bình của tháng này' END
+    ), report_rows AS (
+        SELECT t.PRODUCT_KEY AS ROW_KEY, NULL AS PARENT_KEY, 'GROUP' AS ROW_TYPE, 0 AS ROW_LEVEL,
+            t.DIMENSION_CD, t.PRODUCT_GROUP, 0 AS SECTION_SORT, 0 AS LINE_SORT,
+            CONCAT(t.PRODUCT_GROUP, IF(t.PRODUCT_NAME = t.PRODUCT_GROUP, '', CONCAT(' — ', t.PRODUCT_NAME))) AS DESCRIPTION,
+            NULL AS DOCUMENT_NO, NULL AS DOCUMENT_DATE, t.PRODUCT_GROUP AS PRODUCT_CD, t.PRODUCT_NAME,
+            NULL AS STORE_CD, NULL AS STORE_NAME, t.UNIT_NAME, NULL AS ACCOUNT_CD, NULL AS ACCOUNT_NAME,
+            NULL AS COUNTERPART_ACCOUNT, NULL AS UNIT_PRICE, NULL AS UNIT_PRICE_FC,
+            NULL AS OPENING_QUANTITY, NULL AS OPENING_AMOUNT, NULL AS OPENING_AMOUNT_FC,
+            NULL AS INPUT_QUANTITY, NULL AS INPUT_AMOUNT, NULL AS INPUT_AMOUNT_FC,
+            NULL AS OUTPUT_QUANTITY, NULL AS OUTPUT_AMOUNT, NULL AS OUTPUT_AMOUNT_FC,
+            NULL AS BALANCE_QUANTITY, NULL AS BALANCE_AMOUNT, NULL AS BALANCE_AMOUNT_FC,
+            NULL AS AVERAGE_PRICE, NULL AS AVERAGE_PRICE_FC, NULL AS SOURCE_ID, NULL AS SOURCE_TYPE
+        FROM totals t
+        UNION ALL
+        SELECT CONCAT(f.FLOW_TYPE, '-', f.LINE_ID), f.PRODUCT_KEY, f.FLOW_TYPE, 1,
+            f.DIMENSION_CD, f.PRODUCT_GROUP, 2, f.LINE_SORT, f.DESCRIPTION,
+            f.DOCUMENT_NO, f.DOCUMENT_DATE, f.PRODUCT_CD, f.PRODUCT_NAME,
+            f.STORE_CD, f.STORE_NAME, f.UNIT_NAME, f.ACCOUNT_CD, f.ACCOUNT_NAME,
+            f.COUNTERPART_ACCOUNT, f.UNIT_PRICE, f.UNIT_PRICE_FC,
+            NULL, NULL, NULL,
+            IF(f.FLOW_TYPE = 'INPUT', f.QUANTITY, NULL), IF(f.FLOW_TYPE = 'INPUT', f.AMOUNT, NULL), IF(f.FLOW_TYPE = 'INPUT', f.AMOUNT_FC, NULL),
+            IF(f.FLOW_TYPE = 'OUTPUT', f.QUANTITY, NULL), IF(f.FLOW_TYPE = 'OUTPUT', f.AMOUNT, NULL), IF(f.FLOW_TYPE = 'OUTPUT', f.AMOUNT_FC, NULL),
+            f.BALANCE_QTY, f.BALANCE_AMOUNT, f.BALANCE_FC, NULL, NULL, f.SOURCE_ID, f.SOURCE_TYPE
+        FROM details f
+        UNION ALL
+        SELECT CONCAT(t.PRODUCT_KEY, '-', s.ROW_TYPE), t.PRODUCT_KEY, s.ROW_TYPE, 1,
+            t.DIMENSION_CD, t.PRODUCT_GROUP, s.ROW_SORT, 0, s.LABEL,
+            NULL, NULL, t.PRODUCT_GROUP, t.PRODUCT_NAME, NULL, NULL, t.UNIT_NAME, NULL, NULL,
+            NULL, NULL, NULL,
+            IF(s.ROW_TYPE = 'OPENING', t.OPEN_QTY, NULL), IF(s.ROW_TYPE = 'OPENING', t.OPEN_AMOUNT, NULL), IF(s.ROW_TYPE = 'OPENING', t.OPEN_FC, NULL),
+            IF(s.ROW_TYPE = 'TOTAL', t.IN_QTY, NULL), IF(s.ROW_TYPE = 'TOTAL', t.IN_AMOUNT, NULL), IF(s.ROW_TYPE = 'TOTAL', t.IN_FC, NULL),
+            IF(s.ROW_TYPE = 'TOTAL', t.OUT_QTY, NULL), IF(s.ROW_TYPE = 'TOTAL', t.OUT_AMOUNT, NULL), IF(s.ROW_TYPE = 'TOTAL', t.OUT_FC, NULL),
+            IF(s.ROW_TYPE = 'CLOSING', t.END_QTY, NULL), IF(s.ROW_TYPE = 'CLOSING', t.END_AMOUNT, NULL), IF(s.ROW_TYPE = 'CLOSING', t.END_FC, NULL),
+            CASE s.ROW_TYPE WHEN 'PERIOD_AVERAGE' THEN (t.OPEN_AMOUNT + t.IN_AMOUNT) / NULLIF(t.OPEN_QTY + t.IN_QTY, 0)
+                WHEN 'MONTH_AVERAGE' THEN t.MONTH_AVAILABLE_AMOUNT / NULLIF(t.MONTH_AVAILABLE_QTY, 0) END,
+            CASE s.ROW_TYPE WHEN 'PERIOD_AVERAGE' THEN
+                CASE WHEN t.OPEN_FC IS NOT NULL OR t.IN_FC IS NOT NULL
+                    THEN (COALESCE(t.OPEN_FC, 0) + COALESCE(t.IN_FC, 0)) / NULLIF(t.PERIOD_AVAILABLE_FC_QTY, 0) END
+                WHEN 'MONTH_AVERAGE' THEN t.MONTH_AVAILABLE_FC / NULLIF(t.MONTH_AVAILABLE_FC_QTY, 0) END,
+            NULL, NULL
+        FROM totals t CROSS JOIN summary_types s
+    )
+    SELECT ROW_KEY AS __ROW_KEY, PARENT_KEY AS __PARENT_ROW_KEY, ROW_TYPE AS __ROW_TYPE,
+        ROW_LEVEL AS __ROW_LEVEL,
+        ROW_NUMBER() OVER (ORDER BY DIMENSION_CD, PRODUCT_GROUP, SECTION_SORT, LINE_SORT, ROW_KEY) AS __ROW_SORT,
+        p_COMPANY_CD AS __COMPANY_CD, SOURCE_ID AS __CHIT_ID, SOURCE_TYPE AS __CHIT_TYPE,
+        DESCRIPTION, DOCUMENT_NO, DOCUMENT_DATE, DOCUMENT_DATE AS ENTRY_DATE,
+        PRODUCT_CD, PRODUCT_NAME, UNIT_NAME, STORE_CD, STORE_NAME, ACCOUNT_CD, ACCOUNT_NAME, COUNTERPART_ACCOUNT,
+        UNIT_PRICE, UNIT_PRICE_FC, OPENING_QUANTITY, OPENING_AMOUNT, OPENING_AMOUNT_FC,
+        INPUT_QUANTITY, INPUT_AMOUNT, INPUT_AMOUNT_FC, OUTPUT_QUANTITY, OUTPUT_AMOUNT, OUTPUT_AMOUNT_FC,
+        BALANCE_QUANTITY, BALANCE_AMOUNT, BALANCE_AMOUNT_FC, AVERAGE_PRICE, AVERAGE_PRICE_FC
+    FROM report_rows
+    ORDER BY __ROW_SORT;
+END//
+DELIMITER ;
+
+-- Dumping structure for procedure am_web_001.rpt_inventory_detail_store
+DROP PROCEDURE IF EXISTS `rpt_inventory_detail_store`;
+DELIMITER //
+CREATE PROCEDURE `rpt_inventory_detail_store`(
+    IN p_COMPANY_CD VARCHAR(20),
+    IN p_FROM_DATE DATE,
+    IN p_TO_DATE DATE,
+    IN p_PRODUCT_CD TEXT,
+    IN p_STORE_CD TEXT,
+    IN p_FC_TYPE VARCHAR(10),
+    IN p_HIDE_NO_MOVEMENT TINYINT,
+    IN p_LANGUAGE VARCHAR(20)
+)
+BEGIN
+    DECLARE v_language VARCHAR(20) DEFAULT UPPER(COALESCE(p_LANGUAGE, 'VIET'));
+    DECLARE v_fc_type VARCHAR(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_month_start DATE;
+    DECLARE v_product_filter TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_dimension_filter TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+    IF p_FROM_DATE IS NULL OR p_TO_DATE IS NULL OR p_FROM_DATE > p_TO_DATE THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid inventory report date range';
+    END IF;
+
+    SET v_fc_type = UPPER(TRIM(COALESCE(p_FC_TYPE, '')));
+    SET v_month_start = DATE_SUB(p_TO_DATE, INTERVAL (DAYOFMONTH(p_TO_DATE) - 1) DAY);
+    SET v_product_filter = TRIM(COALESCE(p_PRODUCT_CD, ''));
+    SET v_dimension_filter = TRIM(COALESCE(p_STORE_CD, ''));
+
+    WITH product_filter AS (
+        SELECT TRIM(CODE) AS CODE
+        FROM JSON_TABLE(REPLACE(JSON_ARRAY(v_product_filter), ',', '","'),
+            '$[*]' COLUMNS (CODE VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PATH '$')) tokens
+    ), dimension_filter AS (
+        SELECT TRIM(CODE) AS CODE
+        FROM JSON_TABLE(REPLACE(JSON_ARRAY(v_dimension_filter), ',', '","'),
+            '$[*]' COLUMNS (CODE VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PATH '$')) tokens
+    ), movement AS (
+        SELECT
+            'INPUT' AS FLOW_TYPE,
+            ii.INPUT_ID AS LINE_ID,
+            ii.PRODUCT_ID, ii.PRODUCT_CD, ii.STORE_ID, ii.STORE_CD,
+            ii.UNIT_ID, ii.UNIT_CD, ii.SORT,
+            COALESCE(NULLIF(ii.CHIT_TYPE, ''), h.CHIT_TYPE, '') AS DOCUMENT_TYPE,
+            COALESCE(DATE(ii.INVENTORY_YMD), STR_TO_DATE(NULLIF(h.INVENTORY_YMD, ''), '%Y%m%d')) AS DOCUMENT_DATE,
+            COALESCE(NULLIF(h.INVENTORY_NO, ''), NULLIF(chit.CHIT_NO, ''), ii.INVENTORY_CD, '') AS DOCUMENT_NO,
+            COALESCE(NULLIF(ii.SUMMARY, ''), h.REMARK, '') AS DESCRIPTION,
+            COALESCE(posting.DEBIT, '') AS ACCOUNT_CD,
+            COALESCE(posting.CREDIT, '') AS COUNTERPART_ACCOUNT,
+            COALESCE(h.INVENTORY_ID, chit.CHIT_ID) AS SOURCE_ID,
+            COALESCE(h.CHIT_TYPE, chit.CHIT_TYPE) AS SOURCE_TYPE,
+            CAST(ii.QUANTITY AS DECIMAL(24, 6)) AS QUANTITY,
+            CAST(COALESCE(NULLIF(ii.AMOUNT_CC, 0), ii.QUANTITY * ii.UNIT_PRICE_CC) AS DECIMAL(24, 6)) AS AMOUNT,
+            CAST(CASE WHEN ii.FC_TYPE = v_fc_type THEN ii.AMOUNT_FC END AS DECIMAL(24, 6)) AS AMOUNT_FC,
+            CAST(ii.UNIT_PRICE_CC AS DECIMAL(24, 6)) AS UNIT_PRICE,
+            CAST(CASE WHEN ii.FC_TYPE = v_fc_type THEN ii.UNIT_PRICE_FC END AS DECIMAL(24, 6)) AS UNIT_PRICE_FC
+        FROM chit_inventory_input ii
+        LEFT JOIN chit_inventory_info h
+            ON h.COMPANY_CD = ii.COMPANY_CD AND h.INVENTORY_ID = ii.INVENTORY_ID
+           AND (ii.CHIT_TYPE = h.CHIT_TYPE
+                OR (ii.CHIT_TYPE = 'IA' AND h.CHIT_TYPE IN ('TRANSFER', 'INVENTORY_TRANSFER', 'INVENTORY_TRANSFER_VOUCHER')))
+        LEFT JOIN chitdetailinfo posting
+            ON posting.COMPANY_CD = ii.COMPANY_CD AND posting.ISDEL = '0'
+           AND posting.CHITDETAIL_ID = ii.CHITDETAIL_ID
+        LEFT JOIN chitinfo chit
+            ON chit.COMPANY_CD = ii.COMPANY_CD
+           AND chit.CHIT_ID = posting.CHIT_ID
+        WHERE ii.COMPANY_CD = p_COMPANY_CD AND ii.ISDEL = '0'
+          AND (h.INVENTORY_ID IS NULL OR h.ISDEL = '0')
+          AND (chit.CHIT_ID IS NULL OR chit.ISDEL = '0')
+          AND (ii.INVENTORY_YMD < DATE_ADD(p_TO_DATE, INTERVAL 1 DAY)
+               OR (ii.INVENTORY_YMD IS NULL AND h.INVENTORY_YMD <= DATE_FORMAT(p_TO_DATE, '%Y%m%d')))
+        UNION ALL
+        SELECT
+            'OUTPUT' AS FLOW_TYPE,
+            io.OUTPUT_ID AS LINE_ID,
+            io.PRODUCT_ID, io.PRODUCT_CD, io.STORE_ID, io.STORE_CD,
+            io.UNIT_ID, io.UNIT_CD, io.SORT,
+            COALESCE(NULLIF(io.CHIT_TYPE, ''), h.CHIT_TYPE, '') AS DOCUMENT_TYPE,
+            COALESCE(DATE(io.INVENTORY_YMD), STR_TO_DATE(NULLIF(h.INVENTORY_YMD, ''), '%Y%m%d')) AS DOCUMENT_DATE,
+            COALESCE(NULLIF(h.INVENTORY_NO, ''), NULLIF(chit.CHIT_NO, ''), io.INVENTORY_CD, '') AS DOCUMENT_NO,
+            COALESCE(NULLIF(io.SUMMARY, ''), h.REMARK, '') AS DESCRIPTION,
+            COALESCE(posting.CREDIT, '') AS ACCOUNT_CD,
+            COALESCE(posting.DEBIT, '') AS COUNTERPART_ACCOUNT,
+            COALESCE(h.INVENTORY_ID, chit.CHIT_ID) AS SOURCE_ID,
+            COALESCE(h.CHIT_TYPE, chit.CHIT_TYPE) AS SOURCE_TYPE,
+            CAST(io.QUANTITY AS DECIMAL(24, 6)) AS QUANTITY,
+            CAST(CASE WHEN io.CHIT_TYPE = 'IO' THEN io.AMOUNT_CC
+                      ELSE COALESCE(NULLIF(io.AMOUNT_CC, 0), io.QUANTITY * io.UNIT_PRICE_CC) END AS DECIMAL(24, 6)) AS AMOUNT,
+            CAST(CASE WHEN io.FC_TYPE = v_fc_type THEN io.AMOUNT_FC END AS DECIMAL(24, 6)) AS AMOUNT_FC,
+            CAST(io.UNIT_PRICE_CC AS DECIMAL(24, 6)) AS UNIT_PRICE,
+            CAST(CASE WHEN io.FC_TYPE = v_fc_type THEN io.UNIT_PRICE_FC END AS DECIMAL(24, 6)) AS UNIT_PRICE_FC
+        FROM chit_inventory_output io
+        LEFT JOIN chit_inventory_info h
+            ON h.COMPANY_CD = io.COMPANY_CD AND h.INVENTORY_ID = io.INVENTORY_ID
+           AND (io.CHIT_TYPE = h.CHIT_TYPE
+                OR (io.CHIT_TYPE = 'IA' AND h.CHIT_TYPE IN ('TRANSFER', 'INVENTORY_TRANSFER', 'INVENTORY_TRANSFER_VOUCHER')))
+        LEFT JOIN chitdetailinfo source_detail
+            ON source_detail.COMPANY_CD = io.COMPANY_CD AND source_detail.CHITDETAIL_ID = io.CHITDETAIL_ID
+           AND source_detail.ISDEL = '0'
+        LEFT JOIN chitdetailinfo posting
+            ON posting.COMPANY_CD = io.COMPANY_CD AND posting.ISDEL = '0'
+           AND posting.CHITDETAIL_ID = COALESCE(
+                CASE WHEN io.CHIT_TYPE = 'IO' THEN COALESCE(
+                    NULLIF(io.CHITDETAIL_ID_COGS, 0), NULLIF(h.CHITDETAIL_ID_COGS, 0),
+                    (SELECT MIN(legacy.CHITDETAIL_ID)
+                     FROM chitdetailinfo legacy
+                     WHERE legacy.COMPANY_CD = io.COMPANY_CD AND legacy.CHIT_ID = h.CHIT_ID_COGS
+                       AND legacy.SORT = 1 AND legacy.ISDEL = '0')
+                ) END,
+                io.CHITDETAIL_ID
+           )
+        LEFT JOIN chitinfo chit
+            ON chit.COMPANY_CD = io.COMPANY_CD
+           AND chit.CHIT_ID = COALESCE(source_detail.CHIT_ID, posting.CHIT_ID)
+        WHERE io.COMPANY_CD = p_COMPANY_CD AND io.ISDEL = '0'
+          AND (h.INVENTORY_ID IS NULL OR h.ISDEL = '0')
+          AND (chit.CHIT_ID IS NULL OR chit.ISDEL = '0')
+          AND (io.INVENTORY_YMD < DATE_ADD(p_TO_DATE, INTERVAL 1 DAY)
+               OR (io.INVENTORY_YMD IS NULL AND h.INVENTORY_YMD <= DATE_FORMAT(p_TO_DATE, '%Y%m%d')))
+    ), catalog AS (
+        SELECT m.FLOW_TYPE, m.LINE_ID, m.SORT, m.DOCUMENT_TYPE, m.DOCUMENT_DATE, m.DOCUMENT_NO,
+            m.DESCRIPTION, m.ACCOUNT_CD, m.COUNTERPART_ACCOUNT, m.SOURCE_ID, m.SOURCE_TYPE,
+            m.QUANTITY, m.AMOUNT, m.AMOUNT_FC, m.UNIT_PRICE, m.UNIT_PRICE_FC,
+            COALESCE(NULLIF(m.PRODUCT_CD, ''), product.PRODUCT_CD, '') AS PRODUCT_CD,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN product.PRODUCT_NM_ENG WHEN 'KOR' THEN product.PRODUCT_NM_KOR
+                WHEN 'CHN' THEN product.PRODUCT_NM_CHINA ELSE product.PRODUCT_NM_VIET END, ''),
+                NULLIF(product.PRODUCT_NM_VIET, '')), NULLIF(m.PRODUCT_CD, ''), '') AS PRODUCT_NAME,
+            COALESCE(NULLIF(m.STORE_CD, ''), store.STORE_CD, '') AS STORE_CD,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN store.STORE_NM_ENG WHEN 'KOR' THEN store.STORE_NM_KOR
+                WHEN 'CHN' THEN store.STORE_NM_CHINA ELSE store.STORE_NM_VIET END, ''),
+                NULLIF(store.STORE_NM_VIET, '')), NULLIF(m.STORE_CD, ''), '') AS STORE_NAME,
+            COALESCE(NULLIF(unit.UNIT_NM, ''), m.UNIT_CD, '') AS UNIT_NAME,
+            COALESCE(COALESCE(NULLIF(CASE v_language
+                WHEN 'ENG' THEN account.ACCTITLE_NM_ENG WHEN 'KOR' THEN account.ACCTITLE_NM_KOR
+                WHEN 'CHN' THEN account.ACCTITLE_NM_CHINA ELSE account.ACCTITLE_NM_VIET END, ''),
+                NULLIF(account.ACCTITLE_NM_VIET, '')), NULLIF(m.ACCOUNT_CD, ''), '') AS ACCOUNT_NAME
+        FROM movement m
+        LEFT JOIN product_info product
+            ON product.COMPANY_CD = p_COMPANY_CD AND product.PRODUCT_ID = m.PRODUCT_ID AND product.ISDEL = '0'
+        LEFT JOIN store_info store
+            ON store.COMPANY_CD = p_COMPANY_CD AND store.STORE_ID = m.STORE_ID AND store.ISDEL = '0'
+        LEFT JOIN product_unit unit
+            ON unit.COMPANY_CD = p_COMPANY_CD AND unit.UNIT_ID = m.UNIT_ID AND unit.ISDEL = '0'
+        LEFT JOIN acclist_info account
+            ON account.COMPANY_CD = p_COMPANY_CD AND account.ACC_ID = (
+                SELECT MAX(a.ACC_ID)
+                FROM acclist_info a
+                WHERE a.COMPANY_CD = p_COMPANY_CD AND a.ACC_CD = m.ACCOUNT_CD AND a.ISDEL = '0'
+            )
+        WHERE m.DOCUMENT_DATE <= p_TO_DATE
+    ), filtered AS (
+        SELECT catalog.*,
+            UPPER(STORE_CD) AS DIMENSION_CD,
+            UPPER(PRODUCT_CD) AS PRODUCT_GROUP,
+            DOCUMENT_DATE >= p_FROM_DATE AS IN_PERIOD,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN QUANTITY ELSE -QUANTITY END AS NET_QTY,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT ELSE -AMOUNT END AS NET_AMOUNT,
+            CASE WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT_FC ELSE -AMOUNT_FC END AS NET_FC
+        FROM catalog
+        WHERE (v_product_filter IN ('', 'all')
+               OR EXISTS (SELECT 1 FROM product_filter f WHERE f.CODE = catalog.PRODUCT_CD))
+          AND (v_dimension_filter IN ('', 'all')
+               OR EXISTS (SELECT 1 FROM dimension_filter f WHERE f.CODE = catalog.STORE_CD))
+    ), totals AS (
+        SELECT DIMENSION_CD, PRODUCT_GROUP,
+            CONCAT('PRODUCT-', SHA2(JSON_ARRAY(DIMENSION_CD, PRODUCT_GROUP), 256)) AS PRODUCT_KEY,
+            CONCAT('DIMENSION-', SHA2(DIMENSION_CD, 256)) AS DIMENSION_KEY,
+            MAX(STORE_NAME) AS DIMENSION_NAME,
+            MAX(PRODUCT_NAME) AS PRODUCT_NAME,
+            MAX(UNIT_NAME) AS UNIT_NAME,
+            SUM(IF(IN_PERIOD, 0, NET_QTY)) AS OPEN_QTY,
+            SUM(IF(IN_PERIOD, 0, NET_AMOUNT)) AS OPEN_AMOUNT,
+            SUM(IF(IN_PERIOD, NULL, NET_FC)) AS OPEN_FC,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', QUANTITY, 0)) AS IN_QTY,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', AMOUNT, 0)) AS IN_AMOUNT,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'INPUT', AMOUNT_FC, NULL)) AS IN_FC,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', QUANTITY, 0)) AS OUT_QTY,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', AMOUNT, 0)) AS OUT_AMOUNT,
+            SUM(IF(IN_PERIOD AND FLOW_TYPE = 'OUTPUT', AMOUNT_FC, NULL)) AS OUT_FC,
+            SUM(NET_QTY) AS END_QTY,
+            SUM(NET_AMOUNT) AS END_AMOUNT,
+            SUM(NET_FC) AS END_FC,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_QTY WHEN FLOW_TYPE = 'INPUT' THEN QUANTITY ELSE 0 END) AS MONTH_AVAILABLE_QTY,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_AMOUNT WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT ELSE 0 END) AS MONTH_AVAILABLE_AMOUNT,
+            SUM(CASE WHEN DOCUMENT_DATE < v_month_start THEN NET_FC WHEN FLOW_TYPE = 'INPUT' THEN AMOUNT_FC END) AS MONTH_AVAILABLE_FC,
+            SUM(IF(AMOUNT_FC IS NOT NULL, IF(IN_PERIOD, IF(FLOW_TYPE = 'INPUT', QUANTITY, 0), NET_QTY), 0)) AS PERIOD_AVAILABLE_FC_QTY,
+            SUM(IF(AMOUNT_FC IS NOT NULL, IF(DOCUMENT_DATE < v_month_start, NET_QTY, IF(FLOW_TYPE = 'INPUT', QUANTITY, 0)), 0)) AS MONTH_AVAILABLE_FC_QTY
+        FROM filtered
+        GROUP BY DIMENSION_CD, PRODUCT_GROUP
+        HAVING COALESCE(p_HIDE_NO_MOVEMENT, 0) = 0 OR SUM(IN_PERIOD AND DOCUMENT_TYPE <> 'IRO') > 0
+    ), details AS (
+        SELECT f.*, t.PRODUCT_KEY,
+            ROW_NUMBER() OVER ledger AS LINE_SORT,
+            t.OPEN_QTY + SUM(NET_QTY) OVER ledger AS BALANCE_QTY,
+            t.OPEN_AMOUNT + SUM(NET_AMOUNT) OVER ledger AS BALANCE_AMOUNT,
+            CASE WHEN t.OPEN_FC IS NOT NULL OR SUM(NET_FC) OVER ledger IS NOT NULL
+                THEN COALESCE(t.OPEN_FC, 0) + COALESCE(SUM(NET_FC) OVER ledger, 0) END AS BALANCE_FC
+        FROM filtered f
+        JOIN totals t USING (DIMENSION_CD, PRODUCT_GROUP)
+        WHERE f.IN_PERIOD
+        WINDOW ledger AS (PARTITION BY f.DIMENSION_CD, f.PRODUCT_GROUP
+            ORDER BY f.DOCUMENT_DATE, f.DOCUMENT_NO, f.SORT, f.FLOW_TYPE, f.LINE_ID ROWS UNBOUNDED PRECEDING)
+    ), summary_types AS (
+        SELECT 'OPENING' AS ROW_TYPE, 1 AS ROW_SORT, CASE v_language WHEN 'ENG' THEN 'Opening balance' WHEN 'KOR' THEN '기초 잔액' WHEN 'CHN' THEN '期初余额' ELSE 'Chỉ tiêu đầu kỳ' END AS LABEL
+        UNION ALL SELECT 'TOTAL', 3, CASE v_language WHEN 'ENG' THEN 'Period movement' WHEN 'KOR' THEN '기간 합계' WHEN 'CHN' THEN '本期发生额' ELSE 'Cộng phát sinh' END
+        UNION ALL SELECT 'CLOSING', 4, CASE v_language WHEN 'ENG' THEN 'Closing balance' WHEN 'KOR' THEN '기말 재고' WHEN 'CHN' THEN '期末库存' ELSE 'Hàng tồn kho' END
+        UNION ALL SELECT 'PERIOD_AVERAGE', 5, CASE v_language WHEN 'ENG' THEN 'Period average cost' WHEN 'KOR' THEN '기간 평균 단가' WHEN 'CHN' THEN '本期平均单价' ELSE 'Giá trung bình của kỳ này' END
+        UNION ALL SELECT 'MONTH_AVERAGE', 6, CASE v_language WHEN 'ENG' THEN 'Month average cost' WHEN 'KOR' THEN '월 평균 단가' WHEN 'CHN' THEN '本月平均单价' ELSE 'Giá trung bình của tháng này' END
+    ), report_rows AS (
+        SELECT DISTINCT t.DIMENSION_KEY AS ROW_KEY, NULL AS PARENT_KEY, 'GROUP' AS ROW_TYPE, 0 AS ROW_LEVEL,
+            t.DIMENSION_CD, '' AS PRODUCT_GROUP, 0 AS SECTION_SORT, 0 AS LINE_SORT,
+            CONCAT('Kho: ', t.DIMENSION_CD, IF(t.DIMENSION_CD = '', '', ' '), COALESCE(NULLIF(MAX(t.DIMENSION_NAME) OVER (PARTITION BY t.DIMENSION_CD), ''), '—')) AS DESCRIPTION,
+            NULL AS DOCUMENT_NO, NULL AS DOCUMENT_DATE, NULL AS PRODUCT_CD, NULL AS PRODUCT_NAME,
+            NULL AS STORE_CD, NULL AS STORE_NAME, NULL AS UNIT_NAME, NULL AS ACCOUNT_CD, NULL AS ACCOUNT_NAME,
+            NULL AS COUNTERPART_ACCOUNT, NULL AS UNIT_PRICE, NULL AS UNIT_PRICE_FC,
+            NULL AS OPENING_QUANTITY, NULL AS OPENING_AMOUNT, NULL AS OPENING_AMOUNT_FC,
+            NULL AS INPUT_QUANTITY, NULL AS INPUT_AMOUNT, NULL AS INPUT_AMOUNT_FC,
+            NULL AS OUTPUT_QUANTITY, NULL AS OUTPUT_AMOUNT, NULL AS OUTPUT_AMOUNT_FC,
+            NULL AS BALANCE_QUANTITY, NULL AS BALANCE_AMOUNT, NULL AS BALANCE_AMOUNT_FC,
+            NULL AS AVERAGE_PRICE, NULL AS AVERAGE_PRICE_FC, NULL AS SOURCE_ID, NULL AS SOURCE_TYPE
+        FROM totals t
+        UNION ALL
+        SELECT t.PRODUCT_KEY AS ROW_KEY, t.DIMENSION_KEY AS PARENT_KEY, 'GROUP' AS ROW_TYPE, 1 AS ROW_LEVEL,
+            t.DIMENSION_CD, t.PRODUCT_GROUP, 0 AS SECTION_SORT, 0 AS LINE_SORT,
+            CONCAT(t.PRODUCT_GROUP, IF(t.PRODUCT_NAME = t.PRODUCT_GROUP, '', CONCAT(' — ', t.PRODUCT_NAME))) AS DESCRIPTION,
+            NULL AS DOCUMENT_NO, NULL AS DOCUMENT_DATE, t.PRODUCT_GROUP AS PRODUCT_CD, t.PRODUCT_NAME,
+            NULL AS STORE_CD, NULL AS STORE_NAME, t.UNIT_NAME, NULL AS ACCOUNT_CD, NULL AS ACCOUNT_NAME,
+            NULL AS COUNTERPART_ACCOUNT, NULL AS UNIT_PRICE, NULL AS UNIT_PRICE_FC,
+            NULL AS OPENING_QUANTITY, NULL AS OPENING_AMOUNT, NULL AS OPENING_AMOUNT_FC,
+            NULL AS INPUT_QUANTITY, NULL AS INPUT_AMOUNT, NULL AS INPUT_AMOUNT_FC,
+            NULL AS OUTPUT_QUANTITY, NULL AS OUTPUT_AMOUNT, NULL AS OUTPUT_AMOUNT_FC,
+            NULL AS BALANCE_QUANTITY, NULL AS BALANCE_AMOUNT, NULL AS BALANCE_AMOUNT_FC,
+            NULL AS AVERAGE_PRICE, NULL AS AVERAGE_PRICE_FC, NULL AS SOURCE_ID, NULL AS SOURCE_TYPE
+        FROM totals t
+        UNION ALL
+        SELECT CONCAT(f.FLOW_TYPE, '-', f.LINE_ID), f.PRODUCT_KEY, f.FLOW_TYPE, 2,
+            f.DIMENSION_CD, f.PRODUCT_GROUP, 2, f.LINE_SORT, f.DESCRIPTION,
+            f.DOCUMENT_NO, f.DOCUMENT_DATE, f.PRODUCT_CD, f.PRODUCT_NAME,
+            f.STORE_CD, f.STORE_NAME, f.UNIT_NAME, f.ACCOUNT_CD, f.ACCOUNT_NAME,
+            f.COUNTERPART_ACCOUNT, f.UNIT_PRICE, f.UNIT_PRICE_FC,
+            NULL, NULL, NULL,
+            IF(f.FLOW_TYPE = 'INPUT', f.QUANTITY, NULL), IF(f.FLOW_TYPE = 'INPUT', f.AMOUNT, NULL), IF(f.FLOW_TYPE = 'INPUT', f.AMOUNT_FC, NULL),
+            IF(f.FLOW_TYPE = 'OUTPUT', f.QUANTITY, NULL), IF(f.FLOW_TYPE = 'OUTPUT', f.AMOUNT, NULL), IF(f.FLOW_TYPE = 'OUTPUT', f.AMOUNT_FC, NULL),
+            f.BALANCE_QTY, f.BALANCE_AMOUNT, f.BALANCE_FC, NULL, NULL, f.SOURCE_ID, f.SOURCE_TYPE
+        FROM details f
+        UNION ALL
+        SELECT CONCAT(t.PRODUCT_KEY, '-', s.ROW_TYPE), t.PRODUCT_KEY, s.ROW_TYPE, 2,
+            t.DIMENSION_CD, t.PRODUCT_GROUP, s.ROW_SORT, 0, s.LABEL,
+            NULL, NULL, t.PRODUCT_GROUP, t.PRODUCT_NAME, NULL, NULL, t.UNIT_NAME, NULL, NULL,
+            NULL, NULL, NULL,
+            IF(s.ROW_TYPE = 'OPENING', t.OPEN_QTY, NULL), IF(s.ROW_TYPE = 'OPENING', t.OPEN_AMOUNT, NULL), IF(s.ROW_TYPE = 'OPENING', t.OPEN_FC, NULL),
+            IF(s.ROW_TYPE = 'TOTAL', t.IN_QTY, NULL), IF(s.ROW_TYPE = 'TOTAL', t.IN_AMOUNT, NULL), IF(s.ROW_TYPE = 'TOTAL', t.IN_FC, NULL),
+            IF(s.ROW_TYPE = 'TOTAL', t.OUT_QTY, NULL), IF(s.ROW_TYPE = 'TOTAL', t.OUT_AMOUNT, NULL), IF(s.ROW_TYPE = 'TOTAL', t.OUT_FC, NULL),
+            IF(s.ROW_TYPE = 'CLOSING', t.END_QTY, NULL), IF(s.ROW_TYPE = 'CLOSING', t.END_AMOUNT, NULL), IF(s.ROW_TYPE = 'CLOSING', t.END_FC, NULL),
+            CASE s.ROW_TYPE WHEN 'PERIOD_AVERAGE' THEN (t.OPEN_AMOUNT + t.IN_AMOUNT) / NULLIF(t.OPEN_QTY + t.IN_QTY, 0)
+                WHEN 'MONTH_AVERAGE' THEN t.MONTH_AVAILABLE_AMOUNT / NULLIF(t.MONTH_AVAILABLE_QTY, 0) END,
+            CASE s.ROW_TYPE WHEN 'PERIOD_AVERAGE' THEN
+                CASE WHEN t.OPEN_FC IS NOT NULL OR t.IN_FC IS NOT NULL
+                    THEN (COALESCE(t.OPEN_FC, 0) + COALESCE(t.IN_FC, 0)) / NULLIF(t.PERIOD_AVAILABLE_FC_QTY, 0) END
+                WHEN 'MONTH_AVERAGE' THEN t.MONTH_AVAILABLE_FC / NULLIF(t.MONTH_AVAILABLE_FC_QTY, 0) END,
+            NULL, NULL
+        FROM totals t CROSS JOIN summary_types s
+    )
+    SELECT ROW_KEY AS __ROW_KEY, PARENT_KEY AS __PARENT_ROW_KEY, ROW_TYPE AS __ROW_TYPE,
+        ROW_LEVEL AS __ROW_LEVEL,
+        ROW_NUMBER() OVER (ORDER BY DIMENSION_CD, PRODUCT_GROUP, SECTION_SORT, LINE_SORT, ROW_KEY) AS __ROW_SORT,
+        p_COMPANY_CD AS __COMPANY_CD, SOURCE_ID AS __CHIT_ID, SOURCE_TYPE AS __CHIT_TYPE,
+        DESCRIPTION, DOCUMENT_NO, DOCUMENT_DATE, DOCUMENT_DATE AS ENTRY_DATE,
+        PRODUCT_CD, PRODUCT_NAME, UNIT_NAME, STORE_CD, STORE_NAME, ACCOUNT_CD, ACCOUNT_NAME, COUNTERPART_ACCOUNT,
+        UNIT_PRICE, UNIT_PRICE_FC, OPENING_QUANTITY, OPENING_AMOUNT, OPENING_AMOUNT_FC,
+        INPUT_QUANTITY, INPUT_AMOUNT, INPUT_AMOUNT_FC, OUTPUT_QUANTITY, OUTPUT_AMOUNT, OUTPUT_AMOUNT_FC,
+        BALANCE_QUANTITY, BALANCE_AMOUNT, BALANCE_AMOUNT_FC, AVERAGE_PRICE, AVERAGE_PRICE_FC
+    FROM report_rows
+    ORDER BY __ROW_SORT;
 END//
 DELIMITER ;
 
@@ -31824,6 +32903,20 @@ BEGIN
         AND UPPER(TRIM(jt.val)) NOT IN ('ALL', '*');
     END IF;
 
+    DROP TEMPORARY TABLE IF EXISTS tmp_filter_product_cd_out;
+    CREATE TEMPORARY TABLE tmp_filter_product_cd_out (
+      CD VARCHAR(64) NOT NULL PRIMARY KEY
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    INSERT INTO tmp_filter_product_cd_out (CD)
+    SELECT CD FROM tmp_filter_product_cd;
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_filter_store_cd_out;
+    CREATE TEMPORARY TABLE tmp_filter_store_cd_out (
+      CD VARCHAR(64) NOT NULL PRIMARY KEY
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    INSERT INTO tmp_filter_store_cd_out (CD)
+    SELECT CD FROM tmp_filter_store_cd;
+
     SET v_language = UPPER(TRIM(IFNULL(p_LANGUAGE, 'VIET')));
 
     SELECT report_rows.*
@@ -32028,8 +33121,8 @@ BEGIN
         WHERE ii.COMPANY_CD = p_COMPANY_CD
           AND IFNULL(ii.ISDEL, '0') = '0'
           AND COALESCE(DATE_FORMAT(ii.INVENTORY_YMD, '%Y%m%d'), NULLIF(TRIM(source_header.CHIT_YMD), '')) BETWEEN v_from_ymd AND v_to_ymd
-          AND (v_product_cd = '' OR EXISTS (SELECT 1 FROM tmp_filter_product_cd f WHERE f.CD = (COALESCE(NULLIF(TRIM(ii.PRODUCT_CD), ''), product.PRODUCT_CD, ''))))
-          AND (v_store_cd = '' OR EXISTS (SELECT 1 FROM tmp_filter_store_cd f WHERE f.CD = (COALESCE(NULLIF(TRIM(ii.STORE_CD), ''), store_info.STORE_CD, ''))))
+          AND (v_product_cd = '' OR EXISTS (SELECT 1 FROM tmp_filter_product_cd fp WHERE fp.CD = (COALESCE(NULLIF(TRIM(ii.PRODUCT_CD), ''), product.PRODUCT_CD, ''))))
+          AND (v_store_cd = '' OR EXISTS (SELECT 1 FROM tmp_filter_store_cd fs WHERE fs.CD = (COALESCE(NULLIF(TRIM(ii.STORE_CD), ''), store_info.STORE_CD, ''))))
 
         UNION ALL
 
@@ -32232,8 +33325,8 @@ BEGIN
         WHERE io.COMPANY_CD = p_COMPANY_CD
           AND IFNULL(io.ISDEL, '0') = '0'
           AND COALESCE(DATE_FORMAT(io.INVENTORY_YMD, '%Y%m%d'), NULLIF(TRIM(source_header.CHIT_YMD), '')) BETWEEN v_from_ymd AND v_to_ymd
-          AND (v_product_cd = '' OR EXISTS (SELECT 1 FROM tmp_filter_product_cd f WHERE f.CD = (COALESCE(NULLIF(TRIM(io.PRODUCT_CD), ''), product.PRODUCT_CD, ''))))
-          AND (v_store_cd = '' OR EXISTS (SELECT 1 FROM tmp_filter_store_cd f WHERE f.CD = (COALESCE(NULLIF(TRIM(io.STORE_CD), ''), store_info.STORE_CD, ''))))
+          AND (v_product_cd = '' OR EXISTS (SELECT 1 FROM tmp_filter_product_cd_out fp WHERE fp.CD = (COALESCE(NULLIF(TRIM(io.PRODUCT_CD), ''), product.PRODUCT_CD, ''))))
+          AND (v_store_cd = '' OR EXISTS (SELECT 1 FROM tmp_filter_store_cd_out fs WHERE fs.CD = (COALESCE(NULLIF(TRIM(io.STORE_CD), ''), store_info.STORE_CD, ''))))
     ) report_rows
     ORDER BY
         report_rows.TXN_DATE,
@@ -35654,11 +36747,15 @@ BEGIN
     SET v_tthai = TRIM(COALESCE(`$TTHAI`, ''));
     SET v_khmshdon = TRIM(COALESCE(`$KHMSHDON`, ''));
     SET v_dvtte = UPPER(REPLACE(TRIM(COALESCE(`$DVTTE`, '')), ' ', ''));
+    -- UI "Tất cả" gửi ALL/* — phải coi như không lọc; nếu để ALL thì EXISTS trên temp rỗng → 0 dòng.
+    IF v_dvtte IN ('ALL', '*') THEN
+      SET v_dvtte = '';
+    END IF;
     DROP TEMPORARY TABLE IF EXISTS tmp_filter_dvtte;
     CREATE TEMPORARY TABLE tmp_filter_dvtte (
       CD VARCHAR(64) NOT NULL PRIMARY KEY
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    IF IFNULL(v_dvtte, '') <> '' AND UPPER(IFNULL(v_dvtte, '')) NOT IN ('ALL', '*') THEN
+    IF IFNULL(v_dvtte, '') <> '' THEN
       INSERT IGNORE INTO tmp_filter_dvtte (CD)
       SELECT DISTINCT TRIM(jt.val)
       FROM JSON_TABLE(
@@ -35668,6 +36765,13 @@ BEGIN
       WHERE NULLIF(TRIM(jt.val), '') IS NOT NULL
         AND UPPER(TRIM(jt.val)) NOT IN ('ALL', '*');
     END IF;
+
+    -- MySQL cannot open one TEMPORARY table twice inside the UNION ALL below.
+    -- Keep an independent copy for the selling branch.
+    DROP TEMPORARY TABLE IF EXISTS tmp_filter_dvtte_sell;
+    CREATE TEMPORARY TABLE tmp_filter_dvtte_sell LIKE tmp_filter_dvtte;
+    INSERT INTO tmp_filter_dvtte_sell (CD)
+    SELECT CD FROM tmp_filter_dvtte;
 
     SELECT
         '1' AS TYPE,
@@ -35706,7 +36810,7 @@ BEGIN
             AND F.tdlap BETWEEN `$FROM_YMD` AND `$TO_YMD`
             AND (v_tthai = '' OR TRIM(COALESCE(F.tthai, '')) = v_tthai)
             AND (v_khmshdon = '' OR TRIM(COALESCE(F.khmshdon, '')) = v_khmshdon)
-            AND (v_dvtte = '' OR EXISTS (SELECT 1 FROM tmp_filter_dvtte f WHERE f.CD = (UPPER(TRIM(COALESCE(F.dvtte, ''))))))
+            AND (v_dvtte = '' OR EXISTS (SELECT 1 FROM tmp_filter_dvtte_sell f WHERE f.CD = (UPPER(TRIM(COALESCE(F.dvtte, ''))))))
       );
 END//
 DELIMITER ;
@@ -37355,49 +38459,223 @@ DROP PROCEDURE IF EXISTS `rpt_vat_invoice_list`;
 DELIMITER //
 CREATE PROCEDURE `rpt_vat_invoice_list`(
     IN p_COMPANY_CD VARCHAR(20),
-    IN p_FROM_DATE DATE,
-    IN p_TO_DATE DATE,
-    IN p_LANGUAGE VARCHAR(20)
+    IN p_FROM_DATE VARCHAR(8),
+    IN p_TO_DATE VARCHAR(8),
+    IN p_LANGUAGE VARCHAR(20),
+    IN p_VAT_DIRECTION VARCHAR(4)
 )
 BEGIN
-    IF p_FROM_DATE IS NULL OR p_TO_DATE IS NULL OR p_FROM_DATE > p_TO_DATE THEN
+    DECLARE v_from_ymd CHAR(8);
+    DECLARE v_to_ymd CHAR(8);
+    DECLARE v_direction VARCHAR(4);
+    DECLARE v_lang VARCHAR(10);
+
+    SET v_from_ymd = DATE_FORMAT(STR_TO_DATE(NULLIF(TRIM(p_FROM_DATE), ''), '%Y%m%d'), '%Y%m%d');
+    IF v_from_ymd IS NULL THEN
+        SET v_from_ymd = DATE_FORMAT(STR_TO_DATE(NULLIF(TRIM(p_FROM_DATE), ''), '%Y-%m-%d'), '%Y%m%d');
+    END IF;
+
+    SET v_to_ymd = DATE_FORMAT(STR_TO_DATE(NULLIF(TRIM(p_TO_DATE), ''), '%Y%m%d'), '%Y%m%d');
+    IF v_to_ymd IS NULL THEN
+        SET v_to_ymd = DATE_FORMAT(STR_TO_DATE(NULLIF(TRIM(p_TO_DATE), ''), '%Y-%m-%d'), '%Y%m%d');
+    END IF;
+
+    IF v_from_ymd IS NULL OR v_to_ymd IS NULL OR v_from_ymd > v_to_ymd THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'A valid invoice date range is required';
     END IF;
 
+    SET v_direction = UPPER(NULLIF(TRIM(p_VAT_DIRECTION), ''));
+    IF v_direction IS NULL OR v_direction NOT IN ('BUY', 'SELL') THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'p_VAT_DIRECTION must be BUY or SELL';
+    END IF;
+
+    SET v_lang = UPPER(NULLIF(TRIM(p_LANGUAGE), ''));
+    IF v_lang IS NULL THEN
+        SET v_lang = 'VIET';
+    END IF;
+
     SELECT
-        CONCAT(h.CHIT_ID, ':', MIN(v.CHITDETAIL_ID)) AS ROW_KEY,
+        CONCAT(h.CHIT_ID, ':', d.CHITDETAIL_ID) AS ROW_KEY,
         h.COMPANY_CD,
-        COALESCE(NULLIF(TRIM(v.VAT_CHIT_NO), ''), NULLIF(TRIM(v.VAT_CHIT_NO_2), ''), '') AS INVOICE_NO,
-        DATE_FORMAT(STR_TO_DATE(v.VAT_YMD, '%Y%m%d'), '%d/%m/%Y') AS INVOICE_DATE,
-        IFNULL(v.VAT_COMPANY_ISSUE, '') AS BUYER_NAME,
-        IFNULL(v.VAT_COMPANY_TAXCD, '') AS BUYER_TAX_CODE,
-        SUM(v.VAT_TAXABLE_AMOUNT) AS TAXABLE_AMOUNT,
-        SUM(v.VAT_AMOUNT) AS VAT_AMOUNT,
-        IFNULL(v.VAT_INFO_TYPE, '') AS VAT_INFO_TYPE,
-        v.VAT_ISFREE,
-        IFNULL(v.VAT_SERIAL_NO, '') AS INVOICE_SERIAL,
+        v.VAT_DIRECTION,
+        h.CHIT_YMD,
+        h.CHIT_ID,
+        h.CHIT_CD,
         h.CHIT_NO,
-        h.CHIT_ID AS SOURCE_DOC_ID,
-        h.CHIT_TYPE AS SOURCE_DOC_TYPE,
-        'DOCUMENT' AS DRILL_TYPE,
-        CONCAT(DATE_FORMAT(p_FROM_DATE, '%d/%m/%Y'), ' - ', DATE_FORMAT(p_TO_DATE, '%d/%m/%Y')) AS KY_TINH_THUE_TEXT,
-        'VND' AS AMOUNT_UNIT_TEXT
+        h.CHIT_TYPE,
+        d.CHITDETAIL_ID,
+        d.CHITDETAIL_CD,
+        d.DEBIT,
+        d.CREDIT,
+        d.SORT,
+        IFNULL(v.VAT_INVOICE_CD, '') AS VAT_INVOICE_CD,
+        IFNULL(v.VAT_SERIAL_NO, '') AS VAT_SERIAL_NO,
+        IFNULL(v.VAT_CHIT_NO, '') AS VAT_CHIT_NO,
+        v.VAT_YMD,
+        IFNULL(v.VAT_COMPANY_ISSUE, '') AS VAT_COMPANY_ISSUE,
+        IFNULL(v.VAT_COMPANY_TAXCD, '') AS VAT_COMPANY_TAXCD,
+        IFNULL(v.VAT_COMPANY_ISSUE_ADDRESS,'') AS ADDRESS,
+        IFNULL(ext.CUSTOMER_ID, 0) AS CUSTOMER_ID,
+        IFNULL(ext.CUSTOMER_CD, '') AS CUSTOMER_CD,
+        IFNULL(ext.CUSTOMER_OWN_CD, '') AS CUSTOMER_OWN_CD,
+        IFNULL(cust.CUSTOMER_NM_VIET, '') AS CUSTOMER_NM_VIET,
+        IFNULL(cust.CUSTOMER_NM_ENG, '') AS CUSTOMER_NM_ENG,
+        IFNULL(cust.CUSTOMER_NM_KOR, '') AS CUSTOMER_NM_KOR,
+        IFNULL(bank.ACCOUNT_NUM, '') AS ACCOUNT_NUM,
+        IFNULL(ext.DEPARTMENT_ID, 0) AS DEPARTMENT_ID,
+        IFNULL(ext.DEPARTMENT_CD, '') AS DEPARTMENT_CD,
+        IFNULL(dep.DEP_NAME_VIET, '') AS DEP_NAME_VIET,
+        IFNULL(dep.DEP_NAME_ENG, '') AS DEP_NAME_ENG,
+        IFNULL(dep.DEP_NAME_KOR, '') AS DEP_NAME_KOR,
+        IFNULL((
+            SELECT desc_h.DESCRIPTION
+            FROM chitdescriptioninfo desc_h
+            WHERE desc_h.COMPANY_CD = h.COMPANY_CD
+              AND desc_h.CHIT_ID = h.CHIT_ID
+              AND desc_h.LANG_TYPE = 'VIET'
+              AND IFNULL(desc_h.ISDEL, '0') <> '1'
+            LIMIT 1
+        ), '') AS DESCRIPTION_VIET,
+        IFNULL((
+            SELECT desc_h.DESCRIPTION
+            FROM chitdescriptioninfo desc_h
+            WHERE desc_h.COMPANY_CD = h.COMPANY_CD
+              AND desc_h.CHIT_ID = h.CHIT_ID
+              AND desc_h.LANG_TYPE = 'ENG'
+              AND IFNULL(desc_h.ISDEL, '0') <> '1'
+            LIMIT 1
+        ), '') AS DESCRIPTION_ENG,
+        IFNULL((
+            SELECT desc_h.DESCRIPTION
+            FROM chitdescriptioninfo desc_h
+            WHERE desc_h.COMPANY_CD = h.COMPANY_CD
+              AND desc_h.CHIT_ID = h.CHIT_ID
+              AND desc_h.LANG_TYPE = 'KOR'
+              AND IFNULL(desc_h.ISDEL, '0') <> '1'
+            LIMIT 1
+        ), '') AS DESCRIPTION_KOR,
+        IFNULL((
+            SELECT desc_d.DESCRIPTION
+            FROM chitdetaildescriptioninfo desc_d
+            WHERE desc_d.COMPANY_CD = d.COMPANY_CD
+              AND desc_d.CHITDETAIL_ID = d.CHITDETAIL_ID
+              AND desc_d.LANG_TYPE = 'VIET'
+              AND IFNULL(desc_d.ISDEL, '0') <> '1'
+            LIMIT 1
+        ), '') AS DESCRIPTION2_VIET,
+        IFNULL((
+            SELECT desc_d.DESCRIPTION
+            FROM chitdetaildescriptioninfo desc_d
+            WHERE desc_d.COMPANY_CD = d.COMPANY_CD
+              AND desc_d.CHITDETAIL_ID = d.CHITDETAIL_ID
+              AND desc_d.LANG_TYPE = 'ENG'
+              AND IFNULL(desc_d.ISDEL, '0') <> '1'
+            LIMIT 1
+        ), '') AS DESCRIPTION2_ENG,
+        IFNULL((
+            SELECT desc_d.DESCRIPTION
+            FROM chitdetaildescriptioninfo desc_d
+            WHERE desc_d.COMPANY_CD = d.COMPANY_CD
+              AND desc_d.CHITDETAIL_ID = d.CHITDETAIL_ID
+              AND desc_d.LANG_TYPE = 'KOR'
+              AND IFNULL(desc_d.ISDEL, '0') <> '1'
+            LIMIT 1
+        ), '') AS DESCRIPTION2_KOR,
+        IFNULL(v.VAT_TAXABLE_AMOUNT, 0) AS VAT_TAXABLE_AMOUNT,
+        IFNULL(v.VAT_AMOUNT, 0) AS VAT_AMOUNT,
+        IFNULL(v.VAT_RATE_CD, '') AS VAT_RATE_CD,
+        v.VAT_RATE_PERCENT AS VAT_RATE_PERCENT,
+        IFNULL(v.VAT_INFO_TYPE, '') AS VAT_INFO_TYPE,
+        /* UI localizes VAT_INFO_TYPE_NM from VAT_*_CATEGORY_* keys (same as Vat Detail Panel). */
+        '' AS VAT_INFO_TYPE_NM,
+        IFNULL(v.VAT_ETC, '') AS ETC,
+        IFNULL(v.FC_VAT_AMOUNT, 0) AS FC_VAT_AMOUNT,
+        v.VAT_CUSTOMS_EXCHANGE_RATE AS VAT_CUSTOMS_EXCHANGE_RATE,
+        IFNULL(v.VAT_INQUIRY_IN, '') AS VAT_INQUIRY_IN,
+        IFNULL(v.VAT_INQUIRY_CODE, '') AS VAT_INQUIRY_CODE,
+        IFNULL(ext.MR_CD, '') AS REMARK_CD,
+        /* Drill fields for JournalReportPage double-click open voucher. */
+        h.CHIT_ID AS __CHIT_ID,
+        h.CHIT_TYPE AS __CHIT_TYPE,
+        IFNULL(h.INPUT_TYPE, '') AS __MODULE_CD,
+        CASE WHEN IFNULL(h.CHIT_ID, 0) > 0 THEN 'DOCUMENT' ELSE 'NONE' END AS __LINK_TYPE,
+        CONCAT(
+            DATE_FORMAT(STR_TO_DATE(v_from_ymd, '%Y%m%d'), '%d/%m/%Y'),
+            ' - ',
+            DATE_FORMAT(STR_TO_DATE(v_to_ymd, '%Y%m%d'), '%d/%m/%Y')
+        ) AS KY_TINH_THUE_TEXT,
+        /* Header TITLE_MAIN (company_report_element) binds this by VAT direction + print language. */
+        fn_getLanguage(
+            CASE WHEN v_direction = 'BUY' THEN 'TSvat_list_BUY' ELSE 'TSvat_list_SELL' END,
+            v_lang,
+            CASE
+                WHEN v_direction = 'BUY' THEN 'BẢNG KÊ HOÁ ĐƠN, CHỨNG TỪ HÀNG HOÁ, DỊCH VỤ MUA VÀO'
+                ELSE 'BẢNG KÊ HÓA ĐƠN, CHỨNG TỪ HÀNG HÓA, DỊCH VỤ BÁN RA'
+            END
+        ) AS REPORT_TITLE_TEXT,
+        CONCAT(
+            fn_getLanguage('lblmonetary', v_lang, 'Đơn vị tiền tệ'),
+            ': VND'
+        ) AS AMOUNT_UNIT_TEXT
     FROM chitinfo h
     INNER JOIN chitdetailinfo d
-        ON d.COMPANY_CD = h.COMPANY_CD AND d.CHIT_ID = h.CHIT_ID AND IFNULL(d.ISDEL, '0') = '0'
+        ON d.COMPANY_CD = h.COMPANY_CD
+       AND d.CHIT_ID = h.CHIT_ID
+       AND IFNULL(d.ISDEL, '0') = '0'
     INNER JOIN chitdetailinfo_vat v
-        ON v.COMPANY_CD = d.COMPANY_CD AND v.CHITDETAIL_ID = d.CHITDETAIL_ID AND IFNULL(v.ISDEL, '0') = '0'
+        ON v.COMPANY_CD = d.COMPANY_CD
+       AND v.CHITDETAIL_ID = d.CHITDETAIL_ID
+       AND IFNULL(v.ISDEL, '0') = '0'
+    LEFT JOIN chitdetailinfo_ext ext
+        ON ext.COMPANY_CD = d.COMPANY_CD
+       AND ext.CHITDETAIL_ID = d.CHITDETAIL_ID
+       AND IFNULL(ext.ISDEL, '0') = '0'
+    LEFT JOIN customer_info cust
+        ON cust.COMPANY_CD = ext.COMPANY_CD
+       AND cust.CUSTOMER_ID = ext.CUSTOMER_ID
+       AND IFNULL(cust.ISDEL, '0') = '0'
+    LEFT JOIN customer_ext cext
+        ON cext.COMPANY_CD = cust.COMPANY_CD
+       AND cext.CUSTOMER_ID = cust.CUSTOMER_ID
+    LEFT JOIN department_info dep
+        ON dep.COMPANY_CD = ext.COMPANY_CD
+       AND dep.DEPARTMENT_ID = ext.DEPARTMENT_ID
+       AND IFNULL(dep.ISDEL, '0') = '0'
+    LEFT JOIN bank_info bank
+        ON bank.COMPANY_CD = cext.COMPANY_CD
+       AND bank.BANK_ID = cext.BANK_ID 
+       AND IFNULL(bank.ISDEL, '0') = '0'
     WHERE h.COMPANY_CD = p_COMPANY_CD
-        AND IFNULL(h.ISDEL, '0') = '0'
-        AND v.VAT_YMD BETWEEN DATE_FORMAT(p_FROM_DATE, '%Y%m%d') AND DATE_FORMAT(p_TO_DATE, '%Y%m%d')
-        AND (NULLIF(TRIM(v.VAT_CHIT_NO), '') IS NOT NULL OR NULLIF(TRIM(v.VAT_CHIT_NO_2), '') IS NOT NULL)
-        AND ((h.INPUT_TYPE = 'AR' AND h.CHIT_TYPE IN ('SO', 'SD', 'SR'))
-            OR d.CREDIT LIKE '511%' OR d.CREDIT LIKE '3331%')
-    GROUP BY h.CHIT_ID, h.COMPANY_CD, h.CHIT_NO, h.CHIT_TYPE,
+      AND IFNULL(h.ISDEL, '0') = '0'
+      AND UPPER(IFNULL(v.VAT_DIRECTION, '')) = v_direction
+      AND NULLIF(TRIM(v.VAT_YMD), '') IS NOT NULL
+      AND v.VAT_YMD BETWEEN v_from_ymd AND v_to_ymd
+      AND (
+            NULLIF(TRIM(v.VAT_CHIT_NO), '') IS NOT NULL
+         OR NULLIF(TRIM(v.VAT_CHIT_NO_2), '') IS NOT NULL
+      )
+    ORDER BY
+        /* Group order: category code then invoice date (UI groups by VAT_INFO_TYPE). */
+        CASE
+            WHEN NULLIF(TRIM(v.VAT_INFO_TYPE), '') IS NULL THEN 999
+            WHEN v_direction = 'BUY' AND LOWER(TRIM(v.VAT_INFO_TYPE)) = '1a' THEN 1
+            WHEN v_direction = 'BUY' AND LOWER(TRIM(v.VAT_INFO_TYPE)) = '1b' THEN 2
+            WHEN v_direction = 'BUY' AND TRIM(v.VAT_INFO_TYPE) = '2' THEN 3
+            WHEN v_direction = 'BUY' AND TRIM(v.VAT_INFO_TYPE) = '3' THEN 4
+            WHEN v_direction = 'BUY' AND TRIM(v.VAT_INFO_TYPE) = '5' THEN 5
+            WHEN v_direction = 'BUY' AND TRIM(v.VAT_INFO_TYPE) = '6' THEN 6
+            WHEN v_direction = 'BUY' AND TRIM(v.VAT_INFO_TYPE) = '4' THEN 7
+            WHEN v_direction = 'SELL' AND TRIM(v.VAT_INFO_TYPE) REGEXP '^[0-9]+$' THEN CAST(TRIM(v.VAT_INFO_TYPE) AS UNSIGNED)
+            ELSE 100
+        END,
+        IFNULL(v.VAT_INFO_TYPE, ''),
+        v.VAT_YMD,
+        IFNULL(v.VAT_SERIAL_NO, ''),
+        CAST(COALESCE(NULLIF(TRIM(v.VAT_CHIT_NO), ''), NULLIF(TRIM(v.VAT_CHIT_NO_2), ''), '0') AS UNSIGNED),
         COALESCE(NULLIF(TRIM(v.VAT_CHIT_NO), ''), NULLIF(TRIM(v.VAT_CHIT_NO_2), ''), ''),
-        v.VAT_YMD, IFNULL(v.VAT_COMPANY_ISSUE, ''), IFNULL(v.VAT_COMPANY_TAXCD, ''),
-        IFNULL(v.VAT_INFO_TYPE, ''), v.VAT_ISFREE, IFNULL(v.VAT_SERIAL_NO, '')
-    ORDER BY VAT_INFO_TYPE, VAT_ISFREE DESC, v.VAT_YMD, INVOICE_NO, h.CHIT_ID;
+        h.CHIT_ID,
+        d.SORT,
+        d.CHITDETAIL_ID;
 END//
 DELIMITER ;
 
@@ -38736,6 +40014,7 @@ BEGIN
     DECLARE v_customer_cd_input VARCHAR(20);
     DECLARE v_department_id BIGINT DEFAULT NULL;
     DECLARE v_department_cd VARCHAR(20);
+    DECLARE v_vat_direction VARCHAR(4);
 
     SELECT h.CHIT_CD INTO v_chit_cd
     FROM chitinfo h
@@ -38847,32 +40126,41 @@ BEGIN
                             DEPARTMENT_ID = VALUES(DEPARTMENT_ID), DEPARTMENT_CD = VALUES(DEPARTMENT_CD), DEPARTMENT_CD_2 = VALUES(DEPARTMENT_CD_2), HASINVENTORY = VALUES(HASINVENTORY),
                             INVENTORY_YMD = VALUES(INVENTORY_YMD), ISPAY = VALUES(ISPAY), ISCOLLECT = VALUES(ISCOLLECT), ISDEL = '0', UPDATE_BY = VALUES(UPDATE_BY);
 
-    -- Always remove previous VAT row; only re-insert when VAT_DIRECTION is provided.
-    DELETE FROM chitdetailinfo_vat WHERE COMPANY_CD = p_COMPANY_CD AND CHITDETAIL_ID = v_chitdetail_id;
-    IF NULLIF(UPPER(TRIM(p_VAT_DIRECTION)), '') IS NOT NULL THEN
-        INSERT INTO chitdetailinfo_vat (
-            COMPANY_CD, CHITDETAIL_ID, CHITDETAIL_CD,
-            VAT_SERIAL_NO, VAT_CHIT_NO, VAT_CHIT_NO_2,
-            VAT_AMOUNT, VAT_TAXABLE_AMOUNT, FC_VAT_AMOUNT, VAT_ISFREE,
-            VAT_INVOICE_CD, VAT_INVOICE_NM, VAT_INFO_TYPE,
-            VAT_COMPANY_ISSUE, VAT_COMPANY_ISSUE_ADDRESS, VAT_COMPANY_ISSUE_CD, VAT_COMPANY_TAXCD,
-            VAT_PRODUCT_NM, VAT_ETC, VAT_YMD, VAT_YMD_2, VAT_INQUIRY_IN, VAT_INQUIRY_CODE,
-            IS_NEXTVAT, ISDEL, CREATE_BY, UPDATE_BY,
-            VAT_RATE_CD, VAT_RATE_PERCENT, VAT_CUSTOMS_EXCHANGE_RATE, VAT_DIRECTION
-        )
-        VALUES (
-            p_COMPANY_CD, v_chitdetail_id, p_CHITDETAIL_CD,
-            p_VAT_SERIAL_NO, p_VAT_CHIT_NO, p_VAT_CHIT_NO_2,
-            IFNULL(p_VAT_AMOUNT, 0), IFNULL(p_VAT_TAXABLE_AMOUNT, 0), IFNULL(p_FO_VAT_AMOUNT, 0), IFNULL(p_VAT_ISFREE, '0'),
-            p_VAT_INVOICE_CD, p_VAT_INVOICE_NM, p_VAT_INFO_TYPE,
-            p_VAT_COMPANY_ISSUE, p_VAT_COMPANY_ISSUE_ADDRESS, p_VAT_COMPANY_ISSUE_CD, p_VAT_COMPANY_TAXCD,
-            p_VAT_PRODUCT_NM, p_VAT_ETC, p_VAT_YMD, p_VAT_YMD_2, p_VAT_INQUIRY_IN, p_VAT_INQUIRY_CODE,
-            IFNULL(p_IS_NEXTVAT, '0'), '0', p_UPDATE_BY, p_UPDATE_BY,
-            NULLIF(TRIM(p_VAT_RATE_CD), ''), p_VAT_RATE_PERCENT, p_VAT_CUSTOMS_EXCHANGE_RATE,
-            NULLIF(UPPER(TRIM(p_VAT_DIRECTION)), '')
-        );
+    SET v_vat_direction = UPPER(NULLIF(TRIM(p_VAT_DIRECTION), ''));
+    IF v_vat_direction IN ('1', 'IN', 'BUY') THEN
+        SET v_vat_direction = 'BUY';
+    ELSEIF v_vat_direction IN ('0', '2', 'OUT', 'SELL') THEN
+        SET v_vat_direction = 'SELL';
+    ELSE
+        SET v_vat_direction = NULL;
     END IF;
 
+    DELETE FROM chitdetailinfo_vat WHERE COMPANY_CD = p_COMPANY_CD AND CHITDETAIL_ID = v_chitdetail_id;
+    IF(IFNULL(v_vat_direction,'') != '') THEN
+	    INSERT INTO chitdetailinfo_vat (
+	        COMPANY_CD, CHITDETAIL_ID, CHITDETAIL_CD,
+	        VAT_SERIAL_NO, VAT_CHIT_NO, VAT_CHIT_NO_2,
+	        VAT_AMOUNT, VAT_TAXABLE_AMOUNT, FC_VAT_AMOUNT, VAT_ISFREE,
+	        VAT_INVOICE_CD, VAT_INVOICE_NM, VAT_INFO_TYPE,
+	        VAT_COMPANY_ISSUE, VAT_COMPANY_ISSUE_ADDRESS, VAT_COMPANY_ISSUE_CD, VAT_COMPANY_TAXCD,
+	        VAT_PRODUCT_NM, VAT_ETC, VAT_YMD, VAT_YMD_2,
+	        VAT_INQUIRY_IN, VAT_INQUIRY_CODE, IS_NEXTVAT,
+	        VAT_DIRECTION, VAT_RATE_CD, VAT_RATE_PERCENT, VAT_CUSTOMS_EXCHANGE_RATE,
+	        ISDEL, CREATE_BY, UPDATE_BY
+	    )
+	    VALUES (
+	        p_COMPANY_CD, v_chitdetail_id, p_CHITDETAIL_CD,
+	        p_VAT_SERIAL_NO, p_VAT_CHIT_NO, p_VAT_CHIT_NO_2,
+	        IFNULL(p_VAT_AMOUNT, 0), IFNULL(p_VAT_TAXABLE_AMOUNT, 0), IFNULL(p_FO_VAT_AMOUNT, 0), IFNULL(p_VAT_ISFREE, '0'),
+	        p_VAT_INVOICE_CD, p_VAT_INVOICE_NM, p_VAT_INFO_TYPE,
+	        p_VAT_COMPANY_ISSUE, p_VAT_COMPANY_ISSUE_ADDRESS, p_VAT_COMPANY_ISSUE_CD, p_VAT_COMPANY_TAXCD,
+	        p_VAT_PRODUCT_NM, p_VAT_ETC, p_VAT_YMD, p_VAT_YMD_2,
+	        p_VAT_INQUIRY_IN, p_VAT_INQUIRY_CODE, IFNULL(p_IS_NEXTVAT, '0'),
+	        v_vat_direction, NULLIF(TRIM(p_VAT_RATE_CD), ''), p_VAT_RATE_PERCENT, p_VAT_CUSTOMS_EXCHANGE_RATE,
+	        '0', p_UPDATE_BY, p_UPDATE_BY
+	    );
+	 END IF;
+	 
     DELETE FROM chitdetaildescriptioninfo WHERE COMPANY_CD = p_COMPANY_CD AND CHITDETAIL_ID = v_chitdetail_id;
     IF IFNULL(TRIM(p_DETAIL_DESCRIPTION_VIET), '') <> '' THEN
         INSERT INTO chitdetaildescriptioninfo (COMPANY_CD, CHITDETAIL_ID, CHITDETAIL_CD, DESC_CD, LANG_TYPE, DESCRIPTION, ISDEL, CREATE_BY, UPDATE_BY)
@@ -49242,7 +50530,7 @@ proc: BEGIN
         DEPARTMENT_ID BIGINT NOT NULL DEFAULT 0,
         DEPARTMENT_CD VARCHAR(20) NULL,
         AMOUNT DECIMAL(18,2) NOT NULL DEFAULT 0
-    ) ENGINE=InnoDB;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
     INSERT INTO tmp_pc_pool_raw (CHITDETAIL_ID, ACCOUNT_CD, DEPARTMENT_ID, DEPARTMENT_CD, AMOUNT)
     SELECT
@@ -49279,7 +50567,7 @@ proc: BEGIN
         CREDIT_AMOUNT DECIMAL(18,2) NOT NULL DEFAULT 0,
         DEBIT_AMOUNT_154 DECIMAL(18,2) NOT NULL DEFAULT 0,
         PRIMARY KEY (ACCOUNT_CD, DEPARTMENT_ID)
-    ) ENGINE=InnoDB;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
     INSERT INTO tmp_pc_pool_credit (ACCOUNT_CD, DEPARTMENT_ID, CREDIT_AMOUNT, DEBIT_AMOUNT_154)
     SELECT
@@ -49320,8 +50608,14 @@ proc: BEGIN
         ROUND(SUM(r.AMOUNT), 2), 0,
         ROUND(IFNULL(MAX(cr.CREDIT_AMOUNT), 0), 2),
         ROUND(IFNULL(MAX(cr.DEBIT_AMOUNT_154), 0), 2),
-        ROUND(IFNULL(MAX(cr.CREDIT_AMOUNT), 0) - IFNULL(MAX(cr.DEBIT_AMOUNT_154), 0), 0),
-        ROUND(SUM(r.AMOUNT) - (IFNULL(MAX(cr.CREDIT_AMOUNT), 0) - IFNULL(MAX(cr.DEBIT_AMOUNT_154), 0)), 0),
+        ROUND(CASE
+            WHEN p_COMPANY_CD = '3619' THEN IFNULL(MAX(cr.CREDIT_AMOUNT), 0)
+            ELSE IFNULL(MAX(cr.CREDIT_AMOUNT), 0) - IFNULL(MAX(cr.DEBIT_AMOUNT_154), 0)
+        END, 0),
+        ROUND(SUM(r.AMOUNT) - CASE
+            WHEN p_COMPANY_CD = '3619' THEN IFNULL(MAX(cr.CREDIT_AMOUNT), 0)
+            ELSE IFNULL(MAX(cr.CREDIT_AMOUNT), 0) - IFNULL(MAX(cr.DEBIT_AMOUNT_154), 0)
+        END, 0),
         '0', p_USER_ID, NOW(), p_USER_ID, NOW()
     FROM tmp_pc_pool_raw r
     LEFT JOIN tmp_pc_pool_credit cr
@@ -49701,7 +50995,7 @@ proc: BEGIN
         KEY idx_tmp_nvl_out (OUTPUT_ID),
         KEY idx_tmp_nvl_det (CHITDETAIL_ID),
         KEY idx_tmp_nvl_prod (PRODUCT_ID)
-    ) ENGINE=InnoDB;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
     INSERT INTO tmp_pc_nvl_raw (
         PRODUCT_ID, INVENTORY_ID, FINISHED_LINE_ID, BOM_MATERIAL_ID, OUTPUT_ID,
@@ -49744,7 +51038,6 @@ proc: BEGIN
       AND TRIM(d.CREDIT) LIKE '152%'
       AND IFNULL(c.INPUT_TYPE, '') <> 'LOCK';
 
-    -- Orphans: N621/C152 không BOM
     INSERT INTO production_cost_nvl_orphan (
         RUN_ID, RUN_VERSION, COMPANY_CD, OUTPUT_ID, CHITDETAIL_ID, INVENTORY_ID,
         MATERIAL_PRODUCT_ID, AMOUNT, REASON_CODE, WARNING_TEXT, ISDEL, CREATE_AT
@@ -49783,14 +51076,34 @@ proc: BEGIN
         OUTPUT_ID BIGINT NOT NULL PRIMARY KEY,
         QTY_SUM DECIMAL(18,6) NOT NULL DEFAULT 0,
         ROW_CNT INT NOT NULL DEFAULT 0
-    ) ENGINE=InnoDB;
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
     INSERT INTO tmp_pc_nvl_out_share (OUTPUT_ID, QTY_SUM, ROW_CNT)
     SELECT OUTPUT_ID, SUM(CONFIRMED_QUANTITY), COUNT(*)
     FROM tmp_pc_nvl_raw
     GROUP BY OUTPUT_ID;
 
-    -- ΣQ=0 và >1 TP dùng chung OUTPUT → orphan, không vào basis (không chia đều)
+    -- Materialize det_share TRƯỚC khi join lại raw (MySQL không cho mở 2 lần cùng TEMP TABLE trong 1 câu)
+    DROP TEMPORARY TABLE IF EXISTS tmp_pc_nvl_det_share;
+    CREATE TEMPORARY TABLE tmp_pc_nvl_det_share (
+        CHITDETAIL_ID BIGINT NOT NULL PRIMARY KEY,
+        OUT_AMT_SUM DECIMAL(18,2) NOT NULL DEFAULT 0,
+        DETAIL_AMOUNT DECIMAL(18,2) NOT NULL DEFAULT 0
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
+
+    INSERT INTO tmp_pc_nvl_det_share (CHITDETAIL_ID, OUT_AMT_SUM, DETAIL_AMOUNT)
+    SELECT
+        x.CHITDETAIL_ID,
+        SUM(x.OUTPUT_AMOUNT),
+        MAX(x.DETAIL_AMOUNT)
+    FROM (
+        SELECT CHITDETAIL_ID, OUTPUT_ID, MAX(OUTPUT_AMOUNT) AS OUTPUT_AMOUNT, MAX(DETAIL_AMOUNT) AS DETAIL_AMOUNT
+        FROM tmp_pc_nvl_raw
+        WHERE IFNULL(CHITDETAIL_ID, 0) > 0
+        GROUP BY CHITDETAIL_ID, OUTPUT_ID
+    ) x
+    GROUP BY x.CHITDETAIL_ID;
+
     INSERT INTO production_cost_nvl_orphan (
         RUN_ID, RUN_VERSION, COMPANY_CD, OUTPUT_ID, CHITDETAIL_ID, INVENTORY_ID,
         MATERIAL_PRODUCT_ID, AMOUNT, REASON_CODE, WARNING_TEXT, ISDEL, CREATE_AT
@@ -49809,18 +51122,7 @@ proc: BEGIN
         '0', NOW()
     FROM tmp_pc_nvl_raw r
     INNER JOIN tmp_pc_nvl_out_share os ON os.OUTPUT_ID = r.OUTPUT_ID
-    LEFT JOIN (
-        SELECT
-            x.CHITDETAIL_ID,
-            SUM(x.OUTPUT_AMOUNT) AS OUT_AMT_SUM
-        FROM (
-            SELECT CHITDETAIL_ID, OUTPUT_ID, MAX(OUTPUT_AMOUNT) AS OUTPUT_AMOUNT
-            FROM tmp_pc_nvl_raw
-            WHERE IFNULL(CHITDETAIL_ID, 0) > 0
-            GROUP BY CHITDETAIL_ID, OUTPUT_ID
-        ) x
-        GROUP BY x.CHITDETAIL_ID
-    ) ds ON ds.CHITDETAIL_ID = r.CHITDETAIL_ID
+    LEFT JOIN tmp_pc_nvl_det_share ds ON ds.CHITDETAIL_ID = r.CHITDETAIL_ID
     WHERE IFNULL(os.ROW_CNT, 0) > 1
       AND IFNULL(os.QTY_SUM, 0) = 0;
 
@@ -49830,13 +51132,8 @@ proc: BEGIN
     WHERE IFNULL(os.ROW_CNT, 0) > 1
       AND IFNULL(os.QTY_SUM, 0) = 0;
 
-    DROP TEMPORARY TABLE IF EXISTS tmp_pc_nvl_det_share;
-    CREATE TEMPORARY TABLE tmp_pc_nvl_det_share (
-        CHITDETAIL_ID BIGINT NOT NULL PRIMARY KEY,
-        OUT_AMT_SUM DECIMAL(18,2) NOT NULL DEFAULT 0,
-        DETAIL_AMOUNT DECIMAL(18,2) NOT NULL DEFAULT 0
-    ) ENGINE=InnoDB;
-
+    -- Rebuild det_share sau khi loại SPLIT_QTY_ZERO (OUT_AMT_SUM có thể đổi)
+    DELETE FROM tmp_pc_nvl_det_share;
     INSERT INTO tmp_pc_nvl_det_share (CHITDETAIL_ID, OUT_AMT_SUM, DETAIL_AMOUNT)
     SELECT
         x.CHITDETAIL_ID,
@@ -49850,8 +51147,6 @@ proc: BEGIN
     ) x
     GROUP BY x.CHITDETAIL_ID;
 
-    -- Allocate: chỉ row còn lại (đã loại SPLIT_QTY_ZERO)
-    -- 1 OUTPUT / 1 TP với qty=0: vẫn lấy đủ SOURCE (tiền CT)
     INSERT INTO production_cost_nvl_basis_line (
         RUN_ID, RUN_VERSION, COMPANY_CD, PRODUCT_ID, INVENTORY_ID, FINISHED_LINE_ID,
         BOM_MATERIAL_ID, OUTPUT_ID, CHITDETAIL_ID, MATERIAL_PRODUCT_ID,
@@ -49884,7 +51179,6 @@ proc: BEGIN
                         ELSE r.DETAIL_AMOUNT
                     END) * (r.CONFIRMED_QUANTITY / os.QTY_SUM)
                 ELSE
-                    -- ROW_CNT=1 (hoặc còn 1 sau lọc): nhận đủ phần SOURCE của OUTPUT
                     CASE
                         WHEN IFNULL(ds.OUT_AMT_SUM, 0) > 0 THEN r.DETAIL_AMOUNT * (r.OUTPUT_AMOUNT / ds.OUT_AMT_SUM)
                         ELSE r.DETAIL_AMOUNT
@@ -51816,7 +53110,8 @@ BEGIN
         al.ALLOC_SEQ,
         al.DEBIT_ACCT_CD,
         al.CREDIT_ACCT_CD,
-        al.DEPARTMENT_ID,
+        -- Ưu tiên DEPARTMENT_ID trên dòng phân bổ; fallback bộ phận sử dụng TSCĐ
+        IFNULL(NULLIF(al.DEPARTMENT_ID, 0), dep_use.DEPARTMENT_ID) AS DEPARTMENT_ID,
         al.ALLOC_TYPE,
         al.ALLOC_RATE,
         CASE p.DEPRE_TYPE
@@ -51829,10 +53124,17 @@ BEGIN
         v_now AS CREATE_AT,
         p_USER_ID AS CREATE_BY
     FROM fa_asset_depre_posted p
+    INNER JOIN fa_asset a
+        ON a.COMPANY_CD = p.COMPANY_CD
+       AND a.ASSET_ID = p.ASSET_ID
     INNER JOIN fa_asset_depre_alloc al
         ON al.COMPANY_CD = p.COMPANY_CD
        AND al.ASSET_ID = p.ASSET_ID
        AND IFNULL(al.ISDEL, '0') = '0'
+    LEFT JOIN department_info dep_use
+        ON dep_use.COMPANY_CD = a.COMPANY_CD
+       AND dep_use.DEPARTMENT_CD = a.USE_DEPT_CD
+       AND IFNULL(dep_use.ISDEL, '0') = '0'
     WHERE p.COMPANY_CD = p_COMPANY_CD
       AND p.DEPRE_YM = p_PERIOD_YM
       AND IFNULL(p.CANCEL_YN, 'N') = 'N'
@@ -52084,14 +53386,19 @@ BEGIN
                 p_USER_ID
             );
 
+            -- Chuẩn hóa DEPARTMENT_ID; tra DEPARTMENT_CD không làm hỏng cờ NOT FOUND của cursor
             SET v_department_cd = NULL;
-            IF v_department_id IS NOT NULL THEN
+            IF IFNULL(v_department_id, 0) <= 0 THEN
+                SET v_department_id = NULL;
+            ELSE
                 SELECT dep.DEPARTMENT_CD
                   INTO v_department_cd
                   FROM department_info dep
                  WHERE dep.DEPARTMENT_ID = v_department_id
                    AND dep.COMPANY_CD = p_COMPANY_CD
+                   AND IFNULL(dep.ISDEL, '0') = '0'
                  LIMIT 1;
+                SET v_not_found = 0;
             END IF;
 
             INSERT INTO chitdetailinfo_ext (
@@ -52476,19 +53783,19 @@ DELIMITER ;
 DROP PROCEDURE IF EXISTS `sp_period_lock_fa_prepaid_validate`;
 DELIMITER //
 CREATE PROCEDURE `sp_period_lock_fa_prepaid_validate`(
-    IN p_COMPANY_CD VARCHAR(20),
-    IN p_PERIOD_YM CHAR(6),
-    IN p_USER_ID VARCHAR(50)
+    IN p_COMPANY_CD VARCHAR(20) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
+    IN p_PERIOD_YM CHAR(6) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
+    IN p_USER_ID VARCHAR(50) CHARACTER SET utf8 COLLATE utf8_unicode_ci
 )
 BEGIN
     DECLARE v_asset_id BIGINT;
-    DECLARE v_asset_cd VARCHAR(50);
-    DECLARE v_start_ym CHAR(6);
-    DECLARE v_end_ym CHAR(6);
-    DECLARE v_depre_type VARCHAR(20);
+    DECLARE v_asset_cd VARCHAR(50) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
+    DECLARE v_start_ym CHAR(6) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
+    DECLARE v_end_ym CHAR(6) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
+    DECLARE v_depre_type VARCHAR(20) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
     DECLARE v_depre_amt DECIMAL(18,2);
     DECLARE v_alloc_sum DECIMAL(18,2);
-    DECLARE v_msg VARCHAR(255);
+    DECLARE v_msg VARCHAR(255) CHARACTER SET utf8 COLLATE utf8_unicode_ci;
     DECLARE v_done INT DEFAULT 0;
 
     DECLARE cur_assets CURSOR FOR
@@ -54746,7 +56053,7 @@ CREATE TABLE IF NOT EXISTS `user_activity_log` (
   KEY `idx_table` (`table_name`),
   KEY `idx_record` (`record_id`),
   KEY `idx_action_time` (`action_time`)
-) ENGINE=InnoDB AUTO_INCREMENT=4349 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4382 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Data exporting was unselected.
 

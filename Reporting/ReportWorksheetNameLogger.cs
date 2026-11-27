@@ -1,0 +1,128 @@
+using DevExpress.XtraPrinting;
+using DevExpress.XtraReports.UI;
+using DevExpress.XtraReports.Web;
+using DevExpress.XtraReports.Web.ClientControls;
+using DevExpress.XtraReports.Web.WebDocumentViewer;
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
+
+namespace API_AMNOTE_WEB.Reporting;
+
+internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogger
+{
+    private const int MaxSheetNameLength = 31;
+    private static readonly Regex InvalidSheetNameCharacters = new(@"[\\/:*?\[\]\p{Cc}]");
+    private readonly ConcurrentDictionary<string, AccountWorkbook> _reports = new();
+    private readonly ConcurrentDictionary<string, AccountWorkbook> _documents = new();
+    private readonly ConditionalWeakTable<PrintingSystemBase, object> _pageNameHandlers = new();
+
+    public override void ReportOpening(
+        string reportId, string reportUrl, string documentId, XtraReport report, CachedReportSourceWeb cachedReportSource)
+    {
+        if (report is DynamicConfiguredReport { ExportAccountWorkbook: { } exportAccountWorkbook })
+        {
+            var workbook = new AccountWorkbook(report.DisplayName, exportAccountWorkbook);
+            _reports[reportId] = workbook;
+            if (!string.IsNullOrEmpty(documentId))
+            {
+                _documents[documentId] = workbook;
+            }
+        }
+
+        base.ReportOpening(reportId, reportUrl, documentId, report, cachedReportSource);
+    }
+
+    public override void BuildStarted(
+        string reportId, string reportUrl, string documentId, ReportBuildProperties buildProperties)
+    {
+        if (_reports.TryGetValue(reportId, out var workbook))
+        {
+            _documents[documentId] = workbook;
+        }
+
+        base.BuildStarted(reportId, reportUrl, documentId, buildProperties);
+    }
+
+    public override ExportedDocument ExportDocumentStarting(
+        string documentId, string asyncExportOperationId, string format, ExportOptions options,
+        PrintingSystemBase printingSystem, Func<ExportedDocument> doExportSynchronously)
+    {
+        if (string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase)
+            && _documents.TryGetValue(documentId, out var workbook))
+        {
+            return new ExportedDocument(
+                workbook.Export(options.Xlsx),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                workbook.DisplayName + ".xlsx");
+        }
+
+        return base.ExportDocumentStarting(
+            documentId, asyncExportOperationId, format, options, printingSystem, doExportSynchronously);
+    }
+
+    public override void ExportDocument(string documentId, string format, ExportOptions options, PrintingSystemBase printingSystem)
+    {
+        if (!string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase)
+            || options.Xlsx.ExportMode != XlsxExportMode.SingleFilePageByPage
+            || _documents.ContainsKey(documentId))
+        {
+            return;
+        }
+
+        lock (_pageNameHandlers)
+        {
+            if (_pageNameHandlers.TryAdd(printingSystem, new object()))
+            {
+                printingSystem.XlSheetCreated += (_, args) => args.SheetName = GetPageName(args.Index);
+            }
+        }
+    }
+
+    public override void CachedDocumentReleased(string documentId)
+    {
+        _documents.TryRemove(documentId, out _);
+        base.CachedDocumentReleased(documentId);
+    }
+
+    public override void CachedReportReleased(string reportId)
+    {
+        _reports.TryRemove(reportId, out _);
+        base.CachedReportReleased(reportId);
+    }
+
+    internal static string[] BuildWorksheetNames(IReadOnlyList<string> accountCodes)
+    {
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "History" };
+        var nextSuffixes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var names = new string[accountCodes.Count];
+        for (var index = 0; index < names.Length; index++)
+        {
+            var baseName = InvalidSheetNameCharacters.Replace(accountCodes[index], "_").Trim().Trim('\'');
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = GetPageName(index);
+            }
+
+            var preferredName = baseName[..Math.Min(baseName.Length, MaxSheetNameLength)].TrimEnd('\'');
+            var name = preferredName;
+            var number = nextSuffixes.GetValueOrDefault(preferredName, 2);
+            while (!usedNames.Add(name))
+            {
+                var suffix = "_" + number.ToString(CultureInfo.InvariantCulture);
+                name = baseName[..Math.Min(baseName.Length, MaxSheetNameLength - suffix.Length)] + suffix;
+                number++;
+            }
+
+            nextSuffixes[preferredName] = number;
+            names[index] = name;
+        }
+
+        return names;
+    }
+
+    private static string GetPageName(int index) => $"Trang {(index + 1).ToString(CultureInfo.InvariantCulture)}";
+
+    private sealed record AccountWorkbook(string DisplayName, Func<XlsxExportOptions, byte[]> Export);
+}
