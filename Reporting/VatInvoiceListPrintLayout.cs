@@ -16,6 +16,17 @@ namespace API_AMNOTE_WEB.Reporting
         private static readonly StringComparer Comparer = StringComparer.OrdinalIgnoreCase;
         private const string ExcludedInfoTypeLabel = "không lên bảng kê";
 
+        /// <summary>
+        /// Vietnamese number grouping without CultureInfo("vi-VN"), which is unavailable
+        /// under DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 on Linux.
+        /// </summary>
+        private static readonly NumberFormatInfo VietnamNumberFormat = new()
+        {
+            NumberGroupSeparator = ".",
+            NumberDecimalSeparator = ",",
+            NumberGroupSizes = new[] { 3 }
+        };
+
         private static readonly string[] SellSectionCodes = { "1", "2", "3", "4", "5" };
         private static readonly string[] BuySectionCodes = { "1a", "1b", "2", "3", "5", "6" };
 
@@ -355,7 +366,7 @@ namespace API_AMNOTE_WEB.Reporting
             }
 
             var label = ReportLanguageHelper.LocalizeLabelOrFallback(key, fallback, language);
-            var amountText = amount.ToString("#,##0.###", CultureInfo.GetCultureInfo("vi-VN"));
+            var amountText = amount.ToString("#,##0.###", VietnamNumberFormat);
             return $"{label} : {amountText}";
         }
 
