@@ -21,9 +21,10 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
     public override void ReportOpening(
         string reportId, string reportUrl, string documentId, XtraReport report, CachedReportSourceWeb cachedReportSource)
     {
-        if (report is DynamicConfiguredReport { ExportAccountWorkbook: { } exportAccountWorkbook })
+        var configuredReport = report as DynamicConfiguredReport ?? cachedReportSource?.Report as DynamicConfiguredReport;
+        if (configuredReport?.ExportAccountWorkbook is { } exportAccountWorkbook)
         {
-            var workbook = new AccountWorkbook(report.DisplayName, exportAccountWorkbook);
+            var workbook = new AccountWorkbook(configuredReport.DisplayName, exportAccountWorkbook);
             _reports[reportId] = workbook;
             if (!string.IsNullOrEmpty(documentId))
             {
@@ -32,6 +33,16 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
         }
 
         base.ReportOpening(reportId, reportUrl, documentId, report, cachedReportSource);
+    }
+
+    public override Action BuildStarting(string reportId, string reportUrl, XtraReport report, ReportBuildProperties buildProperties)
+    {
+        if (report is DynamicConfiguredReport { ExportAccountWorkbook: { } exportAccountWorkbook })
+        {
+            _reports[reportId] = new AccountWorkbook(report.DisplayName, exportAccountWorkbook);
+        }
+
+        return base.BuildStarting(reportId, reportUrl, report, buildProperties);
     }
 
     public override void BuildStarted(
@@ -92,17 +103,23 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
         base.CachedReportReleased(reportId);
     }
 
-    internal static string[] BuildWorksheetNames(IReadOnlyList<string> accountCodes)
+    internal static string[] BuildWorksheetNames(IReadOnlyList<string> accountCodes, string reportTitle)
     {
+        var fallbackName = CleanSheetName(reportTitle);
+        if (string.IsNullOrWhiteSpace(fallbackName))
+        {
+            fallbackName = "Report";
+        }
+
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "History" };
         var nextSuffixes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var names = new string[accountCodes.Count];
         for (var index = 0; index < names.Length; index++)
         {
-            var baseName = InvalidSheetNameCharacters.Replace(accountCodes[index], "_").Trim().Trim('\'');
+            var baseName = CleanSheetName(accountCodes[index]);
             if (string.IsNullOrWhiteSpace(baseName))
             {
-                baseName = GetPageName(index);
+                baseName = fallbackName;
             }
 
             var preferredName = baseName[..Math.Min(baseName.Length, MaxSheetNameLength)].TrimEnd('\'');
@@ -121,6 +138,8 @@ internal sealed class ReportWorksheetNameLogger : WebDocumentViewerOperationLogg
 
         return names;
     }
+
+    private static string CleanSheetName(string name) => InvalidSheetNameCharacters.Replace(name, "_").Trim(' ', '\'');
 
     private static string GetPageName(int index) => $"Trang {(index + 1).ToString(CultureInfo.InvariantCulture)}";
 

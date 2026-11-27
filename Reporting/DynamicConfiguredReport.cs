@@ -7,6 +7,7 @@ using DevExpress.XtraPrinting;
 using DevExpress.XtraPrinting.Drawing;
 using DevExpress.XtraReports.UI;
 using Microsoft.AspNetCore.Hosting;
+using OfficeOpenXml;
 using System.Data;
 using System.Drawing;
 using System.Drawing.Printing;
@@ -31,6 +32,7 @@ namespace API_AMNOTE_WEB.Reporting
         private const float DefaultHeaderHeight = 28f;
         private const float DefaultDetailHeight = 24f;
         private const float DefaultGridRightInset = 2f;
+        private const int SummaryLabelColumnSpan = 6;
         private const string WorksheetGroupField = "__WORKSHEET_GROUP";
         private static readonly Regex InlineTemplateTokenRegex = new(
             @"\{\{(?<source>[A-Z]+):(?<field>[^{}|]+)(?:\|(?<format>[^{}]+))?\}\}",
@@ -42,6 +44,7 @@ namespace API_AMNOTE_WEB.Reporting
         private readonly string _reportLanguage;
         private readonly string _reportCode;
         private readonly bool _showDetailTable;
+        private readonly bool _preserveEmptyDetailRows;
         private readonly bool _useEInvoiceSalesAppendixStyle;
         private readonly bool _hasBalanceSheetPeriodCaptions;
         private readonly float _configuredTableWidth;
@@ -61,8 +64,9 @@ namespace API_AMNOTE_WEB.Reporting
             IWebHostEnvironment? environment = null,
             IReadOnlyDictionary<string, object?>? namedValues = null,
             IReadOnlyDictionary<string, object?>? normalizedValues = null,
-            bool isDefaultGridPrint = false)
-            : this(configuration, table, companyContext, reportLanguage, environment, namedValues, normalizedValues, null, isDefaultGridPrint)
+            bool isDefaultGridPrint = false,
+            bool preserveEmptyDetailRows = false)
+            : this(configuration, table, companyContext, reportLanguage, environment, namedValues, normalizedValues, false, isDefaultGridPrint, preserveEmptyDetailRows)
         {
         }
 
@@ -74,12 +78,14 @@ namespace API_AMNOTE_WEB.Reporting
             IWebHostEnvironment? environment,
             IReadOnlyDictionary<string, object?>? namedValues,
             IReadOnlyDictionary<string, object?>? normalizedValues,
-            IReadOnlyList<string>? worksheetNames,
-            bool isDefaultGridPrint)
+            bool isAccountWorksheet,
+            bool isDefaultGridPrint,
+            bool preserveEmptyDetailRows)
         {
             _environment = environment;
             _reportLanguage = ReportLanguageHelper.NormalizeLanguage(reportLanguage);
             _reportCode = Common.NormalizeNullableText(configuration.REPORT_CODE) ?? string.Empty;
+            _preserveEmptyDetailRows = preserveEmptyDetailRows;
             _namedValues = namedValues ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
             _normalizedValues = normalizedValues ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
@@ -109,56 +115,67 @@ namespace API_AMNOTE_WEB.Reporting
             RequestParameters = false;
             ExportOptions.Xlsx.TextExportMode = TextExportMode.Text;
             ExportOptions.Xls.TextExportMode = TextExportMode.Text;
-            if (worksheetNames != null || IsTreeListView(configuration))
+            var accountCodeField = _reportCode.ToUpperInvariant() switch
+            {
+                "GL_GENERAL_LEDGER_S02C1DN" => "__ACCOUNT_CD",
+                "GL_ACCOUNT_DETAIL_S38DN" => "ACCOUNT_CD_TEXT",
+                _ => null
+            };
+            if (accountCodeField == null && IsTreeListView(configuration))
             {
                 ExportOptions.Xlsx.ExportMode = XlsxExportMode.SingleFilePageByPage;
                 ExportOptions.Xlsx.SheetName = "Trang";
             }
 
-            if (worksheetNames != null)
+            if (isAccountWorksheet)
             {
-                // DevExpress exports one worksheet per page. In the XLSX copy each page holds an entire account.
                 RollPaper = true;
-                PrintingSystem.XlSheetCreated += (_, args) =>
-                {
-                    if (args.Index >= 0 && args.Index < worksheetNames.Count)
-                    {
-                        args.SheetName = worksheetNames[args.Index];
-                    }
-                };
+                sourceTable.Columns.Add(WorksheetGroupField, typeof(int)).DefaultValue = 0;
             }
-            else if (_showDetailTable
-                && string.Equals(_reportCode, "GL_GENERAL_LEDGER_S02C1DN", StringComparison.OrdinalIgnoreCase)
-                && HasColumn(sourceTable, "__ACCOUNT_CD"))
+            else if (accountCodeField != null)
             {
                 ExportAccountWorkbook = options =>
                 {
-                    var exportTable = sourceTable.Copy();
-                    var names = AssignAccountWorksheetGroups(exportTable);
-                    using var exportReport = new DynamicConfiguredReport(
-                        configuration, exportTable, companyContext, reportLanguage, environment,
-                        namedValues, normalizedValues, names, isDefaultGridPrint);
+                    var accountTables = SplitAccountWorksheets(sourceTable, accountCodeField);
+                    var names = ReportWorksheetNameLogger.BuildWorksheetNames(accountTables.Keys.ToArray(), DisplayName);
+
                     var exportOptions = new XlsxExportOptions();
                     exportOptions.Assign(options);
-                    exportOptions.ExportMode = XlsxExportMode.SingleFilePageByPage;
+                    exportOptions.ExportMode = XlsxExportMode.SingleFile;
                     exportOptions.PageRange = string.Empty;
 
+                    ExcelPackage.License.SetNonCommercialPersonal("AMNote System");
+                    using var workbook = new ExcelPackage();
                     using var stream = new MemoryStream();
-                    exportReport.ExportToXlsx(stream, exportOptions);
-                    return stream.ToArray();
+                    var index = 0;
+                    foreach (var exportTable in accountTables.Values)
+                    {
+                        var sheetName = names[index++];
+                        using var exportReport = new DynamicConfiguredReport(
+                            configuration, exportTable, companyContext, reportLanguage, environment,
+                            namedValues, normalizedValues, true, isDefaultGridPrint, preserveEmptyDetailRows);
+                        exportOptions.SheetName = sheetName;
+                        stream.SetLength(0);
+                        exportReport.ExportToXlsx(stream, exportOptions);
+                        stream.Position = 0;
+                        using var accountWorkbook = new ExcelPackage(stream);
+                        workbook.Workbook.Worksheets.Add(sheetName, accountWorkbook.Workbook.Worksheets.Single());
+                    }
+
+                    return workbook.GetAsByteArray();
                 };
             }
 
-            BuildElementConfiguredReport(configuration, companyContext, sourceTable, worksheetNames != null);
+            BuildElementConfiguredReport(configuration, companyContext, sourceTable, isAccountWorksheet && table.Rows.Count > 0);
         }
 
-        private static string[] AssignAccountWorksheetGroups(DataTable table)
+        private static Dictionary<string, DataTable> SplitAccountWorksheets(DataTable table, string accountCodeField)
         {
             var accountsByRowKey = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (DataRow row in table.Rows)
             {
                 var rowKey = ReadDataRowText(row, "__ROW_KEY");
-                var accountCode = ReadDataRowText(row, "__ACCOUNT_CD");
+                var accountCode = ReadDataRowText(row, accountCodeField);
                 if (rowKey != null && accountCode != null)
                 {
                     accountsByRowKey[rowKey] = accountCode;
@@ -166,25 +183,27 @@ namespace API_AMNOTE_WEB.Reporting
             }
 
             // The procedure emits the account code on the account node, and links movement rows to it.
-            table.Columns.Add(WorksheetGroupField, typeof(int));
-            var groups = new Dictionary<string, int>(StringComparer.Ordinal);
-            var accountCodes = new List<string>();
+            var groups = new Dictionary<string, DataTable>(StringComparer.Ordinal);
             foreach (DataRow row in table.Rows)
             {
-                var accountCode = ReadDataRowText(row, "__ACCOUNT_CD")
+                var accountCode = ReadDataRowText(row, accountCodeField)
                     ?? accountsByRowKey.GetValueOrDefault(ReadDataRowText(row, "__PARENT_ROW_KEY") ?? string.Empty)
                     ?? string.Empty;
-                if (!groups.TryGetValue(accountCode, out var index))
+                if (!groups.TryGetValue(accountCode, out var accountTable))
                 {
-                    index = accountCodes.Count;
-                    groups.Add(accountCode, index);
-                    accountCodes.Add(accountCode);
+                    accountTable = table.Clone();
+                    groups.Add(accountCode, accountTable);
                 }
 
-                row[WorksheetGroupField] = index;
+                accountTable.ImportRow(row);
             }
 
-            return ReportWorksheetNameLogger.BuildWorksheetNames(accountCodes);
+            if (groups.Count == 0)
+            {
+                groups.Add(string.Empty, table.Clone());
+            }
+
+            return groups;
         }
 
         private void BuildElementConfiguredReport(
@@ -211,7 +230,7 @@ namespace API_AMNOTE_WEB.Reporting
                 var groupedBands = new List<Band>
                 {
                     BuildTopMarginBand(),
-                    BuildElementTableGroupHeaderBand(reportHeaderElements, pageHeaderElements, detailElements, companyContext, table, tableGroupField!),
+                    BuildElementTableGroupHeaderBand(reportHeaderElements, pageHeaderElements, detailElements, companyContext, table, tableGroupField!, useAccountWorksheets),
                     BuildConfiguredTableDetailBand(),
                     BuildElementTableGroupFooterBand(reportFooterElements, companyContext, table, useAccountWorksheets),
                     BuildBottomMarginBand()
@@ -347,13 +366,14 @@ namespace API_AMNOTE_WEB.Reporting
             IReadOnlyList<CompanyReportElementInfo> detailElements,
             ReportCompanyContext companyContext,
             DataTable table,
-            string groupField)
+            string groupField,
+            bool useAccountWorksheets)
         {
             var band = new GroupHeaderBand
             {
-                RepeatEveryPage = true,
+                RepeatEveryPage = !useAccountWorksheets,
                 KeepTogether = true,
-                PageBreak = PageBreak.BeforeBandExceptFirstEntry
+                PageBreak = useAccountWorksheets ? PageBreak.None : PageBreak.BeforeBandExceptFirstEntry
             };
             band.GroupFields.Add(new GroupField(groupField));
             var top = 0f;
@@ -1301,9 +1321,31 @@ namespace API_AMNOTE_WEB.Reporting
             var top = detailElements != null && companyContext != null && dataTable != null
                 ? AddElementBlock(band.Controls, detailElements, companyContext, dataTable, 0f, true)
                 : 0f;
+            Band tableBand = band;
+            var tableTop = top;
+            if (!_preserveEmptyDetailRows && band.Controls.Count > 0)
+            {
+                var subBand = new SubBand { KeepTogether = true };
+                band.HeightF = top;
+                band.SubBands.Add(subBand);
+                tableBand = subBand;
+                tableTop = 0f;
+            }
+
+            if (!_preserveEmptyDetailRows)
+            {
+                tableBand.BeforePrint += (_, args) =>
+                {
+                    var currentRow = ResolveCurrentDataRow();
+                    var rowType = ResolveStyledTableRowType(currentRow);
+                    args.Cancel = columns.Select((column, index) => ResolveConfiguredTableCellDisplayText(currentRow, column, index, rowType))
+                        .All(string.IsNullOrWhiteSpace);
+                };
+            }
+
             var table = new XRTable
             {
-                BoundsF = new RectangleF(0f, top, _configuredTableWidth, rowHeight),
+                BoundsF = new RectangleF(0f, tableTop, _configuredTableWidth, rowHeight),
                 Font = CreateFont(_layout.FontFamily, _layout.DetailFontSize),
                 Borders = BorderSide.None
             };
@@ -1319,14 +1361,12 @@ namespace API_AMNOTE_WEB.Reporting
             }
 
             table.Rows.Add(row);
-            band.Controls.Add(table);
+            tableBand.Controls.Add(table);
             if (_useEInvoiceSalesAppendixStyle)
             {
-                // SECTION text must span the full row; cell[0] alone clips to the first column width.
-                // Overlay label paints on top of the bordered cells (cells keep empty text).
                 var sectionLabel = new XRLabel
                 {
-                    BoundsF = new RectangleF(0f, top, _configuredTableWidth, rowHeight),
+                    BoundsF = new RectangleF(0f, tableTop, _configuredTableWidth, rowHeight),
                     Borders = BorderSide.None,
                     BorderWidth = 0f,
                     Padding = new PaddingInfo(3, 3, 1, 1),
@@ -1355,10 +1395,10 @@ namespace API_AMNOTE_WEB.Reporting
                         ReadDataRowText(currentRow, "STT")) ?? string.Empty;
                     sectionLabel.HeightF = Math.Max(rowHeight, table.HeightF);
                 };
-                band.Controls.Add(sectionLabel);
+                tableBand.Controls.Add(sectionLabel);
             }
 
-            band.HeightF = Math.Max(1f, top + rowHeight);
+            tableBand.HeightF = Math.Max(1f, tableTop + rowHeight);
 
             return band;
         }
@@ -1520,7 +1560,7 @@ namespace API_AMNOTE_WEB.Reporting
         {
             var originalWeight = (double)column.Weight;
             var summaryLabelSpanWeight = columns
-                .Take(Math.Min(6, columns.Count))
+                .Take(SummaryLabelColumnSpan)
                 .Sum(item => (double)item.Weight);
             var cell = new XRTableCell
             {
@@ -1585,28 +1625,11 @@ namespace API_AMNOTE_WEB.Reporting
                 ? Color.FromArgb(252, 240, 204) // #FCF0CC bold row (sampled from B01 Excel reference)
                 : Color.Transparent;
             cell.XlsxFormatString = ResolveXlsxFormatString(column.FormatString);
-            cell.Text = ResolveConfiguredTableCellDisplayText(currentRow, column);
-
-            if (!_useEInvoiceSalesAppendixStyle)
-            {
-                return;
-            }
-
-            var rowType = Common.NormalizeToken(ReadDataRowText(currentRow, "__ROW_TYPE")).ToUpperInvariant();
-            if (string.IsNullOrWhiteSpace(rowType) || rowType == "DETAIL")
-            {
-                return;
-            }
-
-            var summaryLabel = FirstNonEmpty(
-                ReadDataRowText(currentRow, "SUMMARY_LABEL"),
-                ReadDataRowText(currentRow, "STT")) ?? string.Empty;
+            var rowType = ResolveStyledTableRowType(currentRow);
+            cell.Text = ResolveConfiguredTableCellDisplayText(currentRow, column, columnIndex, rowType);
 
             if (rowType == "SECTION")
             {
-                // Keep original column weights so the row always spans the full table width.
-                // Weight=0 / Visible=false both left SECTION borders stopping mid-table on DEFAULT_GRID.
-                // Draw one continuous outer box (no inner vertical lines); label text comes from band overlay.
                 cell.Weight = originalWeight;
                 cell.Text = string.Empty;
                 cell.Font = CreateFont(_layout.FontFamily, _layout.DetailFontSize, DXFontStyle.Bold);
@@ -1616,11 +1639,9 @@ namespace API_AMNOTE_WEB.Reporting
 
             if (rowType is "SUBTOTAL" or "GRANDTOTAL")
             {
-                const int summaryLabelColumnSpan = 6;
                 if (columnIndex == 0)
                 {
                     cell.Weight = summaryLabelSpanWeight;
-                    cell.Text = summaryLabel;
                     cell.TextAlignment = TextAlignment.MiddleRight;
                     cell.Font = CreateFont(_layout.FontFamily, _layout.DetailFontSize, DXFontStyle.Bold);
                     cell.BackColor = rowType == "GRANDTOTAL"
@@ -1629,7 +1650,7 @@ namespace API_AMNOTE_WEB.Reporting
                     return;
                 }
 
-                if (columnIndex < summaryLabelColumnSpan)
+                if (columnIndex < SummaryLabelColumnSpan)
                 {
                     cell.Weight = 0;
                     cell.Text = string.Empty;
@@ -1639,8 +1660,20 @@ namespace API_AMNOTE_WEB.Reporting
             }
         }
 
-        private string ResolveConfiguredTableCellDisplayText(DataRow? currentRow, ReportColumnDefinition column)
+        private string ResolveStyledTableRowType(DataRow? currentRow)
+            => _useEInvoiceSalesAppendixStyle
+                ? Common.NormalizeToken(ReadDataRowText(currentRow, "__ROW_TYPE")).ToUpperInvariant()
+                : string.Empty;
+
+        private string ResolveConfiguredTableCellDisplayText(DataRow? currentRow, ReportColumnDefinition column, int columnIndex, string rowType)
         {
+            if (rowType == "SECTION" || ((rowType is "SUBTOTAL" or "GRANDTOTAL") && columnIndex < SummaryLabelColumnSpan))
+            {
+                return columnIndex == 0
+                    ? FirstNonEmpty(ReadDataRowText(currentRow, "SUMMARY_LABEL"), ReadDataRowText(currentRow, "STT")) ?? string.Empty
+                    : string.Empty;
+            }
+
             if (IsReportItemNameColumn(column.Name))
             {
                 return ResolveReportItemDisplayName(

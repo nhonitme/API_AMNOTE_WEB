@@ -91,12 +91,20 @@ public sealed class TaxReductionAppendixReport : XtraReport
         if (!table.Columns.Contains("STT")) table.Columns.Add("STT", typeof(int));
         if (!table.Columns.Contains("ORIGINAL_RATE")) table.Columns.Add("ORIGINAL_RATE", typeof(int));
         if (!table.Columns.Contains("REDUCED_RATE")) table.Columns.Add("REDUCED_RATE", typeof(int));
+        var amountFields = fields.Where(field => field.EndsWith("AMOUNT", StringComparison.OrdinalIgnoreCase)).ToArray();
         foreach (var sourceRow in source.AsEnumerable().Where(r => r.Field<int>("TYPE") == type))
         {
+            var billAmount = TaxReductionAppendixCalculator.Round(sourceRow.Field<decimal>("BILL_AMOUNT"));
+            if (string.IsNullOrWhiteSpace(sourceRow.Field<string>("PRODUCT_NAME")) && amountFields.All(field =>
+                    (field == "BILL_AMOUNT" ? billAmount : sourceRow.Field<decimal?>(field).GetValueOrDefault()) == 0m))
+            {
+                continue;
+            }
+
             table.ImportRow(sourceRow);
             var row = table.Rows[table.Rows.Count - 1];
             row["STT"] = table.Rows.Count; row["ORIGINAL_RATE"] = 10; row["REDUCED_RATE"] = 8;
-            row["BILL_AMOUNT"] = TaxReductionAppendixCalculator.Round((decimal)row["BILL_AMOUNT"]);
+            row["BILL_AMOUNT"] = billAmount;
         }
         var section = new DetailReportBand { DataSource = table, Level = type - 1 };
         // The group title is printed once; only column captions repeat on subsequent pages.

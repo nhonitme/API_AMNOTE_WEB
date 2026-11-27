@@ -185,7 +185,8 @@ namespace API_AMNOTE_WEB.Services
             // Replace sys-code raw values with localized display text (same as grid Lookup).
             await ApplySysCodeDisplayValuesAsync(table, context);
 
-            if (ShouldBlankVoucherData(query))
+            var blankVoucherData = ShouldBlankVoucherData(query);
+            if (blankVoucherData)
             {
                 BlankVoucherDataTable(table);
             }
@@ -222,7 +223,8 @@ namespace API_AMNOTE_WEB.Services
                 _environment,
                 context.NamedValues,
                 context.NormalizedValues,
-                isDefaultGridPrint);
+                isDefaultGridPrint,
+                preserveEmptyDetailRows: blankVoucherData);
         }
 
         public async Task<ConfiguredReportPreviewDto> BuildPreviewAsync(

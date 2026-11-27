@@ -1,0 +1,1 @@
+const e="VND";function o(r){return String(r??"").trim().toUpperCase()}function t(r){return Array.from(new Set((r??[]).map(n=>o(n)).filter(Boolean)))}function a(r){return t(r)[0]??e}function i(r){const n=o(r);return n.length>0&&n!==e}export{e as D,o as a,a as g,i,t as n};

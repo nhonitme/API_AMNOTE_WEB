@@ -1,0 +1,1 @@
+.customer-identity-fields{display:grid;gap:10px 16px}@media (min-width: 768px){.customer-identity-fields{grid-template-columns:repeat(3,minmax(0,1fr))}.customer-identity-fields__name{grid-column:span 2}.customer-identity-fields__address{grid-column:1/-1}}

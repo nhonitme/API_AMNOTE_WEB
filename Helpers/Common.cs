@@ -1290,22 +1290,6 @@ namespace API_AMNOTE_WEB.Helpers
             }
         }
 
-        public static void LogDebug(string message)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(message))
-                {
-                    return;
-                }
-
-                AppendUserLogLine(message.Trim());
-            }
-            catch
-            {
-            }
-        }
-
         private static void AppendUserLogLine(string message)
         {
             // Never write under publish/SMB ContentRoot on macOS — that recycled the API mid-import.
