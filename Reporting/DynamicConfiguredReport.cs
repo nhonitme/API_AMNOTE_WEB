@@ -31,7 +31,14 @@ namespace API_AMNOTE_WEB.Reporting
         private const int DefaultMarginBottom = 25;
         private const float DefaultHeaderHeight = 28f;
         private const float DefaultDetailHeight = 24f;
-        private const float DefaultGridRightInset = 2f;
+        private const float TableRightInset = 2f;
+        /// <summary>
+        /// Shared trailing/leading gap after element rows: header content → grid, and for
+        /// TAX_VAT_INVOICE_LIST also grid → first report-footer total (Header/Footer balance).
+        /// </summary>
+        private const float ElementBlockTrailingGap = 4f;
+        /// <summary>Gap between report-footer totals and the signature block.</summary>
+        private const float ReportFooterToSignatureGap = 8f;
         private const int SummaryLabelColumnSpan = 6;
         private const string WorksheetGroupField = "__WORKSHEET_GROUP";
         private static readonly Regex InlineTemplateTokenRegex = new(
@@ -70,9 +77,8 @@ namespace API_AMNOTE_WEB.Reporting
             IWebHostEnvironment? environment = null,
             IReadOnlyDictionary<string, object?>? namedValues = null,
             IReadOnlyDictionary<string, object?>? normalizedValues = null,
-            bool isDefaultGridPrint = false,
             bool preserveEmptyDetailRows = false)
-            : this(configuration, table, companyContext, reportLanguage, environment, namedValues, normalizedValues, false, isDefaultGridPrint, preserveEmptyDetailRows)
+            : this(configuration, table, companyContext, reportLanguage, environment, namedValues, normalizedValues, false, preserveEmptyDetailRows)
         {
         }
 
@@ -85,7 +91,6 @@ namespace API_AMNOTE_WEB.Reporting
             IReadOnlyDictionary<string, object?>? namedValues,
             IReadOnlyDictionary<string, object?>? normalizedValues,
             bool isAccountWorksheet,
-            bool isDefaultGridPrint,
             bool preserveEmptyDetailRows)
         {
             _environment = environment;
@@ -108,19 +113,16 @@ namespace API_AMNOTE_WEB.Reporting
             DataSource = sourceTable;
             DataMember = sourceTable.TableName;
             DisplayName = ResolveReportTitle(configuration);
-            VatInvoiceListXlsxMetadata = VatInvoiceListXlsxExportMetadata.TryCreate(
-                sourceTable,
-                _reportCode,
-                _columns.Select(column => column.Name).ToList());
+            VatInvoiceListXlsxMetadata = CreateVatInvoiceListXlsxMetadata(sourceTable, configuration);
 
             Font = CreateFont(_layout.FontFamily, _layout.BaseFontSize);
             PaperKind = _layout.PaperKind;
             Landscape = _layout.Landscape;
             Margins = new Margins(_layout.MarginLeft, _layout.MarginRight, _layout.MarginTop, _layout.MarginBottom);
             var contentWidth = GetContentWidth();
-            // Keep the right border stroke inside the printable area for DEFAULT_GRID.
-            _configuredTableWidth = isDefaultGridPrint && contentWidth > DefaultGridRightInset
-                ? contentWidth - DefaultGridRightInset
+            // Keep the table's right border stroke inside the printable area.
+            _configuredTableWidth = contentWidth > TableRightInset
+                ? contentWidth - TableRightInset
                 : contentWidth;
             RequestParameters = false;
             ExportOptions.Xlsx.TextExportMode = TextExportMode.Text;
@@ -163,7 +165,7 @@ namespace API_AMNOTE_WEB.Reporting
                         var sheetName = names[index++];
                         using var exportReport = new DynamicConfiguredReport(
                             configuration, exportTable, companyContext, reportLanguage, environment,
-                            namedValues, normalizedValues, true, isDefaultGridPrint, preserveEmptyDetailRows);
+                            namedValues, normalizedValues, true, preserveEmptyDetailRows);
                         exportOptions.SheetName = sheetName;
                         stream.SetLength(0);
                         exportReport.ExportToXlsx(stream, exportOptions);
@@ -434,13 +436,23 @@ namespace API_AMNOTE_WEB.Reporting
             DataTable table,
             float startTop)
         {
-            var top = AddElementBlock(controls, elements, companyContext, table, startTop, true);
+            // TAX_VAT_INVOICE_LIST only: reuse ElementBlockTrailingGap so grid→footer matches
+            // the measured header→grid clearance (PageHeaderBand height − MST bottom = 4f).
+            // Other reports keep startTop unchanged; totals↔signature gap stays 8f.
+            var contentStartTop = startTop;
+            if (VatInvoiceListPrintLayout.IsVatInvoiceListReport(_reportCode)
+                && elements.Any(IsContentElement))
+            {
+                contentStartTop = startTop + ElementBlockTrailingGap;
+            }
+
+            var top = AddElementBlock(controls, elements, companyContext, table, contentStartTop, true);
             if (!HasSignatures(companyContext))
             {
                 return top;
             }
 
-            var signatureTop = top + (top > startTop ? 8f : 0f);
+            var signatureTop = top + (top > startTop ? ReportFooterToSignatureGap : 0f);
             controls.Add(CreateSignatureTable(companyContext.Signatures, signatureTop));
             return signatureTop + GetSignatureSectionHeight(companyContext.Signatures);
         }
@@ -549,7 +561,7 @@ namespace API_AMNOTE_WEB.Reporting
                 previousRowNo = rowNo;
             }
 
-            return Math.Max(fullTop, Math.Max(leftTop, rightTop)) + 4f;
+            return Math.Max(fullTop, Math.Max(leftTop, rightTop)) + ElementBlockTrailingGap;
         }
 
         private float AddMeasuredElementGroup(
@@ -578,7 +590,7 @@ namespace API_AMNOTE_WEB.Reporting
                         ? autoInlineBounds[element]
                         : ResolveElementBounds(element, rowElements, contentWidth, startTop, 0f);
                     var font = CreateElementFont(element);
-                    var neededWidth = MeasureGdiTextWidthHundredths(text, font, typographic: true) + 4f;
+                    var neededWidth = ReportTextMetrics.MeasureWidthHundredths(text, font, typographic: true) + 4f;
                     var width = autoInlineBounds != null ? bounds.Width : ResolveWidthWithoutSiblingOverlap(
                         element,
                         rowElements,
@@ -656,14 +668,14 @@ namespace API_AMNOTE_WEB.Reporting
                 {
                     var font = CreateElementFont(element);
                     var text = ResolveElementDisplayText(element, companyContext, table, null);
-                    // Measure spaces between characters so GDI does not discard trailing spaces.
+                    // Measure spaces between characters so typographic format does not discard them.
                     var gap = Math.Max(0f,
-                        MeasureGdiTextWidthHundredths("x    x", font, typographic: true)
-                        - MeasureGdiTextWidthHundredths("xx", font, typographic: true));
+                        ReportTextMetrics.MeasureWidthHundredths("x    x", font, typographic: true)
+                        - ReportTextMetrics.MeasureWidthHundredths("xx", font, typographic: true));
                     // Use the same measurement as ResolveElementHeight to avoid a false extra line.
                     var width = Math.Max(
-                        MeasureGdiTextWidthHundredths(text, font, typographic: true),
-                        MeasureGdiTextWidthHundredths(text, font, typographic: false)) + 4f;
+                        ReportTextMetrics.MeasureWidthHundredths(text, font, typographic: true),
+                        ReportTextMetrics.MeasureWidthHundredths(text, font, typographic: false)) + 4f;
                     return new { Element = element, Width = width, Gap = gap };
                 }).ToList();
             var totalGap = items.Take(items.Count - 1).Sum(item => item.Gap);
@@ -782,13 +794,13 @@ namespace API_AMNOTE_WEB.Reporting
             }
 
             var usableWidth = Math.Max(1f, availableWidth - 4f);
-            var unconstrained = MeasureGdiTextWidthHundredths(text, font, typographic: false);
+            var unconstrained = ReportTextMetrics.MeasureWidthHundredths(text, font, typographic: false);
             if (unconstrained <= usableWidth + 0.5f)
             {
                 return singleLine;
             }
 
-            var wrapped = MeasureGdiTextSizeHundredths(text, font, usableWidth, typographic: false);
+            var wrapped = ReportTextMetrics.MeasureSizeHundredths(text, font, usableWidth, typographic: false);
             return Math.Max(singleLine * 2f, wrapped.Height + 2f);
         }
 
@@ -806,6 +818,41 @@ namespace API_AMNOTE_WEB.Reporting
             }
 
             return CreateFont(_layout.FontFamily, ResolveFontSize(element.FONT_SIZE, _layout.InfoFontSize), style);
+        }
+
+        private VatInvoiceListXlsxExportMetadata? CreateVatInvoiceListXlsxMetadata(
+            DataTable sourceTable,
+            ReportConfigurationInfo configuration)
+        {
+            var titleFont = ResolveTitleMainElementFont(configuration);
+            return VatInvoiceListXlsxExportMetadata.TryCreate(
+                sourceTable,
+                _reportCode,
+                _columns.Select(column => column.Name).ToList(),
+                titleFontFamily: titleFont.Name,
+                titleFontSize: titleFont.Size,
+                titleFontBold: titleFont.Style.HasFlag(DXFontStyle.Bold),
+                titleFontItalic: titleFont.Style.HasFlag(DXFontStyle.Italic),
+                sectionFontFamily: _layout.FontFamily,
+                sectionFontSize: _layout.DetailFontSize,
+                sectionFontBold: true,
+                sectionFontItalic: false);
+        }
+
+        /// <summary>
+        /// Reuses CreateElementFont() for REPORT_HEADER / TITLE_MAIN so XLSX title matches PDF.
+        /// </summary>
+        private DXFont ResolveTitleMainElementFont(ReportConfigurationInfo configuration)
+        {
+            var titleElement = GetReportElements(configuration, "REPORT_HEADER")
+                .FirstOrDefault(element => Common.NormalizeToken(element.ITEM_KEY) == "titlemain");
+
+            if (titleElement != null)
+            {
+                return CreateElementFont(titleElement);
+            }
+
+            return CreateFont(_layout.FontFamily, _layout.TitleFontSize, DXFontStyle.Bold);
         }
 
         private string ResolveElementDisplayText(
@@ -1518,7 +1565,6 @@ namespace API_AMNOTE_WEB.Reporting
                 Text = text,
                 Font = CreateFont(_layout.FontFamily, _layout.HeaderFontSize, DXFontStyle.Bold),
                 TextAlignment = TextAlignment.MiddleCenter,
-                // Absolute XRLabels cannot share borders like XRTable; paint each edge once.
                 Borders = borders,
                 BorderWidth = 0.8f,
                 Padding = new PaddingInfo(2, 2, 1, 1),
@@ -1530,10 +1576,7 @@ namespace API_AMNOTE_WEB.Reporting
             return label;
         }
 
-        /// <summary>
-        /// Left+Top on every cell; Bottom only on the header's bottom edge; Right only on the last column.
-        /// Avoids double-painted shared edges between adjacent absolute header labels.
-        /// </summary>
+        // Paint each shared edge once.
         private static BorderSide ResolveConfiguredTableHeaderLabelBorders(
             int rowIndex,
             int colIndex,
@@ -1569,13 +1612,16 @@ namespace API_AMNOTE_WEB.Reporting
             IReadOnlyList<ReportColumnDefinition> columns)
         {
             var originalWeight = (double)column.Weight;
+            var detailBorders = _tableLayout != null && columnIndex < columns.Count - 1
+                ? BorderSide.Left | BorderSide.Top | BorderSide.Bottom
+                : BorderSide.All;
             var summaryLabelSpanWeight = columns
                 .Take(SummaryLabelColumnSpan)
                 .Sum(item => (double)item.Weight);
             var cell = new XRTableCell
             {
                 Weight = column.Weight,
-                Borders = BorderSide.All,
+                Borders = detailBorders,
                 BorderWidth = 0.8f,
                 Padding = new PaddingInfo(3, 3, 1, 1),
                 TextAlignment = ResolveWrappedDataCellAlignment(column.Alignment),
@@ -1593,7 +1639,8 @@ namespace API_AMNOTE_WEB.Reporting
                     columnIndex,
                     columns.Count,
                     originalWeight,
-                    summaryLabelSpanWeight);
+                    summaryLabelSpanWeight,
+                    detailBorders);
             };
 
             return cell;
@@ -1621,13 +1668,14 @@ namespace API_AMNOTE_WEB.Reporting
             int columnIndex,
             int columnCount,
             double originalWeight,
-            double summaryLabelSpanWeight)
+            double summaryLabelSpanWeight,
+            BorderSide detailBorders)
         {
             var currentRow = ResolveCurrentDataRow();
             // Reset every row — SECTION/SUBTOTAL may clear weight/borders on the shared cell template.
             cell.Visible = true;
             cell.Weight = originalWeight;
-            cell.Borders = BorderSide.All;
+            cell.Borders = detailBorders;
             cell.TextAlignment = ResolveWrappedDataCellAlignment(column.Alignment);
             var detailFontStyle = ResolveDataRowFontStyle(currentRow);
             cell.Font = CreateFont(_layout.FontFamily, _layout.DetailFontSize, detailFontStyle);
@@ -1652,6 +1700,11 @@ namespace API_AMNOTE_WEB.Reporting
                 if (columnIndex == 0)
                 {
                     cell.Weight = summaryLabelSpanWeight;
+                    if (columnCount <= SummaryLabelColumnSpan)
+                    {
+                        cell.Borders |= BorderSide.Right;
+                    }
+
                     cell.TextAlignment = TextAlignment.MiddleRight;
                     cell.Font = CreateFont(_layout.FontFamily, _layout.DetailFontSize, DXFontStyle.Bold);
                     cell.BackColor = rowType == "GRANDTOTAL"
@@ -2002,7 +2055,12 @@ namespace API_AMNOTE_WEB.Reporting
         {
             var font = CreateFont(_layout.FontFamily, _layout.HeaderFontSize, DXFontStyle.Bold);
             // Measure after fitting columns to the page; reserve padding and border space.
-            var size = MeasureGdiTextSizeHundredths(text, font, Math.Max(1f, width - 6f), typographic: false);
+            // Use DX cross-platform metrics (not System.Drawing GDI+) so Linux matches Windows.
+            var size = ReportTextMetrics.MeasureSizeHundredths(
+                text,
+                font,
+                Math.Max(1f, width - 6f),
+                typographic: false);
             return (float)Math.Ceiling(size.Height + 6f);
         }
 
@@ -2531,7 +2589,7 @@ namespace API_AMNOTE_WEB.Reporting
 
             var font = CreateFont(_layout.FontFamily, _layout.FooterFontSize, DXFontStyle.Bold);
             var maxTextHeight = signatures
-                .Select(signature => MeasureGdiTextSizeHundredths(
+                .Select(signature => ReportTextMetrics.MeasureSizeHundredths(
                     signature.SIGN_NAME ?? string.Empty,
                     font,
                     Math.Max(1f, slotWidth - 8f),
@@ -3074,46 +3132,6 @@ namespace API_AMNOTE_WEB.Reporting
             }
 
             return null;
-        }
-
-        private static SizeF MeasureGdiTextSizeHundredths(string text, DXFont font, float maxWidthHundredths, bool typographic)
-        {
-            if (string.IsNullOrEmpty(text))
-            {
-                return SizeF.Empty;
-            }
-
-            try
-            {
-                var style = FontStyle.Regular;
-                if (font.Style.HasFlag(DXFontStyle.Bold))
-                {
-                    style |= FontStyle.Bold;
-                }
-
-                if (font.Style.HasFlag(DXFontStyle.Italic))
-                {
-                    style |= FontStyle.Italic;
-                }
-
-                using var gdiFont = new Font(font.Name, font.Size, style, GraphicsUnit.Point);
-                using var bmp = new Bitmap(1, 1);
-                using var g = Graphics.FromImage(bmp);
-                g.PageUnit = GraphicsUnit.Point;
-                var format = typographic ? StringFormat.GenericTypographic : StringFormat.GenericDefault;
-                var maxWidthPoints = Math.Max(1f, maxWidthHundredths * 72f / 100f);
-                var size = g.MeasureString(text, gdiFont, new SizeF(maxWidthPoints, 8000f), format);
-                return new SizeF(size.Width * 100f / 72f, size.Height * 100f / 72f);
-            }
-            catch
-            {
-                return SizeF.Empty;
-            }
-        }
-
-        private static float MeasureGdiTextWidthHundredths(string text, DXFont font, bool typographic)
-        {
-            return MeasureGdiTextSizeHundredths(text, font, 10000f, typographic).Width;
         }
 
         private static DXFont CreateFont(string fontFamily, float fontSize, DXFontStyle style = DXFontStyle.Regular)

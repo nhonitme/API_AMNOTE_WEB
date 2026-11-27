@@ -223,7 +223,6 @@ namespace API_AMNOTE_WEB.Services
                 _environment,
                 context.NamedValues,
                 context.NormalizedValues,
-                isDefaultGridPrint,
                 preserveEmptyDetailRows: blankVoucherData);
         }
 

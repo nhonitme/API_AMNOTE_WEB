@@ -12,12 +12,28 @@ namespace API_AMNOTE_WEB.Reporting
             string reportCode,
             string reportTitle,
             IReadOnlyList<string> visibleColumnFields,
-            IReadOnlyList<VatInvoiceListXlsxBodyRow> bodyRows)
+            IReadOnlyList<VatInvoiceListXlsxBodyRow> bodyRows,
+            string? titleFontFamily = null,
+            float? titleFontSize = null,
+            bool? titleFontBold = null,
+            bool? titleFontItalic = null,
+            string? sectionFontFamily = null,
+            float? sectionFontSize = null,
+            bool? sectionFontBold = null,
+            bool? sectionFontItalic = null)
         {
             ReportCode = reportCode;
             ReportTitle = reportTitle;
             VisibleColumnFields = visibleColumnFields;
             BodyRows = bodyRows;
+            TitleFontFamily = NormalizeFontFamily(titleFontFamily);
+            TitleFontSize = NormalizeFontSize(titleFontSize);
+            TitleFontBold = titleFontBold;
+            TitleFontItalic = titleFontItalic;
+            SectionFontFamily = NormalizeFontFamily(sectionFontFamily);
+            SectionFontSize = NormalizeFontSize(sectionFontSize);
+            SectionFontBold = sectionFontBold;
+            SectionFontItalic = sectionFontItalic;
         }
 
         public string ReportCode { get; }
@@ -28,13 +44,40 @@ namespace API_AMNOTE_WEB.Reporting
 
         public IReadOnlyList<VatInvoiceListXlsxBodyRow> BodyRows { get; }
 
+        /// <summary>Resolved FONT_FAMILY used by PDF TITLE_MAIN (layout font family).</summary>
+        public string? TitleFontFamily { get; }
+
+        /// <summary>Resolved FONT_SIZE used by PDF TITLE_MAIN via CreateElementFont().</summary>
+        public float? TitleFontSize { get; }
+
+        public bool? TitleFontBold { get; }
+
+        public bool? TitleFontItalic { get; }
+
+        /// <summary>Resolved FONT_FAMILY used by PDF SECTION rows (layout detail font).</summary>
+        public string? SectionFontFamily { get; }
+
+        public float? SectionFontSize { get; }
+
+        public bool? SectionFontBold { get; }
+
+        public bool? SectionFontItalic { get; }
+
         public IReadOnlyList<VatInvoiceListXlsxBodyRow> SectionRows
             => BodyRows.Where(row => row.IsSection).ToList();
 
         public static VatInvoiceListXlsxExportMetadata? TryCreate(
             DataTable? table,
             string? reportCode,
-            IReadOnlyList<string>? visibleColumnFields = null)
+            IReadOnlyList<string>? visibleColumnFields = null,
+            string? titleFontFamily = null,
+            float? titleFontSize = null,
+            bool? titleFontBold = null,
+            bool? titleFontItalic = null,
+            string? sectionFontFamily = null,
+            float? sectionFontSize = null,
+            bool? sectionFontBold = null,
+            bool? sectionFontItalic = null)
         {
             if (table == null || !IsVatInvoiceListReport(reportCode))
             {
@@ -93,7 +136,15 @@ namespace API_AMNOTE_WEB.Reporting
                 normalizedReportCode,
                 reportTitle,
                 columns,
-                bodyRows);
+                bodyRows,
+                titleFontFamily,
+                titleFontSize,
+                titleFontBold,
+                titleFontItalic,
+                sectionFontFamily,
+                sectionFontSize,
+                sectionFontBold,
+                sectionFontItalic);
         }
 
         private static bool IsVatInvoiceListReport(string? reportCode)
@@ -167,6 +218,15 @@ namespace API_AMNOTE_WEB.Reporting
 
             return null;
         }
+
+        private static string? NormalizeFontFamily(string? value)
+        {
+            var normalized = NormalizeText(value);
+            return normalized.Length == 0 ? null : normalized;
+        }
+
+        private static float? NormalizeFontSize(float? value)
+            => value is > 0f ? value : null;
 
         private static string NormalizeText(string? value)
             => string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();

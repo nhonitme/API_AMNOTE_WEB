@@ -29,6 +29,7 @@ using DevExpress.AspNetCore;
 using DevExpress.AspNetCore.Reporting;
 using DevExpress.AspNetCore.Reporting.WebDocumentViewer;
 using DevExpress.AspNetCore.Reporting.WebDocumentViewer.Native.Services;
+using DevExpress.Drawing;
 using DevExpress.XtraReports.Services;
 using DevExpress.XtraReports.Web.WebDocumentViewer;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -46,7 +47,14 @@ using System.Threading.RateLimiting;
 
 Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
 
+// Use Skia on Windows and Linux so report layout text metrics match export rendering.
+// System.Drawing.Common GDI+ is not supported for text measure on Linux/.NET 10.
+Settings.DrawingEngine = DrawingEngine.Skia;
+
 var builder = WebApplication.CreateBuilder(args);
+Console.WriteLine(
+    $"[Startup] DevExpress DrawingEngine={Settings.DrawingEngine}; OS={Environment.OSVersion}; " +
+    $"Framework={Environment.Version}");
 
 
 

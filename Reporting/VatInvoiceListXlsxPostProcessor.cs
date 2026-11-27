@@ -71,7 +71,7 @@ namespace API_AMNOTE_WEB.Reporting
                     RebuildBodyFromMetadata(sheet, metadata);
                 }
 
-                EnsureTitle(sheet, metadata.ReportTitle);
+                EnsureTitle(sheet, metadata);
             }
 
             return package.GetAsByteArray();
@@ -88,9 +88,9 @@ namespace API_AMNOTE_WEB.Reporting
             return Apply(xlsxBytes, metadata);
         }
 
-        private static void EnsureTitle(ExcelWorksheet sheet, string? reportTitle)
+        private static void EnsureTitle(ExcelWorksheet sheet, VatInvoiceListXlsxExportMetadata metadata)
         {
-            var title = Normalize(reportTitle);
+            var title = Normalize(metadata.ReportTitle);
             if (title.Length == 0)
             {
                 return;
@@ -106,7 +106,7 @@ namespace API_AMNOTE_WEB.Reporting
             if (existingTitleRow > 0)
             {
                 var mergeEnd = ResolveTitleMergeEndCol(sheet, existingTitleRow, startCol, endCol);
-                WriteTitleCell(sheet, existingTitleRow, startCol, mergeEnd, title);
+                WriteTitleCell(sheet, existingTitleRow, startCol, mergeEnd, title, metadata);
                 return;
             }
 
@@ -119,7 +119,8 @@ namespace API_AMNOTE_WEB.Reporting
                     startRow,
                     startCol,
                     ResolveTitleMergeEndCol(sheet, startRow + 1, startCol, endCol),
-                    title);
+                    title,
+                    metadata);
                 return;
             }
 
@@ -144,7 +145,7 @@ namespace API_AMNOTE_WEB.Reporting
             }
 
             var resolvedMergeEnd = ResolveTitleMergeEndCol(sheet, titleRow, startCol, endCol);
-            WriteTitleCell(sheet, titleRow, startCol, resolvedMergeEnd, title);
+            WriteTitleCell(sheet, titleRow, startCol, resolvedMergeEnd, title, metadata);
         }
 
         private static void WriteTitleCell(
@@ -152,7 +153,8 @@ namespace API_AMNOTE_WEB.Reporting
             int row,
             int startCol,
             int endCol,
-            string title)
+            string title,
+            VatInvoiceListXlsxExportMetadata metadata)
         {
             UnmergeRows(sheet, row, row);
 
@@ -164,12 +166,19 @@ namespace API_AMNOTE_WEB.Reporting
 
             var cell = sheet.Cells[row, startCol];
             cell.Value = title;
-            cell.Style.Font.Bold = true;
-            cell.Style.Font.Size = Math.Max(cell.Style.Font.Size, 12);
+            ApplyConfiguredFont(
+                cell,
+                metadata.TitleFontFamily,
+                metadata.TitleFontSize,
+                metadata.TitleFontBold,
+                metadata.TitleFontItalic,
+                fallbackBold: true);
             cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
             cell.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
             cell.Style.WrapText = true;
-            sheet.Row(row).Height = Math.Max(sheet.Row(row).Height, EstimateRowHeight(title, mergeEnd - startCol + 1));
+            sheet.Row(row).Height = Math.Max(
+                sheet.Row(row).Height,
+                EstimateRowHeight(title, mergeEnd - startCol + 1, metadata.TitleFontSize));
         }
 
         private static bool TryMergeSectionRowsFromMetadata(
@@ -216,7 +225,7 @@ namespace API_AMNOTE_WEB.Reporting
                     continue;
                 }
 
-                ApplySectionFormatting(sheet, excelRow, startCol, tableEndCol, bodyRow.SummaryLabel);
+                ApplySectionFormatting(sheet, excelRow, startCol, tableEndCol, bodyRow.SummaryLabel, metadata);
             }
 
             return true;
@@ -474,7 +483,7 @@ namespace API_AMNOTE_WEB.Reporting
                 var bodyRow = metadata.BodyRows[index];
                 if (bodyRow.IsSection)
                 {
-                    ApplySectionFormatting(sheet, excelRow, startCol, tableEndCol, bodyRow.SummaryLabel);
+                    ApplySectionFormatting(sheet, excelRow, startCol, tableEndCol, bodyRow.SummaryLabel, metadata);
                     continue;
                 }
 
@@ -498,7 +507,8 @@ namespace API_AMNOTE_WEB.Reporting
             int row,
             int startCol,
             int tableEndCol,
-            string summaryLabel)
+            string summaryLabel,
+            VatInvoiceListXlsxExportMetadata metadata)
         {
             var label = Normalize(summaryLabel);
             UnmergeRows(sheet, row, row);
@@ -507,7 +517,13 @@ namespace API_AMNOTE_WEB.Reporting
             {
                 var cell = sheet.Cells[row, col];
                 cell.Value = null;
-                cell.Style.Font.Bold = true;
+                ApplyConfiguredFont(
+                    cell,
+                    metadata.SectionFontFamily,
+                    metadata.SectionFontSize,
+                    metadata.SectionFontBold,
+                    metadata.SectionFontItalic,
+                    fallbackBold: true);
                 cell.Style.WrapText = true;
                 cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Left;
                 cell.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
@@ -524,13 +540,45 @@ namespace API_AMNOTE_WEB.Reporting
 
             var labelCell = sheet.Cells[row, startCol];
             labelCell.Value = label;
-            labelCell.Style.Font.Bold = true;
+            ApplyConfiguredFont(
+                labelCell,
+                metadata.SectionFontFamily,
+                metadata.SectionFontSize,
+                metadata.SectionFontBold,
+                metadata.SectionFontItalic,
+                fallbackBold: true);
             labelCell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Left;
             labelCell.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
             labelCell.Style.WrapText = true;
             sheet.Row(row).Height = Math.Max(
                 sheet.Row(row).Height,
-                EstimateRowHeight(label, tableEndCol - startCol + 1));
+                EstimateRowHeight(label, tableEndCol - startCol + 1, metadata.SectionFontSize));
+        }
+
+        private static void ApplyConfiguredFont(
+            ExcelRangeBase cell,
+            string? fontFamily,
+            float? fontSize,
+            bool? bold,
+            bool? italic,
+            bool fallbackBold)
+        {
+            if (!string.IsNullOrWhiteSpace(fontFamily))
+            {
+                // EPPlus stores the family name as-is; do not map to a hard-coded fallback font.
+                cell.Style.Font.Name = fontFamily.Trim();
+            }
+
+            if (fontSize is > 0f)
+            {
+                cell.Style.Font.Size = fontSize.Value;
+            }
+
+            cell.Style.Font.Bold = bold ?? fallbackBold;
+            if (italic.HasValue)
+            {
+                cell.Style.Font.Italic = italic.Value;
+            }
         }
 
         private static bool DetailFingerprintMatches(
@@ -951,17 +999,22 @@ namespace API_AMNOTE_WEB.Reporting
             return rows.Count;
         }
 
-        private static double EstimateRowHeight(string text, int columnSpan)
+        private static double EstimateRowHeight(string text, int columnSpan, float? fontSize = null)
         {
+            var resolvedSize = fontSize is > 0f ? fontSize.Value : 12f;
+            var singleLineHeight = Math.Max(18d, resolvedSize + 6d);
             if (string.IsNullOrWhiteSpace(text))
             {
-                return 18;
+                return singleLineHeight;
             }
 
             var span = Math.Max(1, columnSpan);
-            var approxCharsPerLine = Math.Max(12, span * 8);
-            var lines = Math.Max(1, (int)Math.Ceiling(text.Length / (double)approxCharsPerLine));
-            return Math.Min(72, 16 + (lines - 1) * 14);
+            // Wider glyphs (e.g. larger title fonts) need fewer chars per wrapped line.
+            var charsPerColumn = Math.Max(4d, 96d / Math.Max(8d, resolvedSize));
+            var approxCharsPerLine = Math.Max(8d, span * charsPerColumn);
+            var lines = Math.Max(1, (int)Math.Ceiling(text.Length / approxCharsPerLine));
+            var lineGap = Math.Max(12d, resolvedSize + 2d);
+            return Math.Min(Math.Max(72d, resolvedSize * 5d), singleLineHeight + (lines - 1) * lineGap);
         }
 
         private static bool IsRowEffectivelyEmpty(ExcelWorksheet sheet, int row, int startCol, int endCol)
